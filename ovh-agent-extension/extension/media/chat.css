@@ -148,7 +148,11 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .model-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .model-title strong { overflow-wrap: anywhere; font-size: 11px; font-weight: 600; }
 .model-title span {
-  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 80px;
+  flex: 0 0 80px;
+  text-align: center;
+  opacity: 0.66;
   padding: 3px 8px;
   border-radius: 4px;
   color: #fff;
