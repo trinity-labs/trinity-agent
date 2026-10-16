@@ -45,6 +45,11 @@ for relative in paths:
     prepared[relative] = (content, file.stat().st_mode & 0o777)
 # Publish a parameterized deployment example instead of the live host configuration.
 compose = (source / 'docker-compose.yml').read_text()
+# Public defaults must not inherit the local customer's branding.
+compose = re.sub(r'^      OVH_AGENT_PRIMARY_COLOR:.*$', '      OVH_AGENT_PRIMARY_COLOR: "${OVH_AGENT_PRIMARY_COLOR:-#3e3aab}"', compose, flags=re.M)
+for key in ('OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON'):
+    compose = re.sub(r'^      ' + key + r':.*$', '      ' + key + ': "${' + key + ':-}"', compose, flags=re.M)
+
 compose = re.sub(r'\d+\.\d+\.\d+\.\d+:\d+:8080', '${IDE_BIND_ADDRESS:-127.0.0.1}:${IDE_PORT:-5734}:8080', compose)
 compose = compose.replace('/mnt/SSHFS/TRINITY-CLOUD/mnt/ENTREPRISE/SERVER/TRINITY/codex', '${CODEX_DATA_DIR:-./data/codex}')
 compose = compose.replace('/mnt/SSHFS/TRINITY-CLOUD/mnt/ENTREPRISE/SERVER/TRINITY/ovh-agent', '${AGENT_DATA_DIR:-./data/agent}')
