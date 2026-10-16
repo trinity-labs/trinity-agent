@@ -729,9 +729,9 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 .archive-item { display: flex; align-items: center; padding: 0; cursor: default; }
 .archive-open { flex: 1; min-width: 0; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .archive-item:hover, .archive-item:focus-within { background: var(--ovh-primary-pastel); }
-.archive-delete { flex-shrink: 0; margin-right: 7px; opacity: 0; pointer-events: none; color: #dc2626; }
+.archive-delete { flex-shrink: 0; margin-right: 7px; opacity: 0; pointer-events: none; color: #d65c5c; }
 .archive-item:hover .archive-delete, .archive-item:focus-within .archive-delete { opacity: 1; pointer-events: auto; }
-.archive-delete:hover, .archive-delete:focus-visible { color: #fff; background: #dc2626; }
+.archive-delete:hover, .archive-delete:focus-visible { color: #fff; background: #d65c5c; }
 .archive-open:focus-visible, .archive-delete:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 @media (hover: none) { .archive-delete { opacity: 1; pointer-events: auto; } }
 
