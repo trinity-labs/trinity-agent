@@ -826,5 +826,5 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 .history-brand .agent-icon { width: 23px; height: 23px; }
 #history[hidden], #history-brand[hidden] { display: none; }
 
-#configure .icon-key { transform: rotate(-45deg); transform-origin: center; }
-.history-brand { opacity: .66; }
+#configure .icon-key { transform: rotate(180deg); transform-origin: center; }
+.history-brand { opacity: .33; }

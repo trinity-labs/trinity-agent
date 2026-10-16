@@ -140,8 +140,8 @@ Interface icons
 ---------------
 
 Controls use the outline variants of Bootstrap Icons (MIT). Only the history
-branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 66% opacity.
-The configuration key is tilted 45 degrees. Licenses are included in media/.
+branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 33% opacity.
+The configuration key is rotated 180 degrees. Licenses are included in media/.
 Only the selected SVG vectors are bundled and minified; no webfont or CDN is used.
 Application and activity-bar branding remain independently configurable.
 Native command icons have light/dark variants; the native status bar uses text.
