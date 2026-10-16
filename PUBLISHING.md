@@ -115,3 +115,18 @@ sources is deferred until the deployment's `ovh-agent.py`, `ovh_memory.py` and
 code or installing a client for a different backend. Docker images and Python
 dependencies remain deployment-managed. Marketplace installations use the editor's
 normal extension update mechanism; this local updater never installs a second ID.
+
+### Branding preservation during local updates
+
+The local updater snapshots the installed name, publisher display name and icons
+before replacement, then reapplies them to the new installation. Explicit Docker
+branding variables take precedence; an explicitly empty icon variable resets that
+icon to its bundled default. Missing or invalid configured assets defer the update
+instead of silently resetting the branding. Colors remain controlled by the existing
+runtime environment. Keep custom asset files on a persistent mount outside the
+versioned extension directory. `OVH_AGENT_PUBLISHER_NAME` optionally overrides the
+local publisher display name; otherwise the installed value is preserved.
+
+The branding helper only changes installed manifests, never the source manifest.
+This preservation mechanism applies to the supplied Docker/local updater, not to
+manual edits in an extension directory managed directly by the Marketplace.

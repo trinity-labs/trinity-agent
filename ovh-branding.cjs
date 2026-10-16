@@ -18,7 +18,6 @@ function customIcon(variable, media) {
     let content = fs.readFileSync(input);
     let extension;
     if (content.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) {
-      if (variable === 'OVH_AGENT_MENU_ICON') throw new Error('menu icon requires SVG');
       extension = 'png';
     } else {
       const svg = content.toString('utf8');
@@ -44,7 +43,8 @@ function customIcon(variable, media) {
     fs.writeFileSync(path.join(media, filename), content);
     return 'media/' + filename;
   } catch (error) {
-    console.warn(`[branding] ${variable}: ${error.code || error.message}; using default icon.`);
+    if (process.env.OVH_AGENT_BRANDING_STRICT === 'true') throw error;
+    console.warn(`[branding] ${variable}: ${error.code || error.message}; preserving current icon.`);
     return null;
   }
 }
@@ -52,9 +52,10 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (manifest.name !== 'ovh-agent' || manifest.publisher !== 'trinity') return;
   manifest.displayName = name;
-  if (manifest.__metadata) manifest.__metadata.publisherDisplayName = 'TRINITY';
+  if (manifest.__metadata && process.env.OVH_AGENT_PUBLISHER_NAME) manifest.__metadata.publisherDisplayName = process.env.OVH_AGENT_PUBLISHER_NAME;
   const configuredColor = String(process.env.OVH_AGENT_PRIMARY_COLOR || "").trim();
   const primary = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor.toLowerCase() : "#3e3aab";
+  const previousIcon = manifest.icon;
   const media = path.join(path.dirname(file), "media");
   const iconTemplate = path.join(media, "ovh-agent.svg");
   if (fs.existsSync(path.join(media, "trinity-icon.png"))) {
@@ -66,6 +67,9 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
     fs.writeFileSync(path.join(media, iconName), svg);
     manifest.icon = "media/" + iconName;
   }
+  const defaultIcon = manifest.icon;
+  manifest.icon = previousIcon || defaultIcon;
+  if (process.env.OVH_AGENT_APP_ICON === '') manifest.icon = defaultIcon;
   const appIcon = customIcon('OVH_AGENT_APP_ICON', media);
   if (appIcon) manifest.icon = appIcon;
   const menuIcon = customIcon('OVH_AGENT_MENU_ICON', media) || (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/ovh-activity.svg');
@@ -82,21 +86,24 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
     fs.writeFileSync(path.join(path.dirname(file), `package.nls.${lang}.json`), JSON.stringify(catalog, null, 2) + '\n');
     if (lang === 'en') fs.writeFileSync(path.join(path.dirname(file), 'package.nls.json'), JSON.stringify(catalog, null, 2) + '\n');
   }
-  for (const view of manifest.contributes?.viewsContainers?.activitybar || []) { view.title = name; view.icon = menuIcon; }
+  for (const view of manifest.contributes?.viewsContainers?.activitybar || []) { view.title = name; if (process.env.OVH_AGENT_MENU_ICON === '' || !view.icon || process.env.OVH_AGENT_MENU_ICON && menuIcon.startsWith('media/custom-')) view.icon = menuIcon; }
   for (const view of manifest.contributes?.views?.ovhAgent || []) view.name = name;
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 }
 if (require.main === module) {
-  const name = (process.env.OVH_AGENT_NAME || 'OVH Agent').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80) || 'OVH Agent';
-  const extensions = '/root/.local/share/code-server/extensions';
-  const registry = JSON.parse(fs.readFileSync(path.join(extensions, 'extensions.json'), 'utf8'));
+  const extensions = path.join(require('os').homedir(), '.local/share/code-server/extensions');
+  const registryFile = path.join(extensions, 'extensions.json');
+  const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'));
   for (const item of registry) {
-    if (item.identifier?.id === 'trinity.ovh-agent') {
-      item.metadata = { ...item.metadata, publisherDisplayName: 'TRINITY' };
-      applyManifest(path.join(extensions, path.basename(item.relativeLocation), 'package.json'), name);
-    }
+    if (item.identifier?.id !== 'trinity.ovh-agent') continue;
+    const file = path.join(extensions, path.basename(item.relativeLocation), 'package.json');
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const name = (process.env.OVH_AGENT_NAME || manifest.displayName || 'TRINITY Agent').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80);
+    const publisher = process.env.OVH_AGENT_PUBLISHER_NAME || item.metadata?.publisherDisplayName || manifest.__metadata?.publisherDisplayName || 'TRINITY';
+    item.metadata = { ...item.metadata, publisherDisplayName: publisher };
+    applyManifest(file, name);
   }
-  fs.writeFileSync(path.join(extensions, 'extensions.json'), JSON.stringify(registry));
-  applyManifest('/home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-agent-extension/extension/package.json', name);
+  fs.writeFileSync(registryFile + '.branding.tmp', JSON.stringify(registry));
+  fs.renameSync(registryFile + '.branding.tmp', registryFile);
 }
 module.exports = { applyManifest };

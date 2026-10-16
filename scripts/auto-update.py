@@ -62,6 +62,36 @@ def current():
     raise ValueError('Local trinity.ovh-agent is not installed; no automatic migration')
 
 
+def branding_environment(directory, extensions=EXTENSIONS):
+    """Save installed branding before replacement; configured assets must remain available."""
+    env = dict(os.environ)
+    entry = next(e for e in json.loads((extensions / 'extensions.json').read_text())
+                 if e['identifier']['id'] == 'trinity.ovh-agent')
+    installed = extensions / Path(entry['relativeLocation']).name
+    manifest = json.loads((installed / 'package.json').read_text())
+    env.setdefault('OVH_AGENT_NAME', manifest['displayName'])
+    env.setdefault('OVH_AGENT_PUBLISHER_NAME', entry.get('metadata', {}).get('publisherDisplayName', 'TRINITY'))
+    icons = {'OVH_AGENT_APP_ICON': manifest.get('icon'),
+             'OVH_AGENT_MENU_ICON': manifest.get('contributes', {}).get('viewsContainers', {}).get('activitybar', [{}])[0].get('icon')}
+    for key, relative in icons.items():
+        configured = env.get(key)
+        if configured:
+            source = Path(configured)
+        elif key not in env and relative:
+            source = installed / relative
+            if not source.resolve().is_relative_to(installed.resolve()):
+                raise ValueError('Unsafe installed branding path')
+        else:
+            continue  # Explicit empty value requests the bundled default.
+        if not source.is_file() or source.stat().st_size > 1024 * 1024:
+            raise ValueError('Update deferred: branding asset missing or too large: ' + key)
+        copy = Path(directory) / (key + source.suffix)
+        copy.write_bytes(source.read_bytes())
+        env[key] = str(copy)
+    env['OVH_AGENT_BRANDING_STRICT'] = 'true'
+    return env
+
+
 def update():
     installed = current()
     release = json.loads(fetch(API, 2 * 1024 * 1024))
@@ -89,8 +119,11 @@ def update():
         package = Path(directory) / name
         package.write_bytes(data)
         validate(package, target)
+        branding = branding_environment(directory)
+        # Validate/sanitize custom assets before modifying the installed extension.
+        subprocess.run(['node', str(ROOT / 'ovh-branding.cjs')], env=branding, check=True, timeout=30)
         subprocess.run(['code-server', '--install-extension', str(package), '--force'], check=True, timeout=180)
-        subprocess.run(['node', str(ROOT / 'ovh-branding.cjs')], check=True, timeout=30)
+        subprocess.run(['node', str(ROOT / 'ovh-branding.cjs')], env=branding, check=True, timeout=30)
     if current() != target:
         raise ValueError('Installation verification failed')
     print('Auto-update: installed ' + target + '; reload the editor to activate. No task interrupted.', flush=True)

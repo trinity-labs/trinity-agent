@@ -44,3 +44,32 @@ test('custom icons, safe SVG, cache refresh and default reset', () => {
     fs.rmSync(root, {recursive:true, force:true});
   }
 });
+
+test('updates preserve existing branding when no override is provided', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'branding-preserve-'));
+  const saved = {...process.env};
+  try {
+    for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_PUBLISHER_NAME']) delete process.env[key];
+    fs.mkdirSync(path.join(root, 'media'));
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json')));
+    pkg.icon = 'media/customer.svg';
+    pkg.__metadata = {publisherDisplayName: 'Customer'};
+    pkg.contributes.viewsContainers.activitybar[0].icon = 'media/customer-menu.svg';
+    const file = path.join(root, 'package.json');
+    fs.writeFileSync(file, JSON.stringify(pkg));
+    applyManifest(file, 'Customer Agent');
+    const result = JSON.parse(fs.readFileSync(file));
+    assert.equal(result.displayName, 'Customer Agent');
+    assert.equal(result.icon, pkg.icon);
+    assert.equal(result.__metadata.publisherDisplayName, 'Customer');
+    assert.equal(result.contributes.viewsContainers.activitybar[0].icon, 'media/customer-menu.svg');
+    process.env.OVH_AGENT_APP_ICON = '/missing/logo.svg';
+    process.env.OVH_AGENT_BRANDING_STRICT = 'true';
+    assert.throws(() => applyManifest(file, 'Customer Agent'));
+  } finally {
+    for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_PUBLISHER_NAME', 'OVH_AGENT_BRANDING_STRICT']) {
+      if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
+    }
+    fs.rmSync(root, {recursive:true, force:true});
+  }
+});

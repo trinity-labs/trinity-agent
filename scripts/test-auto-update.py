@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 spec = importlib.util.spec_from_file_location('updater', Path(__file__).with_name('auto-update.py'))
@@ -13,6 +14,25 @@ spec.loader.exec_module(u)
 
 
 class Validation(unittest.TestCase):
+    def test_branding_survives_replacement_and_missing_assets_defer(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            old = root / 'trinity.ovh-agent-1.0.0'
+            old.mkdir()
+            (old / 'logo.svg').write_text('<svg/>')
+            (old / 'package.json').write_text(json.dumps(dict(displayName='Customer Agent', icon='logo.svg')))
+            (root / 'extensions.json').write_text(json.dumps([dict(identifier=dict(id='trinity.ovh-agent'), relativeLocation=old.name, metadata=dict(publisherDisplayName='Customer'))]))
+            stage = root / 'stage'
+            stage.mkdir()
+            with patch.dict(u.os.environ, {}, clear=True):
+                env = u.branding_environment(stage, root)
+                self.assertEqual(env['OVH_AGENT_NAME'], 'Customer Agent')
+                self.assertEqual(env['OVH_AGENT_PUBLISHER_NAME'], 'Customer')
+                (old / 'logo.svg').unlink()
+                self.assertEqual(Path(env['OVH_AGENT_APP_ICON']).read_text(), '<svg/>')
+                with self.assertRaisesRegex(ValueError, 'deferred'):
+                    u.branding_environment(stage, root)
+
     def test_versions(self):
         self.assertGreater(u.version('1.14.0'), u.version('1.9.9'))
         for invalid in ('../1.0.0', 'v1.0.0', '1.0.0-rc1', None):
