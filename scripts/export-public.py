@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Export only reviewed source files, never live IDE data or credentials."""
 import os
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -56,4 +57,15 @@ for relative, (content, mode) in prepared.items():
     if not destination.exists() or destination.read_bytes() != content:
         destination.write_bytes(content)
     destination.chmod(mode)
+manifest = target / '.public-export-files.json'
+if manifest.exists():
+    for relative in json.loads(manifest.read_text()):
+        if relative in prepared:
+            continue
+        old = target / relative
+        if old.is_symlink() or not old.resolve().is_relative_to(target.resolve()):
+            raise SystemExit('Unsafe stale export path')
+        if old.is_file():
+            old.unlink()
+manifest.write_text(json.dumps(sorted(prepared)) + '\n')
 print('Public source export:', len(prepared), 'files; live compose and private data excluded.')
