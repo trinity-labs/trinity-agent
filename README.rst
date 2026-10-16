@@ -140,7 +140,7 @@ Interface icons
 ---------------
 
 Controls use the outline variants of Bootstrap Icons (MIT), except the trash2-fill deletion icon. Only the history
-branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 33% opacity.
+branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 25% opacity.
 The configuration key is rotated 135 degrees with a local vertical mirror so its teeth face down. Licenses are included in media/.
 Only the selected SVG vectors are bundled and minified; no webfont or CDN is used.
 Application and activity-bar branding remain independently configurable.
