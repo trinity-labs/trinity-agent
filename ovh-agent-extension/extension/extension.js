@@ -12,12 +12,14 @@ const { validMessage, localLink } = require("./security");
 const MarkdownIt = require("markdown-it");
 const sanitizeHtml = require("sanitize-html");
 
-const BRAND_NAME = (process.env.OVH_AGENT_NAME || "OVH Agent").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 80) || "OVH Agent";
+const BRAND_NAME = (process.env.OVH_AGENT_NAME || "TRINITY Agent").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 80) || "OVH Agent";
 function escapeBrand(value) {
   return value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }
 
-const OVH_AGENT_PATH = "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-agent.sh";
+function agentPath() {
+  return process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-agent.sh";
+}
 const OVH_SECRET_DIRECTORY = "/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity";
 const BILLING_SECRETS = {
   project: "OVH_CLOUD_PROJECT", applicationKey: "OVH_APPLICATION_KEY",
@@ -82,7 +84,7 @@ class OvhAgentViewProvider {
     this.responseText = "";
     this.startPromise = undefined;
     this.deleting = false;
-    this.store = new ArchiveStore(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "/home/coder");
+    this.store = new ArchiveStore(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir());
   }
 
   resolveWebviewView(webviewView) {
@@ -224,9 +226,9 @@ class OvhAgentViewProvider {
           if (configureIfMissing) await this.configureBilling();
           return;
         }
-        const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "/home/coder";
+        const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
         const result = await new Promise((resolve, reject) => {
-          execFile(OVH_AGENT_PATH, ["--billing-status"], {
+          execFile(agentPath(), ["--billing-status"], {
             cwd: workspace, timeout: 30000, maxBuffer: 1024 * 1024,
             env: { ...process.env, OVH_AGENT_WORKSPACE: workspace },
           }, (error, stdout) => {
@@ -282,6 +284,10 @@ class OvhAgentViewProvider {
   async startAgent() {
 
     if (this.agent && !this.agent.killed) return true;
+    if (!fs.existsSync(agentPath())) {
+      this.post({ type: "error", text: t("Serveur TRINITY absent : configure ovhAgent.backendPath. Consulte le guide d’installation de l’extension.") });
+      return false;
+    }
     let apiKey;
     try {
       apiKey = readPersistentKey();
@@ -301,10 +307,10 @@ class OvhAgentViewProvider {
       }
       apiKey = readPersistentKey();
     }
-    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "/home/coder";
+    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
     const billing = await this.billingCredentials();
     this.stdoutBuffer = "";
-    const agent = spawn(OVH_AGENT_PATH, ["--json-lines"], {
+    const agent = spawn(agentPath(), ["--json-lines"], {
       cwd: workspace,
       env: {
         ...process.env,
@@ -424,7 +430,7 @@ class OvhAgentViewProvider {
       } catch {}
       return;
     }
-    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "/home/coder";
+    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
     const target = localLink(value, workspace);
     if (!target) return;
     try {

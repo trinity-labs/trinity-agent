@@ -42,7 +42,7 @@ from pydantic_ai.messages import (
 
 WORKSPACE = Path(os.environ.get("OVH_AGENT_WORKSPACE", "/home/coder")).resolve()
 ALLOWED_ROOT = Path("/home/coder").resolve()
-DATA_ROOT = Path("/root/.ovh-agent")
+DATA_ROOT = Path(os.environ.get("OVH_AGENT_DATA_ROOT", str(Path.home() / ".ovh-agent")))
 STATE_ROOT = DATA_ROOT / "sessions"
 DEFAULT_MODEL = "gpt-oss-120b"
 AUTO_MODEL = "auto-balanced"

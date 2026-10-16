@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 class ArchiveStore {
-  constructor(workspace, dataRoot = '/root/.ovh-agent') {
+  constructor(workspace, dataRoot = process.env.OVH_AGENT_DATA_ROOT || path.join(require('os').homedir(), '.ovh-agent')) {
     this.session = crypto.createHash('sha256').update(fs.realpathSync(workspace)).digest('hex').slice(0,20);
     this.dataRoot = dataRoot;
     this.root = path.join(dataRoot, 'archive', this.session);

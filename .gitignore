@@ -54,3 +54,14 @@
 !/ovh-agent-extension/extension/media/bi-*.svg
 
 !/scripts/test-followups.py
+
+!/.github/
+!/.github/workflows/
+!/.github/workflows/release.yml
+!/PUBLISHING.md
+!/ovh-agent-extension/extension/README.md
+!/ovh-agent-extension/extension/CHANGELOG.md
+!/ovh-agent-extension/extension/scripts/package-vsix.cjs
+
+!/ovh-agent-extension/extension/media/trinity-icon.png
+!/ovh-agent-extension/extension/media/trinity-activity.png
