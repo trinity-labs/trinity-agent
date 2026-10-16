@@ -140,7 +140,7 @@ Interface icons
 ---------------
 
 Interface controls use Font Awesome Free (CC BY 4.0 icons), attributed in
-``media/FontAwesome.LICENSE.txt``. The build selects 27 solid icons and minifies
+``media/FontAwesome.LICENSE.txt``. The build selects 28 solid icons and minifies
 a shared renderer; no webfont, CDN or Font Awesome runtime is loaded.
 Application and activity-bar branding logos remain independently configurable.
 VS Code's native status bar displays the brand name as text, since it does not

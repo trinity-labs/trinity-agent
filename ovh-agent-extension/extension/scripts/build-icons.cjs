@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { minify } = require('terser');
 const names = {
-  archive:'faBoxArchive', back:'faArrowLeft', chevron:'faChevronDown', database:'faDatabase',
+  nodes:'faHexagonNodes', archive:'faBoxArchive', back:'faArrowLeft', chevron:'faChevronDown', database:'faDatabase',
   key:'faKey', plus:'faPlus', close:'faXmark', reload:'faArrowsRotate', image:'faImage',
   shield:'faShieldHalved', stop:'faStop', send:'faArrowUp', play:'faPlay', trash:'faTrashCan',
   terminal:'faTerminal', list:'faList', read:'faFileLines', search:'faMagnifyingGlass',

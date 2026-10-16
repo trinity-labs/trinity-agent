@@ -821,3 +821,7 @@ svg.fa-icon path { fill: inherit; stroke: none; }
 @media (prefers-reduced-motion: reduce) { .summary-chevron { transition: none; } }
 
 .copy-diff .fa-icon { width: 12px; height: 12px; }
+
+.history-brand { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; color: var(--ovh-primary); }
+.history-brand .fa-icon { width: 23px; height: 23px; }
+#history[hidden], #history-brand[hidden] { display: none; }

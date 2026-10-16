@@ -18,6 +18,7 @@ const billing = document.getElementById("billing");
 const liveBalance = document.getElementById("live-balance");
 const access = document.getElementById("access");
 const history = document.getElementById("history");
+const historyBrand = document.getElementById("history-brand");
 const archivePanel = document.getElementById("archive-panel");
 const archiveList = document.getElementById("archive-list");
 const closeHistory = document.getElementById("close-history");
@@ -34,6 +35,14 @@ const attach = document.getElementById("attach");
 const imageInput = document.getElementById("image-input");
 const attachments = document.getElementById("attachments");
 const saved = vscode.getState();
+
+function setArchiveVisible(visible) {
+  archivePanel.hidden = !visible;
+  history.hidden = visible;
+  historyBrand.hidden = !visible;
+}
+setArchiveVisible(!archivePanel.hidden);
+
 
 let promptHistory = Array.isArray(saved?.promptHistory) ? saved.promptHistory.filter(item => typeof item === "string").slice(-200) : [];
 let historyIndex = promptHistory.length;
@@ -53,7 +62,7 @@ function updateSendButton() {
 function resumeArchive(id) {
   if (busy) return;
   activeArchiveId = id;
-  archivePanel.hidden = true;
+  setArchiveVisible(false);
   setBusy(true, t("Reprise de la tâche interrompue…"));
   vscode.postMessage({ type: "resumeArchive", id });
 }
@@ -470,7 +479,7 @@ function renderArchives(items) {
     button.addEventListener("click", () => {
       activeArchiveId = item.id;
       updateSendButton();
-      archivePanel.hidden = true;
+      setArchiveVisible(false);
       setStatus(t("Chargement de la conversation…"));
       vscode.postMessage({ type: "loadArchive", id: item.id });
     });
@@ -952,7 +961,7 @@ clear.addEventListener("click", () => {
   clear.disabled = true;
   activeArchiveId = "";
   updateSendButton();
-  archivePanel.hidden = true;
+  setArchiveVisible(false);
   if (currentRun) window.clearInterval(currentRun.timer);
   currentRun = null;
   activityRows.clear();
@@ -973,7 +982,7 @@ billing.addEventListener("click", () => {
 });
 history.addEventListener("click", () => {
   modelPanel.hidden = true;
-  archivePanel.hidden = false;
+  setArchiveVisible(true);
   hideSelectionQuote();
   vscode.postMessage({ type: "listArchives" });
 });
@@ -981,7 +990,7 @@ closeHistory?.addEventListener("click", () => {
   document.getElementById("archive-banner").hidden = true;
 });
 modelPicker.addEventListener("click", () => {
-  archivePanel.hidden = true;
+  setArchiveVisible(false);
   modelPanel.hidden = !modelPanel.hidden;
   if (!modelPanel.hidden) {
     modelSearch.focus();
