@@ -1,4 +1,4 @@
-const { svg: faIcon } = AgentIcons;
+const { svg: uiIcon } = AgentIcons;
 const uiLanguage = OvhI18n.setLanguage(OvhI18n.resolveLanguage(
   document.body.dataset.language, navigator.languages?.length ? navigator.languages : [navigator.language]));
 const { t } = OvhI18n;
@@ -54,7 +54,7 @@ const sendArrow = send.innerHTML;
 function updateSendButton() {
   const resumable = !busy && resumableArchives.has(activeArchiveId);
   send.innerHTML = resumable
-    ? faIcon("play")
+    ? uiIcon("play")
     : sendArrow;
   send.title = resumable ? t("Reprendre la tâche interrompue") : t("Envoyer");
   send.setAttribute("aria-label", send.title);
@@ -283,13 +283,13 @@ function addArchivedAssistant(html, failed = false) {
 function wireFileChangeCopy(details) {
   const copy = details.querySelector(".copy-diff");
   if (!copy) return;
-  copy.innerHTML = faIcon("copy");
+  copy.innerHTML = uiIcon("copy");
   copy.onclick = async (event) => {
     event.preventDefault();
     event.stopPropagation();
     await navigator.clipboard.writeText(details.dataset.diff || "");
-    copy.innerHTML = faIcon("check");
-    window.setTimeout(() => { copy.innerHTML = faIcon("copy"); }, 1200);
+    copy.innerHTML = uiIcon("check");
+    window.setTimeout(() => { copy.innerHTML = uiIcon("copy"); }, 1200);
   };
 }
 
@@ -302,11 +302,11 @@ function createFileChange(data) {
   const summary = document.createElement("summary");
   const icon = document.createElement("span");
   icon.className = "file-change-icon";
-  icon.innerHTML = faIcon(data.action === "created" ? "plus" : "edit");
+  icon.innerHTML = uiIcon(data.action === "created" ? "plus" : "edit");
   const title = document.createElement("strong");
   title.textContent = data.action === "created" ? t("Fichier créé") : t("Fichier modifié");
   summary.append(icon, title);
-  summary.insertAdjacentHTML("beforeend", faIcon("chevron", "summary-chevron"));
+  summary.insertAdjacentHTML("beforeend", uiIcon("chevron", "summary-chevron"));
 
   const body = document.createElement("div");
   body.className = "file-change-body";
@@ -327,7 +327,7 @@ function createFileChange(data) {
   copy.type = "button";
   copy.title = t("Copier le diff");
   copy.setAttribute("aria-label", t("Copier le diff"));
-  copy.innerHTML = faIcon("copy");
+  copy.innerHTML = uiIcon("copy");
   stats.append(added, removed, copy);
   header.append(path, stats);
 
@@ -488,7 +488,7 @@ function renderArchives(items) {
     remove.className = "icon archive-delete";
     remove.title = t("Supprimer définitivement la conversation");
     remove.setAttribute("aria-label", t("Supprimer définitivement : {0}", displayTitle));
-    remove.innerHTML = faIcon("trash");
+    remove.innerHTML = uiIcon("trash");
     remove.addEventListener("click", () => {
       if (busy) { setStatus(t("Attends la fin de la réponse avant de supprimer une conversation.")); return; }
       selectedArchiveForDeletion = item.id;
@@ -502,7 +502,7 @@ function renderArchives(items) {
       resume.type = "button";
       resume.className = "icon archive-resume";
       resume.setAttribute("aria-label", t("Reprendre la tâche interrompue"));
-      resume.innerHTML = faIcon("reload");
+      resume.innerHTML = uiIcon("reload");
       resume.title = t("Reprendre la tâche interrompue après vérification de son état");
       resume.addEventListener("click", () => {
         if (busy) { setStatus(t("Arrête la tâche en cours avant de reprendre une autre conversation.")); return; }
@@ -531,12 +531,12 @@ function createAssistantRun() {
   const summary = document.createElement("summary");
   const spinner = document.createElement("span");
   spinner.className = "run-indicator";
-  spinner.innerHTML = faIcon("terminal");
+  spinner.innerHTML = uiIcon("terminal");
   const summaryText = document.createElement("span");
   summaryText.className = "activity-summary-text";
   summaryText.textContent = t("Réflexion en cours…");
   summary.append(spinner, summaryText);
-  summary.insertAdjacentHTML("beforeend", faIcon("chevron", "summary-chevron"));
+  summary.insertAdjacentHTML("beforeend", uiIcon("chevron", "summary-chevron"));
   const list = document.createElement("div");
   list.className = "activity-list";
   activity.append(summary, list);
@@ -627,20 +627,20 @@ function upgradeSnapshotIcons(root) {
   for (const indicator of root.querySelectorAll(".run-indicator, .run-spinner")) {
     indicator.classList.remove("run-spinner");
     indicator.classList.add("run-indicator");
-    indicator.innerHTML = faIcon("terminal");
+    indicator.innerHTML = uiIcon("terminal");
   }
   for (const icon of root.querySelectorAll(".file-change-icon")) {
-    if (!icon.querySelector(".fa-icon")) icon.innerHTML = faIcon(icon.textContent.trim() === "+" ? "plus" : "edit");
+    if (!icon.querySelector(".agent-icon")) icon.innerHTML = uiIcon(icon.textContent.trim() === "+" ? "plus" : "edit");
   }
   const old = { "≡":"list", "⌕":"search", "✎":"edit", ">_":"terminal", "↻":"reload", "≋":"context", "$":"cost", "◆":"model", "✓":"check", "!":"error" };
   for (const icon of root.querySelectorAll(".activity-icon")) {
-    if (!icon.querySelector(".fa-icon")) {
+    if (!icon.querySelector(".agent-icon")) {
       const name = old[icon.textContent.trim()];
-      icon.innerHTML = faIcon(typeof name === "string" ? name : "terminal");
+      icon.innerHTML = uiIcon(typeof name === "string" ? name : "terminal");
     }
   }
   for (const summary of root.querySelectorAll(".activity > summary, .file-change > summary")) {
-    if (!summary.querySelector(".summary-chevron")) summary.insertAdjacentHTML("beforeend", faIcon("chevron", "summary-chevron"));
+    if (!summary.querySelector(".summary-chevron")) summary.insertAdjacentHTML("beforeend", uiIcon("chevron", "summary-chevron"));
   }
 }
 
@@ -654,7 +654,7 @@ function addActivity(data) {
   row.className = "activity-row running";
   const icon = document.createElement("span");
   icon.className = "activity-icon";
-  icon.innerHTML = faIcon(iconForTool(data.tool));
+  icon.innerHTML = uiIcon(iconForTool(data.tool));
   const body = document.createElement("div");
   const title = document.createElement("strong");
   title.textContent = data.title || t("Action");
@@ -673,7 +673,7 @@ function finishActivity(data) {
   if (!item) return;
   item.row.classList.remove("running");
   item.row.classList.add(data.success ? "success" : "failure");
-  item.icon.innerHTML = faIcon(data.success ? "check" : "error");
+  item.icon.innerHTML = uiIcon(data.success ? "check" : "error");
   if (currentRun?.activeId === data.id) {
     currentRun.currentAction = "";
     currentRun.activeId = null;
@@ -869,7 +869,7 @@ function renderPendingImages() {
     remove.type = "button";
     remove.title = t("Retirer {0}", image.name);
     remove.setAttribute("aria-label", t("Retirer {0}", image.name));
-    remove.innerHTML = faIcon("close");
+    remove.innerHTML = uiIcon("close");
     remove.addEventListener("click", () => {
       pendingImages.splice(index, 1);
       renderPendingImages();

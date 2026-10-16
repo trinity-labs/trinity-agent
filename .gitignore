@@ -49,4 +49,6 @@
 !/ovh-agent-extension/extension/scripts/build-icons.cjs
 !/ovh-agent-extension/extension/media/icons.min.js
 !/ovh-agent-extension/extension/media/FontAwesome.LICENSE.txt
-!/ovh-agent-extension/extension/media/fa-*.svg
+
+!/ovh-agent-extension/extension/media/BootstrapIcons.LICENSE.txt
+!/ovh-agent-extension/extension/media/bi-*.svg
