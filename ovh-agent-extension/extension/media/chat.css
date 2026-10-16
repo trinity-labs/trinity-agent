@@ -836,6 +836,7 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 
 .message-time { display: block; margin-top: 5px; font-size: 9px; line-height: 1.35; font-weight: 400; color: var(--vscode-foreground); opacity: .33; }
 .message > .message-time { text-align: right; }
+.message.assistant > .message-time { display: flex; justify-content: flex-start; text-align: left; }
 .message.user > .message-time { position: absolute; top: 100%; right: 0; width: max-content; white-space: nowrap; }
 .file-change > summary > .message-time { margin: 0 0 0 auto; white-space: nowrap; }
 
