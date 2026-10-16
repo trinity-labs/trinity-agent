@@ -52,3 +52,5 @@
 
 !/ovh-agent-extension/extension/media/BootstrapIcons.LICENSE.txt
 !/ovh-agent-extension/extension/media/bi-*.svg
+
+!/scripts/test-followups.py

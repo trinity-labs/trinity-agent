@@ -835,3 +835,12 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 .message-time { display: block; margin-top: 5px; font-size: 9px; line-height: 1.35; font-weight: 400; color: var(--vscode-foreground); opacity: .33; }
 .message > .message-time { text-align: right; }
 .file-change > summary > .message-time { margin: 0 0 0 auto; white-space: nowrap; }
+
+/* Follow-ups share the configured brand and stay outside the transcript. */
+#followup-mode { max-width: 160px; border: 1px solid var(--ovh-primary); border-radius: 4px; padding: 5px; background: transparent; color: var(--ovh-primary); font: inherit; font-size: 11px; }
+.followups { max-height: 160px; overflow-y: auto; margin-bottom: 8px; }
+.followup-row { display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 4px; background: color-mix(in srgb, var(--ovh-primary) 8%, transparent); }
+.followup-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.followups button { color: var(--ovh-primary); border: 0; border-radius: 4px; padding: 6px; background: transparent; cursor: pointer; }
+.followups button:hover { background: color-mix(in srgb, var(--ovh-primary) 18%, transparent); }
+.followups .agent-icon { width: 14px; height: 14px; }

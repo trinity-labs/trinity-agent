@@ -28,6 +28,7 @@ from pathlib import Path
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ovhcloud import OVHcloudProvider
 from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import (
     BinaryContent,
     ModelMessagesTypeAdapter,
@@ -1125,6 +1126,112 @@ def load_infrastructure_instructions() -> str:
     return "\n\n".join(sections)
 
 
+# Follow-ups are stored beside the conversation, never in model context until used.
+FOLLOWUP_LOCK = threading.RLock()
+FOLLOWUP_RUNNING = False
+FOLLOWUP_CLAIMED = None
+
+
+def read_followups() -> list[dict]:
+    if not CONVERSATION_ID:
+        return []
+    folder = conversation_dir()
+    path = folder / "followups.json"
+    if folder.is_symlink() or path.is_symlink() or folder.resolve().parent != ARCHIVE_ROOT.resolve():
+        raise ValueError("Invalid follow-up path")
+    try:
+        if path.stat().st_size > 400_000:
+            raise ValueError("Follow-up queue too large")
+        items = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    if not isinstance(items, list) or len(items) > 20:
+        raise ValueError("Invalid follow-up queue")
+    for item in items:
+        if (not isinstance(item, dict) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(item.get("id", "")))
+                or not isinstance(item.get("text"), str) or not 0 < len(item["text"]) <= 16000
+                or item.get("mode") not in {"queue", "steer"}):
+            raise ValueError("Invalid follow-up")
+    return items
+
+
+def write_followups(items: list[dict]) -> None:
+    # read_followups validates both parent and destination against symlinks.
+    read_followups()
+    content = json.dumps(items, ensure_ascii=False)
+    if len(content.encode("utf-8")) > 400_000:
+        raise ValueError("Follow-up queue too large")
+    atomic_write(conversation_dir() / "followups.json", content)
+
+
+def publish_followups() -> None:
+    with FOLLOWUP_LOCK:
+        emit({"type": "followups", "conversation": CONVERSATION_ID, "items": read_followups()})
+
+
+def handle_followup(request: dict, requests: queue.Queue) -> None:
+    with FOLLOWUP_LOCK:
+        try:
+            if not CONVERSATION_ID or request.get("conversation") != CONVERSATION_ID:
+                raise ValueError("Conversation changed; message was not sent")
+            items = read_followups()
+            action = request.get("action")
+            identity = request.get("id", "")
+            if action in {"add", "edit"}:
+                text = request.get("text")
+                if not isinstance(text, str) or not text.strip() or len(text) > 16000:
+                    raise ValueError("Message must contain 1–16000 characters")
+            if action == "add":
+                if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(identity)) or request.get("mode") not in {"queue", "steer"}:
+                    raise ValueError("Invalid follow-up")
+                if not any(item["id"] == identity for item in items):
+                    if len(items) >= 20:
+                        raise ValueError("Queue limit: 20 messages")
+                    items.append({"id": identity, "text": text.strip(), "mode": request["mode"],
+                                  "model": str(request.get("model", AUTO_MODEL)),
+                                  "full_access": bool(request.get("full_access", False))})
+            elif action in {"edit", "remove", "steer"}:
+                if identity == FOLLOWUP_CLAIMED:
+                    raise ValueError("Message already started or removed")
+                item = next((item for item in items if item["id"] == identity), None)
+                if item is None:
+                    raise ValueError("Message already started or removed")
+                if action == "remove":
+                    items.remove(item)
+                elif action == "edit":
+                    item["text"] = text.strip()
+                else:
+                    item["mode"] = "steer"
+            elif action not in {"list", "continue"}:
+                raise ValueError("Invalid follow-up action")
+            if action not in {"list", "continue"}:
+                write_followups(items)
+            publish_followups()
+            emit({"type": "followup_ack", "id": identity, "action": action})
+            if not FOLLOWUP_RUNNING and action in {"add", "continue", "steer"}:
+                requests.put({"type": "next_followup", "conversation": CONVERSATION_ID})
+        except (OSError, ValueError) as error:
+            emit({"type": "followup_error", "id": request.get("id"), "text": str(error)})
+
+
+def apply_steering(messages: list) -> list:
+    with FOLLOWUP_LOCK:
+        if not FOLLOWUP_RUNNING:
+            return messages
+        items = read_followups()
+        steering = [item for item in items if item["mode"] == "steer"]
+        for item in steering:
+            messages.append(ModelRequest(parts=[UserPromptPart(content=item["text"])]))
+            archive_event({"type": "user", "text": item["text"], "steering": True})
+            state = read_task_state()
+            save_task_state(prompt=str(state.get("prompt", "")) + "\n\n" + item["text"])
+            emit({"type": "steer_applied", "id": item["id"], "text": item["text"]})
+        if steering:
+            write_followups([item for item in items if item["mode"] != "steer"])
+            publish_followups()
+        return messages
+
+
 def get_agent(model_id: str) -> Agent:
     if model_id not in AGENTS:
         AGENTS[model_id] = Agent(
@@ -1148,6 +1255,7 @@ def get_agent(model_id: str) -> Agent:
             ),
             tools=[search_memory, read_memory, search_web, read_webpage, list_files, read_file, search_text, edit_file, write_file, run_command, run_host_command],
             retries=2,
+            capabilities=[ProcessHistory(apply_steering)],
         )
         AGENTS[model_id].instructions(load_infrastructure_instructions)
     return AGENTS[model_id]
@@ -1518,6 +1626,15 @@ def stdin_reader(requests: queue.Queue[dict]) -> None:
             request = json.loads(raw_line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(request, dict):
+            continue
+        if request.get("type") == "followup":
+            with FOLLOWUP_LOCK:
+                if FOLLOWUP_RUNNING:
+                    handle_followup(request, requests)
+                else:
+                    requests.put(request)
+            continue
         if request.get("type") == "billing_status":
             refresh_billing_async(request)
             continue
@@ -1536,7 +1653,7 @@ def stdin_reader(requests: queue.Queue[dict]) -> None:
 
 
 def main_json_lines() -> None:
-    global JSON_MODE, FULL_ACCESS, CONVERSATION_ID
+    global JSON_MODE, FULL_ACCESS, CONVERSATION_ID, FOLLOWUP_RUNNING, FOLLOWUP_CLAIMED
     JSON_MODE = True
     history = load_history()
     if read_task_state().get("status") == "running":
@@ -1575,6 +1692,24 @@ def main_json_lines() -> None:
     while True:
         request = requests.get()
         request_type = request.get("type")
+        followup_id = None
+        with FOLLOWUP_LOCK:
+            FOLLOWUP_CLAIMED = None
+        if request_type == "next_followup":
+            with FOLLOWUP_LOCK:
+                if request.get("conversation") != CONVERSATION_ID:
+                    continue
+                items = read_followups()
+                if not items:
+                    continue
+                item = next((item for item in items if item["mode"] == "steer"), items[0])
+                followup_id = item["id"]
+                FOLLOWUP_CLAIMED = followup_id
+                request = {**item, "type": "prompt"}
+                request_type = "prompt"
+        if request_type == "followup":
+            handle_followup(request, requests)
+            continue
         if request_type == "shutdown":
             return
         if request_type == "clear":
@@ -1733,6 +1868,11 @@ def main_json_lines() -> None:
             "selection": selected_model,
             "images": archived_images,
         })
+        if followup_id:
+            with FOLLOWUP_LOCK:
+                write_followups([item for item in read_followups() if item["id"] != followup_id])
+                emit({"type": "followup_started", "id": followup_id, "text": prompt})
+                publish_followups()
         update_metadata(model=selected_model, active_model=active_model)
         emit({"type": "model_selected", "model": selected_model})
         emit({
@@ -1756,8 +1896,11 @@ def main_json_lines() -> None:
             })
         emit({"type": "context_compacted", **context_stats})
         emit({"type": "access_mode", "full_access": FULL_ACCESS})
+        with FOLLOWUP_LOCK:
+            FOLLOWUP_RUNNING = True
         emit({
             "type": "status",
+            "conversation": CONVERSATION_ID,
             "text": (
                 f"{active_model} analyse {len(binary_images)} image{'s' if len(binary_images) > 1 else ''}…"
                 if binary_images else f"{active_model} analyse la demande…"
@@ -1781,10 +1924,16 @@ def main_json_lines() -> None:
             })
             emit({"type": "response", "text": output})
             save_task_state(status="completed")
+            with FOLLOWUP_LOCK:
+                FOLLOWUP_RUNNING = False
+                requests.put({"type": "next_followup", "conversation": CONVERSATION_ID})
         except Exception as error:
             save_task_state(status="interrupted", error=str(error)[:1000])
             emit({"type": "error", "text": str(error)})
             emit({"type": "task_interrupted", "id": CONVERSATION_ID})
+        finally:
+            with FOLLOWUP_LOCK:
+                FOLLOWUP_RUNNING = False
 
 
 def main() -> None:

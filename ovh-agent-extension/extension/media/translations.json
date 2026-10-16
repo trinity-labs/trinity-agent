@@ -1426,5 +1426,137 @@
     "en": "Image {0} exceeds the 10 MB limit.",
     "de": "Bild {0} überschreitet das Limit von 10 MB.",
     "es": "La imagen {0} supera el límite de 10 MB."
+  },
+  "Envoi pendant une tâche": {
+    "fr": "Envoi pendant une tâche",
+    "en": "Send during a task",
+    "de": "Während einer Aufgabe senden",
+    "es": "Enviar durante una tarea"
+  },
+  "Mettre en attente": {
+    "fr": "Mettre en attente",
+    "en": "Queue message",
+    "de": "Nachricht einreihen",
+    "es": "Poner en cola"
+  },
+  "Réorienter": {
+    "fr": "Réorienter",
+    "en": "Steer task",
+    "de": "Aufgabe umlenken",
+    "es": "Reorientar tarea"
+  },
+  "Réorientation en attente": {
+    "fr": "Réorientation en attente",
+    "en": "Steering pending",
+    "de": "Umlenkung ausstehend",
+    "es": "Reorientación pendiente"
+  },
+  "En attente": {
+    "fr": "En attente",
+    "en": "Queued",
+    "de": "In Warteschlange",
+    "es": "En cola"
+  },
+  "Modifier": {
+    "fr": "Modifier",
+    "en": "Edit",
+    "de": "Bearbeiten",
+    "es": "Editar"
+  },
+  "Retirer": {
+    "fr": "Retirer",
+    "en": "Remove",
+    "de": "Entfernen",
+    "es": "Quitar"
+  },
+  "Vide le brouillon avant de modifier un message.": {
+    "fr": "Vide le brouillon avant de modifier un message.",
+    "en": "Clear the draft before editing a message.",
+    "de": "Leere den Entwurf, bevor du eine Nachricht bearbeitest.",
+    "es": "Vacía el borrador antes de editar un mensaje."
+  },
+  "Exécuter la file d’attente": {
+    "fr": "Exécuter la file d’attente",
+    "en": "Run queued messages",
+    "de": "Warteschlange ausführen",
+    "es": "Ejecutar mensajes en cola"
+  },
+  "Enregistrer le message": {
+    "fr": "Enregistrer le message",
+    "en": "Save message",
+    "de": "Nachricht speichern",
+    "es": "Guardar mensaje"
+  },
+  "Connexion en cours…": {
+    "fr": "Connexion en cours…",
+    "en": "Connecting…",
+    "de": "Verbindung wird hergestellt…",
+    "es": "Conectando…"
+  },
+  "Les messages en attente acceptent du texte uniquement.": {
+    "fr": "Les messages en attente acceptent du texte uniquement.",
+    "en": "Queued messages support text only.",
+    "de": "Nachrichten in der Warteschlange unterstützen nur Text.",
+    "es": "Los mensajes en cola solo admiten texto."
+  },
+  "Message limité à 16 000 caractères.": {
+    "fr": "Message limité à 16 000 caractères.",
+    "en": "Message limited to 16,000 characters.",
+    "de": "Nachricht auf 16.000 Zeichen begrenzt.",
+    "es": "Mensaje limitado a 16 000 caracteres."
+  },
+  "Message non envoyé : {0}": {
+    "fr": "Message non envoyé : {0}",
+    "en": "Message not sent: {0}",
+    "de": "Nachricht nicht gesendet: {0}",
+    "es": "Mensaje no enviado: {0}"
+  },
+  "Réorientation appliquée": {
+    "fr": "Réorientation appliquée",
+    "en": "Steering applied",
+    "de": "Umlenkung angewendet",
+    "es": "Reorientación aplicada"
+  },
+  "Conversation changed; message was not sent": {
+    "fr": "Conversation changée ; le message n’a pas été envoyé",
+    "en": "Conversation changed; message was not sent",
+    "de": "Unterhaltung gewechselt; Nachricht nicht gesendet",
+    "es": "Conversación cambiada; mensaje no enviado"
+  },
+  "Message already started or removed": {
+    "fr": "Message déjà démarré ou retiré",
+    "en": "Message already started or removed",
+    "de": "Nachricht bereits gestartet oder entfernt",
+    "es": "Mensaje ya iniciado o eliminado"
+  },
+  "Queue limit: 20 messages": {
+    "fr": "Limite de la file : 20 messages",
+    "en": "Queue limit: 20 messages",
+    "de": "Warteschlangenlimit: 20 Nachrichten",
+    "es": "Límite de cola: 20 mensajes"
+  },
+  "Réorienter applique la consigne à la prochaine étape, après l’appel ou l’outil en cours.": {
+    "fr": "Réorienter applique la consigne à la prochaine étape, après l’appel ou l’outil en cours.",
+    "en": "Steering applies the instruction at the next step, after the current call or tool finishes.",
+    "de": "Die Umlenkung greift beim nächsten Schritt, nach dem laufenden Aufruf oder Werkzeug.",
+    "es": "La reorientación se aplica en el siguiente paso, al terminar la llamada o herramienta actual."
+  },
+  "Modification annulée ; brouillon conservé.": {
+    "fr": "Modification annulée ; brouillon conservé.",
+    "en": "Edit cancelled; draft kept.",
+    "de": "Bearbeitung abgebrochen; Entwurf behalten.",
+    "es": "Edición cancelada; borrador conservado."
+  },
+  "Follow-up queue too large": {
+    "fr": "La file d’attente est trop volumineuse.",
+    "en": "The follow-up queue is too large.",
+    "de": "Die Warteschlange ist zu groß.",
+    "es": "La cola es demasiado grande."
+  },
+  "Message must contain 1–16000 characters": {
+    "fr": "Le message doit contenir entre 1 et 16 000 caractères.",
+    "en": "Message must contain 1–16000 characters.",
+    "de": "Die Nachricht muss 1–16000 Zeichen enthalten.",
+    "es": "El mensaje debe contener entre 1 y 16000 caracteres."
   }
 }

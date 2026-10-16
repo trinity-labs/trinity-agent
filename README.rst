@@ -163,3 +163,35 @@ at 33% opacity, formatted in the browser locale and timezone. ISO timestamps
 are preserved in saved HTML. Older snapshots recover dates from archived events;
 when a date is unavailable the interface displays a dash, never the reopening time.
 The Stop square becomes filled while a draft contains text or a task is running.
+
+
+Steering and queued follow-ups
+-----------------------------
+
+While a task runs, the composer defaults to **Mettre en attente** (queue).
+Select **Réorienter** (steer) to inject a text instruction before the next
+model request. The current network call or tool is allowed to finish; steering
+does not cancel or roll back a running command. A late steering instruction
+becomes the next continuation if the final response has already arrived.
+
+Pending messages can be edited, removed or promoted to steering from the queue.
+Escape leaves edit mode while keeping the draft. Queue messages run sequentially
+after successful completion. An error or Stop pauses execution; after restarting,
+use **Exécuter la file d’attente** explicitly. Stop does not discard pending work.
+The existing interrupted-task Resume command remains available separately.
+
+The queue is stored atomically in ``followups.json`` in each conversation's
+persistent archive directory, with at most 20 text messages of 16,000 characters
+and 400 KB in total. Pending messages consume no API tokens. Images remain
+supported for ordinary prompts; queued messages and steering are text-only.
+Consumed steering is recorded in the transcript and interrupted-task state.
+The controls use the configured branding and French/English/German/Spanish locale.
+
+Offline backend verification (using the runtime Pydantic AI environment)::
+
+    /opt/ovh-agent/bin/python scripts/test-followups.py
+
+Extension UI, bridge validation and sanitization tests::
+
+    cd ovh-agent-extension/extension
+    npm test

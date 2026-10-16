@@ -15,6 +15,12 @@ function validMessage(message) {
           && message.images.every(image => image && text(image.name || "", 1024)
             && text(image.data_url, 6 * 1024 * 1024)
             && /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(image.data_url))));
+    case "followup":
+      return id(message.conversation) && ["add", "edit", "remove", "steer", "list", "continue"].includes(message.action)
+        && (["list", "continue"].includes(message.action) || id(message.id))
+        && (!["add", "edit"].includes(message.action) || (text(message.text, 16000) && !!message.text.trim()))
+        && (message.action !== "add" || ["queue", "steer"].includes(message.mode))
+        && boolean(message.fullAccess) && model(message.model);
     case "snapshot":
       return id(message.conversation) && text(message.html, 8 * 1024 * 1024)
         && boolean(message.fullAccess) && model(message.model);

@@ -12,6 +12,55 @@ const messages = document.getElementById("messages");
 const prompt = document.getElementById("prompt");
 const send = document.getElementById("send");
 const stop = document.getElementById("stop");
+const followupMode = document.getElementById("followup-mode");
+const followupsBox = document.getElementById("followups");
+let followups = [];
+let pendingFollowup = null;
+let editingFollowup = null;
+function followupCommand(action, extra = {}) {
+  if (!activeArchiveId) return;
+  vscode.postMessage({type: "followup", conversation: activeArchiveId, action, ...extra});
+}
+function renderFollowups() {
+  followupsBox.replaceChildren();
+  followupsBox.hidden = !followups.length;
+  for (const item of followups) {
+    const row = document.createElement("div");
+    row.className = "followup-row";
+    const label = document.createElement("span");
+    label.textContent = `${t(item.mode === "steer" ? "Réorientation en attente" : "En attente")} · ${item.text}`;
+    label.title = item.text;
+    row.append(label);
+    for (const [action, icon, title] of [["steer", "send", "Réorienter"], ["edit", "edit", "Modifier"], ["remove", "trash", "Retirer"]]) {
+      if (action === "steer" && item.mode === "steer") continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.title = t(title);
+      button.setAttribute("aria-label", t(title));
+      button.innerHTML = uiIcon(icon);
+      button.onclick = () => {
+        if (action === "edit") {
+          if (prompt.value.trim() || pendingImages.length) { setStatus(t("Vide le brouillon avant de modifier un message.")); return; }
+          editingFollowup = item.id;
+          prompt.value = item.text;
+          resizePrompt();
+          updateSendButton();
+          prompt.focus();
+        } else followupCommand(action, {id: item.id});
+      };
+      row.append(button);
+    }
+    followupsBox.append(row);
+  }
+  if (!busy && followups.length) {
+    const resume = document.createElement("button");
+    resume.type = "button";
+    resume.textContent = t("Exécuter la file d’attente");
+    resume.onclick = () => followupCommand("continue");
+    followupsBox.append(resume);
+  }
+}
+
 const clear = document.getElementById("clear");
 const configure = document.getElementById("configure");
 const billing = document.getElementById("billing");
@@ -56,7 +105,8 @@ function updateSendButton() {
   send.innerHTML = resumable
     ? uiIcon("play")
     : sendArrow;
-  send.title = resumable ? t("Reprendre la tâche interrompue") : t("Envoyer");
+  send.title = editingFollowup ? t("Enregistrer le message") : resumable ? t("Reprendre la tâche interrompue")
+    : busy ? t(followupMode.value === "steer" ? "Réorienter" : "Mettre en attente") : t("Envoyer");
   send.setAttribute("aria-label", send.title);
 }
 function resumeArchive(id) {
@@ -253,7 +303,9 @@ function setStatus(text, failed = false) {
 
 function setBusy(value, text = "", failed = false) {
   busy = value;
-  send.disabled = value;
+  send.disabled = !!pendingFollowup;
+  followupMode.hidden = !value;
+  renderFollowups();
   updateSendButton();
   stop.hidden = false;
   updateStopIcon();
@@ -954,7 +1006,17 @@ async function addImageFiles(files) {
 
 function submit() {
   const text = prompt.value.trim();
-  if ((!text && !pendingImages.length) || busy) return;
+  if ((!text && !pendingImages.length) || pendingFollowup) return;
+  if (busy || editingFollowup) {
+    if (!activeArchiveId) { setStatus(t("Connexion en cours…")); return; }
+    if (pendingImages.length) { setStatus(t("Les messages en attente acceptent du texte uniquement.")); return; }
+    if (text.length > 16000) { setStatus(t("Message limité à 16 000 caractères.")); return; }
+    const id = editingFollowup || crypto.randomUUID();
+    pendingFollowup = {id, text};
+    send.disabled = true;
+    followupCommand(editingFollowup ? "edit" : "add", {id, text, mode: followupMode.value, fullAccess, model: selectedModel});
+    return;
+  }
   ensureVisionModel();
   const images = pendingImages.slice();
   const displayText = text || t("Analyse cette image.");
@@ -988,9 +1050,10 @@ if (!promptHistory.length) {
   historyIndex = promptHistory.length;
 }
 send.addEventListener("click", () => {
-  if (resumableArchives.has(activeArchiveId)) resumeArchive(activeArchiveId);
+  if (!busy && !editingFollowup && !prompt.value.trim() && resumableArchives.has(activeArchiveId)) resumeArchive(activeArchiveId);
   else submit();
 });
+followupMode.addEventListener("change", updateSendButton);
 attach.addEventListener("click", () => imageInput.click());
 imageInput.addEventListener("change", async () => {
   await addImageFiles(imageInput.files);
@@ -1003,6 +1066,10 @@ clear.addEventListener("click", () => {
   window.clearTimeout(snapshotTimer);
   clear.disabled = true;
   activeArchiveId = "";
+  followups = [];
+  editingFollowup = null;
+  pendingFollowup = null;
+  renderFollowups();
   updateSendButton();
   setArchiveVisible(false);
   if (currentRun) window.clearInterval(currentRun.timer);
@@ -1055,6 +1122,13 @@ access.addEventListener("click", () => {
 });
 prompt.addEventListener("keydown", (event) => {
   if (event.isComposing) return;
+  if (event.key === "Escape" && editingFollowup) {
+    editingFollowup = null;
+    updateSendButton();
+    setStatus(t("Modification annulée ; brouillon conservé."));
+    event.preventDefault();
+    return;
+  }
   if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && prompt.selectionStart === prompt.selectionEnd) {
     const up = event.key === "ArrowUp";
     const atBoundary = up ? !prompt.value.slice(0, prompt.selectionStart).includes("\n") : !prompt.value.slice(prompt.selectionEnd).includes("\n");
@@ -1132,13 +1206,45 @@ window.addEventListener("message", ({ data }) => {
       archivePath.title = data.archive_root || "";
     }
     backendReady = true;
+    followupCommand("list");
     if (data.model) selectedModel = data.model;
     updateModelButton();
     setBusy(busy, busy ? status.textContent : t("Connecté · {0}", data.model));
     persist();
     vscode.postMessage({ type: "listModels" });
   }
+  if (data.type === "followups" && data.conversation === activeArchiveId) {
+    followups = data.items || [];
+    if (editingFollowup && !followups.some(item => item.id === editingFollowup)) editingFollowup = null;
+    updateSendButton();
+    renderFollowups();
+  }
+  if (data.type === "followup_ack" && pendingFollowup?.id === data.id) {
+    if (prompt.value.trim() === pendingFollowup.text) prompt.value = "";
+    pendingFollowup = null;
+    editingFollowup = null;
+    send.disabled = false;
+    resizePrompt();
+    updateSendButton();
+  }
+  if (data.type === "followup_error") {
+    pendingFollowup = null;
+    send.disabled = false;
+    setStatus(t("Message non envoyé : {0}", OvhI18n.message(data.text)), true);
+  }
+  if (data.type === "followup_started") {
+    addUserMessage(data.text, [], data.timestamp);
+    createAssistantRun();
+    setBusy(true);
+  }
+  if (data.type === "steer_applied") {
+    addUserMessage(data.text, [], data.timestamp);
+    if (currentRun?.article) messages.append(currentRun.article);
+    addCompletedActivity("context", t("Réorientation appliquée"), data.text);
+  }
   if (data.type === "status") {
+    activeArchiveId = data.conversation || activeArchiveId;
+    followupCommand("list");
     ensureRun();
     setBusy(true, data.text);
   }
@@ -1277,12 +1383,16 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "archive_loaded") {
     activeArchiveId = data.id || activeArchiveId;
+    followups = [];
+    followupCommand("list");
     renderArchiveMessages(data.messages);
     setBusy(false, data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
   }
   if (data.type === "snapshot_loaded") {
     activeArchiveId = data.id || activeArchiveId;
     if (data.resumable) resumableArchives.add(activeArchiveId);
+    followups = [];
+    followupCommand("list");
     applySnapshot(data);
     setBusy(false, t("Conversation restaurée"));
   }
