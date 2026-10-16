@@ -139,7 +139,7 @@ excluded from the public export, whose manifest uses the bundled defaults.
 Interface icons
 ---------------
 
-Controls use the outline variants of Bootstrap Icons (MIT). Only the history
+Controls use the outline variants of Bootstrap Icons (MIT), except the trash2-fill deletion icon. Only the history
 branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 33% opacity.
 The configuration key is rotated 135 degrees with a local vertical mirror so its teeth face down. Licenses are included in media/.
 Only the selected SVG vectors are bundled and minified; no webfont or CDN is used.
