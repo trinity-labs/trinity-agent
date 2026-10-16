@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.13.4
+
+- Enable verified automated Marketplace releases through GitHub Actions.
+- Validate publisher authorization and make release retries safe.
+
 ## 1.13.3
 
 - Marketplace package uses the stopyz publisher.
