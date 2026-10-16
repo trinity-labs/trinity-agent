@@ -26,6 +26,7 @@ jobs:
           cache-dependency-path: ovh-agent-extension/extension/package-lock.json
       - run: npm ci --ignore-scripts
       - run: npm test
+      - run: python3 ../../scripts/test-auto-update.py
       - name: Verify Marketplace authorization on manual runs
         if: github.event_name == 'workflow_dispatch' && vars.MARKETPLACE_AUTH_MODE == 'pat'
         env:
@@ -45,9 +46,30 @@ jobs:
           path: ovh-agent-extension/extension/dist/*.vsix
           if-no-files-found: error
           retention-days: 14
-  github-release:
+  local-package:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85afbd3f7d6820020
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts && npm run package:vsix
+        working-directory: ovh-agent-extension/extension
+        env:
+          MARKETPLACE_PUBLISHER: trinity
+          RELEASE_TAG: ${{ github.ref_name }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: local-extension-vsix
+          path: ovh-agent-extension/extension/dist/*-local-*.vsix
+          if-no-files-found: error
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [package, local-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -55,6 +77,10 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: extension-vsix
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: local-extension-vsix
           path: dist
       - name: Create or update GitHub release
         env:

@@ -24,6 +24,14 @@ try {
     fs.copyFileSync(source, destination);
   }
   fs.copyFileSync(path.resolve(root, '../../LICENSE'), path.join(stage, 'LICENSE'));
+  if (publisher === 'trinity') {
+    const crypto = require('node:crypto');
+    const backend = {};
+    for (const name of ['ovh-agent.py', 'ovh_memory.py', 'ovh-agent.sh']) {
+      backend[name] = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(root, '../..', name))).digest('hex');
+    }
+    fs.writeFileSync(path.join(stage, 'local-update.json'), JSON.stringify({backend}));
+  }
   manifest.publisher = publisher;
   manifest.displayName = 'TRINITY Agent';
   manifest.icon = 'media/trinity-icon.png';
@@ -33,7 +41,7 @@ try {
   fs.writeFileSync(path.join(stage,'package.json'), JSON.stringify(manifest,null,2)+'\n');
   fs.writeFileSync(path.join(stage,'.vscodeignore'), 'package-lock.json\n.vscodeignore\nnode_modules/**/test/**\nnode_modules/**/tests/**\nnode_modules/**/benchmark/**\nnode_modules/**/benchmarks/**\nnode_modules/**/.github/**\n');
   execFileSync('npm', ['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'], {cwd:stage,stdio:'inherit'});
-  const output = path.join(root,'dist',`trinity-agent-${manifest.version}.vsix`);
+  const output = path.join(root,'dist',`trinity-agent-${publisher === 'trinity' ? 'local-' : ''}${manifest.version}.vsix`);
   fs.mkdirSync(path.dirname(output), {recursive:true});
   execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
     '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',

@@ -69,3 +69,6 @@
 !/ovh-agent-extension/extension/media/history-demo.png
 
 !/ovh-agent-extension/extension/scripts/history-demo.prompt.txt
+
+!/scripts/auto-update.py
+!/scripts/test-auto-update.py

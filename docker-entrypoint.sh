@@ -35,4 +35,7 @@ fi
 # Apply the public extension name before code-server scans its manifests.
 node /home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-branding.cjs
 
+# One updater per container; installs on disk without interrupting the editor.
+python3 /home/coder/TRINITY-DOCKER/var/docker/docker_ide/scripts/auto-update.py --watch &
+
 exec "$@"

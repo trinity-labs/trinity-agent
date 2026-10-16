@@ -12,6 +12,9 @@ services:
     user: root
     restart: always
     environment:
+      # Local extension updates from official GitHub releases (seconds)
+      OVH_AGENT_AUTO_UPDATE: "${OVH_AGENT_AUTO_UPDATE:-true}"
+      OVH_AGENT_UPDATE_INTERVAL: "${OVH_AGENT_UPDATE_INTERVAL:-21600}"
       # OVH API url (or other provider)
       OVH_AI_BASE_URL: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
       # false: masquer entièrement la bannière Conversations / Mount Point
@@ -20,11 +23,11 @@ services:
       OVH_AGENT_LANG: "${OVH_AGENT_LANG:-auto}"
       # agent name
       OVH_AGENT_NAME: "TRINITY Agent"
+      # Branding color
+      OVH_AGENT_PRIMARY_COLOR: "#000E9C"
       # Local paths inside the container; empty = default icon
       OVH_AGENT_APP_ICON: "${OVH_AGENT_APP_ICON:-}"
       OVH_AGENT_MENU_ICON: "${OVH_AGENT_MENU_ICON:-}"
-      # Branding color
-      OVH_AGENT_PRIMARY_COLOR: "#000E9C"
     volumes:
       - ./config:/root/.config
       - ./docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.13.7
+
+- Add a separate local release package and configurable Docker automatic updates, with integrity and backend compatibility checks.
+
 ## 1.13.6
 
 - Include an edited demonstration screenshot in the Marketplace and local README.

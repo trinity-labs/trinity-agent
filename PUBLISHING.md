@@ -92,3 +92,26 @@ SVG icons remain bundled for the UI; the Marketplace app icon is PNG.
 
 This release is a client for the companion self-hosted Linux backend, not a
 standalone Python installer. That prerequisite is prominent in the Marketplace README.
+
+## Local automatic updates
+
+The Docker entrypoint starts `scripts/auto-update.py --watch`. Set
+`OVH_AGENT_AUTO_UPDATE=false` to disable it, or `OVH_AGENT_UPDATE_INTERVAL=21600`
+to select the check interval in seconds (minimum 300). Defaults: enabled, six hours.
+Run `python3 scripts/auto-update.py` inside the IDE container for an immediate check.
+Messages appear in the container log; checks require public GitHub access, no token.
+
+Each tagged release includes a separate `trinity-agent-local-VERSION.vsix` for the
+local `trinity.ovh-agent` identity. The Marketplace package remains `stopyz.ovh-agent`.
+The updater checks the GitHub SHA-256 digest, package identity, stable version and
+backend source hashes before invoking the code-server installer. It rejects
+downgrades, reapplies local branding and leaves running editor sessions untouched.
+Reload the editor to activate an installed update. Archives and secrets are not
+part of the package and are never overwritten.
+
+Only the extension client is updated automatically. A release with changed backend
+sources is deferred until the deployment's `ovh-agent.py`, `ovh_memory.py` and
+`ovh-agent.sh` match that release. This avoids silently replacing custom backend
+code or installing a client for a different backend. Docker images and Python
+dependencies remain deployment-managed. Marketplace installations use the editor's
+normal extension update mechanism; this local updater never installs a second ID.
