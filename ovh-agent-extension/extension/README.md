@@ -1,3 +1,5 @@
+🇪🇺 · 🇫🇷 FR · 🇩🇪 DE · 🇬🇧 ENG · 🇪🇸 ES
+
 # 🟪 TRINITY Agent
 
 An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with conversation archives, tool approvals, task resumption, steering and a persistent follow-up queue.

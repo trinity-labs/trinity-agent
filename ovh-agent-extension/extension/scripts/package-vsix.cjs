@@ -32,6 +32,7 @@ try {
     }
     fs.writeFileSync(path.join(stage, 'local-update.json'), JSON.stringify({backend}));
   }
+  delete manifest.__metadata;
   manifest.publisher = publisher;
   manifest.displayName = 'TRINITY Agent';
   manifest.icon = 'media/trinity-icon.png';

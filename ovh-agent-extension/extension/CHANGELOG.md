@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.13.9
+
+- Add European and interface-language flags at the beginning of the README.
+- Display the local publisher name as TRINITY while preserving the extension identity.
+
 ## 1.13.8
 
 - Correct the pinned checkout action for the local update release package.

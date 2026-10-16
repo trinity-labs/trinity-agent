@@ -52,6 +52,7 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (manifest.name !== 'ovh-agent' || manifest.publisher !== 'trinity') return;
   manifest.displayName = name;
+  if (manifest.__metadata) manifest.__metadata.publisherDisplayName = 'TRINITY';
   const configuredColor = String(process.env.OVH_AGENT_PRIMARY_COLOR || "").trim();
   const primary = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor.toLowerCase() : "#3e3aab";
   const media = path.join(path.dirname(file), "media");
@@ -90,8 +91,12 @@ if (require.main === module) {
   const extensions = '/root/.local/share/code-server/extensions';
   const registry = JSON.parse(fs.readFileSync(path.join(extensions, 'extensions.json'), 'utf8'));
   for (const item of registry) {
-    if (item.identifier?.id === 'trinity.ovh-agent') applyManifest(path.join(extensions, path.basename(item.relativeLocation), 'package.json'), name);
+    if (item.identifier?.id === 'trinity.ovh-agent') {
+      item.metadata = { ...item.metadata, publisherDisplayName: 'TRINITY' };
+      applyManifest(path.join(extensions, path.basename(item.relativeLocation), 'package.json'), name);
+    }
   }
+  fs.writeFileSync(path.join(extensions, 'extensions.json'), JSON.stringify(registry));
   applyManifest('/home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-agent-extension/extension/package.json', name);
 }
 module.exports = { applyManifest };
