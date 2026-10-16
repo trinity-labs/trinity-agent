@@ -4,6 +4,12 @@ An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with
 
 **This extension is the client for the self-hosted TRINITY Agent backend. Installing this VSIX alone does not install Python, the agent backend or an OVH account.** Use it in the supplied Linux Docker environment, or connect VS Code Remote to that environment. It is not an official OVHcloud or OpenAI extension.
 
+## ⬛ Preview
+
+![TRINITY Agent conversation history with demonstration titles and mount path](media/history-demo.png)
+
+*Edited demonstration screenshot: conversation titles and the mount path are fictional.*
+
 ## ⬛ Install and configure
 
 1. Deploy the companion backend using the [repository installation guide](https://github.com/trinity-labs/trinity-agent/blob/main/README.rst) and its Docker Compose example. The backend and Python dependencies must be installed on the same host as the VS Code extension.

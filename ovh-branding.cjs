@@ -56,7 +56,9 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
   const primary = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor.toLowerCase() : "#3e3aab";
   const media = path.join(path.dirname(file), "media");
   const iconTemplate = path.join(media, "ovh-agent.svg");
-  if (fs.existsSync(iconTemplate)) {
+  if (fs.existsSync(path.join(media, "trinity-icon.png"))) {
+    manifest.icon = "media/trinity-icon.png";
+  } else if (fs.existsSync(iconTemplate)) {
     const svg = fs.readFileSync(iconTemplate, "utf8").replace(/(<rect\b[^>]*\bfill=")[^"]*(")/, (_, start, end) => start + primary + end);
     // A color-specific filename prevents VS Code from reusing the old cached icon.
     const iconName = "ovh-agent-brand-" + primary.slice(1) + ".svg";
@@ -65,7 +67,7 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
   }
   const appIcon = customIcon('OVH_AGENT_APP_ICON', media);
   if (appIcon) manifest.icon = appIcon;
-  const menuIcon = customIcon('OVH_AGENT_MENU_ICON', media) || 'media/ovh-activity.svg';
+  const menuIcon = customIcon('OVH_AGENT_MENU_ICON', media) || (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/ovh-activity.svg');
   const locale = language.toLowerCase().split(/[-_]/)[0];
   const forced = commandTranslations[locale] ? locale : null;
   const ids = ['ovhAgent.start', 'ovhAgent.configureKey', 'ovhAgent.configureBilling'];

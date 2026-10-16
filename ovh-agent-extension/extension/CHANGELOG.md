@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.13.6
+
+- Include an edited demonstration screenshot in the Marketplace and local README.
+- Align the extension summary with the README features and backend requirements.
+- Preserve bundled TRINITY logos when applying default local branding.
+
 ## 1.13.5
 
 - Add purple and black square markers to Marketplace README headings.

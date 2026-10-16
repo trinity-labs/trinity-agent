@@ -1,8 +1,8 @@
 {
   "name": "ovh-agent",
   "displayName": "TRINITY Agent",
-  "description": "Agent de développement utilisant OVHcloud AI Endpoints.",
-  "version": "1.13.5",
+  "description": "Open-source coding assistant for OVHcloud AI Endpoints: archives, task resumption, steering and queued messages. Self-hosted backend required.",
+  "version": "1.13.6",
   "icon": "media/ovh-agent-brand-000e9c.svg",
   "publisher": "trinity",
   "engines": {

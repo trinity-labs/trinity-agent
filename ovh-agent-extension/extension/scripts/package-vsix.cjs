@@ -14,7 +14,7 @@ try {
   const files = ['extension.js','archive-store.js','security.js','package.json','package-lock.json','README.md','CHANGELOG.md',
     'package.nls.json','package.nls.fr.json','package.nls.en.json','package.nls.de.json','package.nls.es.json',
     'media/chat.js','media/chat.css','media/i18n.js','media/translations.json','media/safe-html.js','media/purify.min.js','media/icons.min.js',
-    'media/trinity-icon.png','media/trinity-activity.png','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
+    'media/history-demo.png','media/trinity-icon.png','media/trinity-activity.png','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
   for (const name of ['key','robot','wallet']) for (const theme of ['light','dark']) files.push(`media/bi-${name}-${theme}.svg`);
   for (const relative of files) {
     const source = path.join(root, relative);
@@ -26,7 +26,6 @@ try {
   fs.copyFileSync(path.resolve(root, '../../LICENSE'), path.join(stage, 'LICENSE'));
   manifest.publisher = publisher;
   manifest.displayName = 'TRINITY Agent';
-  manifest.description = 'Open-source coding agent for OVHcloud AI Endpoints. Requires the self-hosted TRINITY backend.';
   manifest.icon = 'media/trinity-icon.png';
   manifest.contributes.viewsContainers.activitybar[0].icon = 'media/trinity-activity.png';
   delete manifest.scripts;
@@ -36,6 +35,8 @@ try {
   execFileSync('npm', ['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'], {cwd:stage,stdio:'inherit'});
   const output = path.join(root,'dist',`trinity-agent-${manifest.version}.vsix`);
   fs.mkdirSync(path.dirname(output), {recursive:true});
-  execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output], {cwd:stage,stdio:'inherit'});
+  execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
+    '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',
+    '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension'], {cwd:stage,stdio:'inherit'});
   console.log(`Packaged ${publisher}.${manifest.name} ${manifest.version}: ${output}`);
 } finally { fs.rmSync(stage,{recursive:true,force:true}); }

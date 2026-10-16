@@ -1,0 +1,12 @@
+Built-in image_gen edit. Target: supplied TRINITY Agent conversation-history screenshot.
+Preserve layout, header, icons, colors, typography, spacing, dates and model labels.
+Replace the mount path with /data/trinity-agent/archive/demo-workspace.
+Replace the seven conversation titles, top to bottom:
+Créer une API REST avec authentification
+Optimiser les performances du projet
+Configurer les sauvegardes Docker
+Ajouter des tests unitaires
+Nouvelle conversation
+Documenter le déploiement du service
+Nouvelle conversation
+Remove the previous titles and mount path completely. No extra labels or visual features.
