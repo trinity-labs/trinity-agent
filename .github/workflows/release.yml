@@ -26,6 +26,14 @@ jobs:
           cache-dependency-path: ovh-agent-extension/extension/package-lock.json
       - run: npm ci --ignore-scripts
       - run: npm test
+      - name: Verify Marketplace authorization on manual runs
+        if: github.event_name == 'workflow_dispatch' && vars.MARKETPLACE_AUTH_MODE == 'pat'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          MARKETPLACE_PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER }}
+        run: |
+          test -n "$VSCE_PAT" || { echo 'Missing VSCE_PAT repository secret'; exit 1; }
+          npx --no-install vsce verify-pat "$MARKETPLACE_PUBLISHER"
       - name: Package reviewed files only
         env:
           MARKETPLACE_PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER }}
@@ -83,11 +91,11 @@ jobs:
           allow-no-subscriptions: true
       - name: Publish with federated Microsoft Entra identity
         if: vars.MARKETPLACE_AUTH_MODE != 'pat'
-        run: npx --yes @vscode/vsce@4.0.0 publish --packagePath dist/*.vsix --azure-credential
+        run: npx --yes @vscode/vsce@4.0.0 publish --packagePath dist/*.vsix --azure-credential --skip-duplicate
       - name: Publish with configured PAT (legacy alternative)
         if: vars.MARKETPLACE_AUTH_MODE == 'pat'
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           test -n "$VSCE_PAT" || { echo 'Missing VSCE_PAT repository secret'; exit 1; }
-          npx --yes @vscode/vsce@4.0.0 publish --packagePath dist/*.vsix
+          npx --yes @vscode/vsce@4.0.0 publish --packagePath dist/*.vsix --skip-duplicate

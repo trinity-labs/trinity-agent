@@ -1,5 +1,8 @@
 # Publishing TRINITY Agent
 
+First Marketplace release: **1.13.3**, published on **2026-10-16** under
+[`stopyz.ovh-agent`](https://marketplace.visualstudio.com/items?itemName=stopyz.ovh-agent).
+
 ## One-time Marketplace connection
 
 The VS Code Marketplace requires a publisher controlled by the maintainer. The
@@ -24,7 +27,9 @@ Do not enable publishing until the publisher ID has been verified.
 
 Legacy alternative: create an Azure DevOps PAT with `Marketplace (Manage)` and
 all accessible organizations, save it as the GitHub Actions **secret** `VSCE_PAT`,
-and set variable `MARKETPLACE_AUTH_MODE=pat`. Do not paste credentials into chat
+and set variable `MARKETPLACE_AUTH_MODE=pat`. Run the release workflow manually
+on `main` to verify publisher authorization without publishing a new version;
+then enable `MARKETPLACE_ENABLED`. Do not paste credentials into chat
 or repository files. Microsoft announces retirement of global PATs on December 1,
 2026, so federated Entra authentication is the durable choice.
 
