@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.13.8
+
+- Correct the pinned checkout action for the local update release package.
+
 ## 1.13.7
 
 - Add a separate local release package and configurable Docker automatic updates, with integrity and backend compatibility checks.
