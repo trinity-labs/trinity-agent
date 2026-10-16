@@ -1,0 +1,78 @@
+{
+  "name": "ovh-agent",
+  "displayName": "TRINITY Agent",
+  "description": "Agent de développement utilisant OVHcloud AI Endpoints.",
+  "version": "1.13.1",
+  "icon": "media/ovh-agent-brand-000e9c.svg",
+  "publisher": "trinity",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:ovhAgent.launch",
+    "onCommand:ovhAgent.start"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ovhAgent.start",
+        "title": "%ovhAgent.start.title%",
+        "category": "TRINITY Agent",
+        "icon": "$(hubot)"
+      },
+      {
+        "command": "ovhAgent.configureKey",
+        "title": "%ovhAgent.configureKey.title%",
+        "category": "TRINITY Agent",
+        "icon": "$(key)"
+      },
+      {
+        "command": "ovhAgent.configureBilling",
+        "title": "%ovhAgent.configureBilling.title%",
+        "category": "TRINITY Agent",
+        "icon": "$(credit-card)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ovhAgent",
+          "title": "TRINITY Agent",
+          "icon": "media/ovh-activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "ovhAgent": [
+        {
+          "id": "ovhAgent.launch",
+          "name": "TRINITY Agent",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "dompurify": "3.4.17",
+    "markdown-it": "15.0.2",
+    "sanitize-html": "2.18.1"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.3"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  },
+  "license": "0BSD",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trinity-labs/trinity-agent.git",
+    "directory": "ovh-agent-extension/extension"
+  }
+}

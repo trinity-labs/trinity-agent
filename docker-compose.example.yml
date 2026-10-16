@@ -1,0 +1,73 @@
+services:
+  vscode:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: trinity-code-server-alpine:latest
+    container_name: vscode
+    ports:
+      - "${IDE_BIND_ADDRESS:-127.0.0.1}:${IDE_PORT:-5734}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    user: root
+    restart: always
+    environment:
+      # OVH API url (or other provider)
+      OVH_AI_BASE_URL: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
+      # false: masquer entièrement la bannière Conversations / Mount Point
+      OVH_AGENT_SHOW_MOUNT_POINT: "${OVH_AGENT_SHOW_MOUNT_POINT:-true}"
+      # auto: langue locale ; fr, de, en ou es pour imposer une langue
+      OVH_AGENT_LANG: "${OVH_AGENT_LANG:-auto}"
+      # agent name
+      OVH_AGENT_NAME: "TRINITY Agent"
+      # Branding color
+      OVH_AGENT_PRIMARY_COLOR: "#000E9C"
+    volumes:
+      - ./config:/root/.config
+      - ./docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
+      - type: bind
+        source: ${CODEX_DATA_DIR:-./data/codex}
+        target: /root/.codex
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_DATA_DIR:-./data/agent}
+        target: /root/.ovh-agent
+        bind:
+          create_host_path: false
+      - ./project:/home/coder
+      - ./extensions:/root/.local/share/code-server/extensions
+      - ./user:/root/.local/share/code-server/User
+      - ./ssh/.ssh:/root/.ssh
+      - /:/home/coder/TRINITY-DOCKER
+      - /var/run/docker.sock:/var/run/docker.sock
+    secrets:
+      - PASSWORD_VSCODE
+      - OVH_AI_API_KEY
+      - OVH_APPLICATION_KEY
+      - OVH_APPLICATION_SECRET
+      - OVH_CONSUMER_KEY
+      - OVH_CLOUD_PROJECT
+      - OVH_API_BASE_URL
+
+    command:
+      - --bind-addr
+      - 0.0.0.0:8080
+      - --disable-telemetry
+      - --disable-update-check
+
+secrets:
+  PASSWORD_VSCODE:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/PASSWORD_VSCODE
+  OVH_AI_API_KEY:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/OVH_AI_API_KEY
+  OVH_APPLICATION_KEY:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/OVH_APPLICATION_KEY
+  OVH_APPLICATION_SECRET:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/OVH_APPLICATION_SECRET
+  OVH_CONSUMER_KEY:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/OVH_CONSUMER_KEY
+  OVH_CLOUD_PROJECT:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/OVH_CLOUD_PROJECT
+  OVH_API_BASE_URL:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/OVH_API_BASE_URL

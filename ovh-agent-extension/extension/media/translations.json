@@ -1,0 +1,1430 @@
+{
+  "Reprendre la tâche interrompue": {
+    "fr": "Reprendre la tâche interrompue",
+    "en": "Resume interrupted task",
+    "de": "Unterbrochene Aufgabe fortsetzen",
+    "es": "Reanudar tarea interrumpida"
+  },
+  "Envoyer": {
+    "fr": "Envoyer",
+    "en": "Send",
+    "de": "Senden",
+    "es": "Enviar"
+  },
+  "Reprise de la tâche interrompue…": {
+    "fr": "Reprise de la tâche interrompue…",
+    "en": "Resuming interrupted task…",
+    "de": "Unterbrochene Aufgabe wird fortgesetzt…",
+    "es": "Reanudando tarea interrumpida…"
+  },
+  "Auto équilibré{0}": {
+    "fr": "Auto équilibré{0}",
+    "en": "Balanced auto{0}",
+    "de": "Ausgewogen automatisch{0}",
+    "es": "Automático equilibrado{0}"
+  },
+  "Auto équilibré": {
+    "fr": "Auto équilibré",
+    "en": "Balanced auto",
+    "de": "Ausgewogen automatisch",
+    "es": "Automático equilibrado"
+  },
+  "Routage automatique selon le prix, l’usage et la taille du contexte": {
+    "fr": "Routage automatique selon le prix, l’usage et la taille du contexte",
+    "en": "Automatic routing by price, usage and context size",
+    "de": "Automatische Auswahl nach Preis, Nutzung und Kontextgröße",
+    "es": "Selección automática según precio, uso y tamaño del contexto"
+  },
+  "Modèle actif : {0}{1}": {
+    "fr": "Modèle actif : {0}{1}",
+    "en": "Active model: {0}{1}",
+    "de": "Aktives Modell: {0}{1}",
+    "es": "Modelo activo: {0}{1}"
+  },
+  "Chat / agent": {
+    "fr": "Chat / agent",
+    "en": "Chat / agent",
+    "de": "Chat / Agent",
+    "es": "Chat / agente"
+  },
+  "Modération": {
+    "fr": "Modération",
+    "en": "Moderation",
+    "de": "Moderation",
+    "es": "Moderación"
+  },
+  "Transcription": {
+    "fr": "Transcription",
+    "en": "Transcription",
+    "de": "Transkription",
+    "es": "Transcripción"
+  },
+  "Synthèse vocale": {
+    "fr": "Synthèse vocale",
+    "en": "Text to speech",
+    "de": "Sprachausgabe",
+    "es": "Síntesis de voz"
+  },
+  "Génération d’image": {
+    "fr": "Génération d’image",
+    "en": "Image generation",
+    "de": "Bilderzeugung",
+    "es": "Generación de imágenes"
+  },
+  "Éco · Auto": {
+    "fr": "Éco · Auto",
+    "en": "Eco · Auto",
+    "de": "Sparsam · Auto",
+    "es": "Eco · Auto"
+  },
+  "{0}k contexte": {
+    "fr": "{0}k contexte",
+    "en": "{0}k context",
+    "de": "{0}k Kontext",
+    "es": "{0}k contexto"
+  },
+  "{0} tokens": {
+    "fr": "{0} tokens",
+    "en": "{0} tokens",
+    "de": "{0} Token",
+    "es": "{0} tokens"
+  },
+  "Prix minimal utile · contexte compacté": {
+    "fr": "Prix minimal utile · contexte compacté",
+    "en": "Lowest suitable price · compacted context",
+    "de": "Günstigster geeigneter Preis · komprimierter Kontext",
+    "es": "Precio mínimo adecuado · contexto compactado"
+  },
+  "${0}/heure": {
+    "fr": "${0}/heure",
+    "en": "${0}/hour",
+    "de": "${0}/Stunde",
+    "es": "${0}/hora"
+  },
+  "Gratuit": {
+    "fr": "Gratuit",
+    "en": "Free",
+    "de": "Kostenlos",
+    "es": "Gratis"
+  },
+  "gratuit": {
+    "fr": "gratuit",
+    "en": "free",
+    "de": "kostenlos",
+    "es": "gratis"
+  },
+  "{0} entrée · {1} sortie / 1M tokens": {
+    "fr": "{0} entrée · {1} sortie / 1M tokens",
+    "en": "{0} input · {1} output / 1M tokens",
+    "de": "{0} Eingabe · {1} Ausgabe / 1 Mio. Token",
+    "es": "{0} entrada · {1} salida / 1M tokens"
+  },
+  "Tarif non communiqué par l’API": {
+    "fr": "Tarif non communiqué par l’API",
+    "en": "Price not provided by the API",
+    "de": "Kein Preis von der API bereitgestellt",
+    "es": "La API no indica el precio"
+  },
+  "Aucun modèle trouvé.": {
+    "fr": "Aucun modèle trouvé.",
+    "en": "No models found.",
+    "de": "Keine Modelle gefunden.",
+    "es": "No se encontraron modelos."
+  },
+  "Modèle sélectionné : {0}": {
+    "fr": "Modèle sélectionné : {0}",
+    "en": "Selected model: {0}",
+    "de": "Ausgewähltes Modell: {0}",
+    "es": "Modelo seleccionado: {0}"
+  },
+  "Accès complet": {
+    "fr": "Accès complet",
+    "en": "Full access",
+    "de": "Vollzugriff",
+    "es": "Acceso completo"
+  },
+  "Demander l’accès": {
+    "fr": "Demander l’accès",
+    "en": "Request access",
+    "de": "Zugriff anfordern",
+    "es": "Solicitar acceso"
+  },
+  "Accès complet : les actions s’exécutent sans confirmation": {
+    "fr": "Accès complet : les actions s’exécutent sans confirmation",
+    "en": "Full access: actions run without confirmation",
+    "de": "Vollzugriff: Aktionen werden ohne Bestätigung ausgeführt",
+    "es": "Acceso completo: las acciones se ejecutan sin confirmación"
+  },
+  "Validation demandée avant les écritures et les commandes": {
+    "fr": "Validation demandée avant les écritures et les commandes",
+    "en": "Approval required before writes and commands",
+    "de": "Bestätigung vor Schreibvorgängen und Befehlen erforderlich",
+    "es": "Se requiere confirmación antes de escribir o ejecutar comandos"
+  },
+  "Conversation supprimée définitivement": {
+    "fr": "Conversation supprimée définitivement",
+    "en": "Conversation permanently deleted",
+    "de": "Unterhaltung endgültig gelöscht",
+    "es": "Conversación eliminada definitivamente"
+  },
+  "Conversation supprimée définitivement.": {
+    "fr": "Conversation supprimée définitivement.",
+    "en": "Conversation permanently deleted.",
+    "de": "Unterhaltung endgültig gelöscht.",
+    "es": "Conversación eliminada definitivamente."
+  },
+  "Image jointe": {
+    "fr": "Image jointe",
+    "en": "Attached image",
+    "de": "Angehängtes Bild",
+    "es": "Imagen adjunta"
+  },
+  "Vous": {
+    "fr": "Vous",
+    "en": "You",
+    "de": "Sie",
+    "es": "Tú"
+  },
+  "Fichier créé": {
+    "fr": "Fichier créé",
+    "en": "File created",
+    "de": "Datei erstellt",
+    "es": "Archivo creado"
+  },
+  "Fichier modifié": {
+    "fr": "Fichier modifié",
+    "en": "File modified",
+    "de": "Datei geändert",
+    "es": "Archivo modificado"
+  },
+  "fichier": {
+    "fr": "fichier",
+    "en": "file",
+    "de": "Datei",
+    "es": "archivo"
+  },
+  "Copier le diff": {
+    "fr": "Copier le diff",
+    "en": "Copy diff",
+    "de": "Diff kopieren",
+    "es": "Copiar diferencias"
+  },
+  "Conversation vide": {
+    "fr": "Conversation vide",
+    "en": "Empty conversation",
+    "de": "Leere Unterhaltung",
+    "es": "Conversación vacía"
+  },
+  "Cette archive ne contient pas encore de réponse.": {
+    "fr": "Cette archive ne contient pas encore de réponse.",
+    "en": "This archive has no response yet.",
+    "de": "Dieses Archiv enthält noch keine Antwort.",
+    "es": "Este archivo aún no contiene respuestas."
+  },
+  "Aucune conversation archivée.": {
+    "fr": "Aucune conversation archivée.",
+    "en": "No archived conversations.",
+    "de": "Keine archivierten Unterhaltungen.",
+    "es": "No hay conversaciones archivadas."
+  },
+  "Nouvelle conversation": {
+    "fr": "Nouvelle conversation",
+    "en": "New conversation",
+    "de": "Neue Unterhaltung",
+    "es": "Nueva conversación"
+  },
+  "Chargement de la conversation…": {
+    "fr": "Chargement de la conversation…",
+    "en": "Loading conversation…",
+    "de": "Unterhaltung wird geladen…",
+    "es": "Cargando conversación…"
+  },
+  "Supprimer définitivement la conversation": {
+    "fr": "Supprimer définitivement la conversation",
+    "en": "Permanently delete conversation",
+    "de": "Unterhaltung endgültig löschen",
+    "es": "Eliminar conversación definitivamente"
+  },
+  "Supprimer définitivement : {0}": {
+    "fr": "Supprimer définitivement : {0}",
+    "en": "Permanently delete: {0}",
+    "de": "Endgültig löschen: {0}",
+    "es": "Eliminar definitivamente: {0}"
+  },
+  "Attends la fin de la réponse avant de supprimer une conversation.": {
+    "fr": "Attends la fin de la réponse avant de supprimer une conversation.",
+    "en": "Wait for the response to finish before deleting a conversation.",
+    "de": "Warten Sie vor dem Löschen einer Unterhaltung auf das Ende der Antwort.",
+    "es": "Espera a que termine la respuesta antes de eliminar una conversación."
+  },
+  "Reprendre la tâche interrompue après vérification de son état": {
+    "fr": "Reprendre la tâche interrompue après vérification de son état",
+    "en": "Resume the interrupted task after checking its state",
+    "de": "Unterbrochene Aufgabe nach Prüfung ihres Zustands fortsetzen",
+    "es": "Reanudar la tarea interrumpida tras comprobar su estado"
+  },
+  "Arrête la tâche en cours avant de reprendre une autre conversation.": {
+    "fr": "Arrête la tâche en cours avant de reprendre une autre conversation.",
+    "en": "Stop the current task before resuming another conversation.",
+    "de": "Beenden Sie die aktuelle Aufgabe, bevor Sie eine andere Unterhaltung fortsetzen.",
+    "es": "Detén la tarea actual antes de reanudar otra conversación."
+  },
+  "Réflexion en cours…": {
+    "fr": "Réflexion en cours…",
+    "en": "Thinking…",
+    "de": "Denkt nach…",
+    "es": "Pensando…"
+  },
+  "{0} action{1}": {
+    "fr": "{0} action{1}",
+    "en": "Actions: {0}",
+    "de": "Aktionen: {0}",
+    "es": "Acciones: {0}"
+  },
+  "Terminé en {0} · {1}": {
+    "fr": "Terminé en {0} · {1}",
+    "en": "Finished in {0} · {1}",
+    "de": "Abgeschlossen in {0} · {1}",
+    "es": "Finalizado en {0} · {1}"
+  },
+  "Copier": {
+    "fr": "Copier",
+    "en": "Copy",
+    "de": "Kopieren",
+    "es": "Copiar"
+  },
+  "Copié": {
+    "fr": "Copié",
+    "en": "Copied",
+    "de": "Kopiert",
+    "es": "Copiado"
+  },
+  "Action en cours": {
+    "fr": "Action en cours",
+    "en": "Action in progress",
+    "de": "Aktion läuft",
+    "es": "Acción en curso"
+  },
+  "Action": {
+    "fr": "Action",
+    "en": "Action",
+    "de": "Aktion",
+    "es": "Acción"
+  },
+  "Vérification de la connexion OVHcloud…": {
+    "fr": "Vérification de la connexion OVHcloud…",
+    "en": "Checking OVHcloud connection…",
+    "de": "OVHcloud-Verbindung wird geprüft…",
+    "es": "Comprobando conexión con OVHcloud…"
+  },
+  "Solde : vérification…": {
+    "fr": "Solde : vérification…",
+    "en": "Balance: checking…",
+    "de": "Guthaben: wird geprüft…",
+    "es": "Saldo: comprobando…"
+  },
+  "Solde : à configurer": {
+    "fr": "Solde : à configurer",
+    "en": "Balance: setup required",
+    "de": "Guthaben: Einrichtung erforderlich",
+    "es": "Saldo: pendiente de configurar"
+  },
+  "Solde : indisponible": {
+    "fr": "Solde : indisponible",
+    "en": "Balance: unavailable",
+    "de": "Guthaben: nicht verfügbar",
+    "es": "Saldo: no disponible"
+  },
+  "Solde : {0}{1}": {
+    "fr": "Solde : {0}{1}",
+    "en": "Balance: {0}{1}",
+    "de": "Guthaben: {0}{1}",
+    "es": "Saldo: {0}{1}"
+  },
+  " (non actualisé)": {
+    "fr": " (non actualisé)",
+    "en": " (outdated)",
+    "de": " (nicht aktuell)",
+    "es": " (sin actualizar)"
+  },
+  "Crédits disponibles OVH · relevé {0} · vérification toutes les 60 s{1}": {
+    "fr": "Crédits disponibles OVH · relevé {0} · vérification toutes les 60 s{1}",
+    "en": "Available OVH credits · updated {0} · checked every 60 s{1}",
+    "de": "Verfügbares OVH-Guthaben · Stand {0} · Prüfung alle 60 s{1}",
+    "es": "Créditos OVH disponibles · registro {0} · comprobación cada 60 s{1}"
+  },
+  " · dernière valeur connue": {
+    "fr": " · dernière valeur connue",
+    "en": " · last known value",
+    "de": " · letzter bekannter Wert",
+    "es": " · último valor conocido"
+  },
+  "inconnu": {
+    "fr": "inconnu",
+    "en": "unknown",
+    "de": "unbekannt",
+    "es": "desconocido"
+  },
+  "Cliquer pour configurer le suivi : identifiants API OVHcloud et projet Public Cloud requis (distincts de la clé AI Endpoints)": {
+    "fr": "Cliquer pour configurer le suivi : identifiants API OVHcloud et projet Public Cloud requis (distincts de la clé AI Endpoints)",
+    "en": "Click to configure tracking: OVHcloud API credentials and Public Cloud project required (separate from the AI Endpoints key)",
+    "de": "Zum Einrichten klicken: OVHcloud-API-Zugangsdaten und Public-Cloud-Projekt erforderlich (separat vom AI-Endpoints-Schlüssel)",
+    "es": "Haz clic para configurar el seguimiento: se requieren credenciales API OVHcloud y un proyecto Public Cloud (distintos de la clave AI Endpoints)"
+  },
+  "Configurer le suivi du solde OVHcloud": {
+    "fr": "Configurer le suivi du solde OVHcloud",
+    "en": "Configure OVHcloud balance tracking",
+    "de": "OVHcloud-Guthabenüberwachung konfigurieren",
+    "es": "Configurar seguimiento del saldo OVHcloud"
+  },
+  "Solde OVHcloud non configuré": {
+    "fr": "Solde OVHcloud non configuré",
+    "en": "OVHcloud balance not configured",
+    "de": "OVHcloud-Guthaben nicht konfiguriert",
+    "es": "Saldo OVHcloud sin configurar"
+  },
+  "Facturation OVHcloud indisponible{0}": {
+    "fr": "Facturation OVHcloud indisponible{0}",
+    "en": "OVHcloud billing unavailable{0}",
+    "de": "OVHcloud-Abrechnung nicht verfügbar{0}",
+    "es": "Facturación OVHcloud no disponible{0}"
+  },
+  "Impossible de consulter la facturation OVHcloud": {
+    "fr": "Impossible de consulter la facturation OVHcloud",
+    "en": "Unable to retrieve OVHcloud billing",
+    "de": "OVHcloud-Abrechnung konnte nicht abgerufen werden",
+    "es": "No se puede consultar la facturación OVHcloud"
+  },
+  "Crédits disponibles {0} · consommation {1} · prévision {2} · cliquer pour actualiser": {
+    "fr": "Crédits disponibles {0} · consommation {1} · prévision {2} · cliquer pour actualiser",
+    "en": "Available credits {0} · usage {1} · forecast {2} · click to refresh",
+    "de": "Verfügbares Guthaben {0} · Verbrauch {1} · Prognose {2} · zum Aktualisieren klicken",
+    "es": "Créditos disponibles {0} · consumo {1} · previsión {2} · clic para actualizar"
+  },
+  "OVHcloud · crédits {0} · consommation {1} · prévision {2}": {
+    "fr": "OVHcloud · crédits {0} · consommation {1} · prévision {2}",
+    "en": "OVHcloud · credits {0} · usage {1} · forecast {2}",
+    "de": "OVHcloud · Guthaben {0} · Verbrauch {1} · Prognose {2}",
+    "es": "OVHcloud · créditos {0} · consumo {1} · previsión {2}"
+  },
+  "Autorisation requise": {
+    "fr": "Autorisation requise",
+    "en": "Approval required",
+    "de": "Genehmigung erforderlich",
+    "es": "Se requiere autorización"
+  },
+  "Refuser": {
+    "fr": "Refuser",
+    "en": "Deny",
+    "de": "Ablehnen",
+    "es": "Rechazar"
+  },
+  "Autoriser": {
+    "fr": "Autoriser",
+    "en": "Allow",
+    "de": "Erlauben",
+    "es": "Autorizar"
+  },
+  "Autorisation envoyée": {
+    "fr": "Autorisation envoyée",
+    "en": "Approval sent",
+    "de": "Genehmigung gesendet",
+    "es": "Autorización enviada"
+  },
+  "Refus envoyé": {
+    "fr": "Refus envoyé",
+    "en": "Denial sent",
+    "de": "Ablehnung gesendet",
+    "es": "Rechazo enviado"
+  },
+  "Autorisé": {
+    "fr": "Autorisé",
+    "en": "Allowed",
+    "de": "Genehmigt",
+    "es": "Autorizado"
+  },
+  "Refusé": {
+    "fr": "Refusé",
+    "en": "Denied",
+    "de": "Abgelehnt",
+    "es": "Rechazado"
+  },
+  "Cette image est illisible.": {
+    "fr": "Cette image est illisible.",
+    "en": "This image cannot be read.",
+    "de": "Dieses Bild kann nicht gelesen werden.",
+    "es": "No se puede leer esta imagen."
+  },
+  "{0} reste trop volumineuse après optimisation.": {
+    "fr": "{0} reste trop volumineuse après optimisation.",
+    "en": "{0} is still too large after optimization.",
+    "de": "{0} ist nach der Optimierung noch zu groß.",
+    "es": "{0} sigue siendo demasiado grande tras la optimización."
+  },
+  "Un modèle Vision sera utilisé pour cette image ; ton modèle sélectionné est conservé.": {
+    "fr": "Un modèle Vision sera utilisé pour cette image ; ton modèle sélectionné est conservé.",
+    "en": "A Vision model will be used for this image; your selected model is kept.",
+    "de": "Für dieses Bild wird ein Vision-Modell verwendet; Ihre Modellauswahl bleibt erhalten.",
+    "es": "Se usará un modelo Vision para esta imagen; se conserva tu modelo seleccionado."
+  },
+  "Seules les {0} premières images ont été ajoutées.": {
+    "fr": "Seules les {0} premières images ont été ajoutées.",
+    "en": "Only the first {0} images were added.",
+    "de": "Nur die ersten {0} Bilder wurden hinzugefügt.",
+    "es": "Solo se añadieron las primeras {0} imágenes."
+  },
+  "Préparation de {0}…": {
+    "fr": "Préparation de {0}…",
+    "en": "Preparing {0}…",
+    "de": "{0} wird vorbereitet…",
+    "es": "Preparando {0}…"
+  },
+  "Impossible d’ajouter cette image.": {
+    "fr": "Impossible d’ajouter cette image.",
+    "en": "Unable to add this image.",
+    "de": "Dieses Bild konnte nicht hinzugefügt werden.",
+    "es": "No se puede añadir esta imagen."
+  },
+  "{0} image{1} prête{2}": {
+    "fr": "{0} image{1} prête{2}",
+    "en": "Images ready: {0}",
+    "de": "Bilder bereit: {0}",
+    "es": "Imágenes listas: {0}"
+  },
+  "Analyse cette image.": {
+    "fr": "Analyse cette image.",
+    "en": "Analyze this image.",
+    "de": "Analysiere dieses Bild.",
+    "es": "Analiza esta imagen."
+  },
+  "Connexion à OVHcloud…": {
+    "fr": "Connexion à OVHcloud…",
+    "en": "Connecting to OVHcloud…",
+    "de": "Verbindung zu OVHcloud wird hergestellt…",
+    "es": "Conectando con OVHcloud…"
+  },
+  "Actualisation du solde OVHcloud…": {
+    "fr": "Actualisation du solde OVHcloud…",
+    "en": "Refreshing OVHcloud balance…",
+    "de": "OVHcloud-Guthaben wird aktualisiert…",
+    "es": "Actualizando saldo OVHcloud…"
+  },
+  "Accès complet activé": {
+    "fr": "Accès complet activé",
+    "en": "Full access enabled",
+    "de": "Vollzugriff aktiviert",
+    "es": "Acceso completo activado"
+  },
+  "Validation activée pour les actions sensibles": {
+    "fr": "Validation activée pour les actions sensibles",
+    "en": "Approval enabled for sensitive actions",
+    "de": "Bestätigung für sensible Aktionen aktiviert",
+    "es": "Confirmación activada para acciones sensibles"
+  },
+  "Connecté · {0}": {
+    "fr": "Connecté · {0}",
+    "en": "Connected · {0}",
+    "de": "Verbunden · {0}",
+    "es": "Conectado · {0}"
+  },
+  "sélection automatique": {
+    "fr": "sélection automatique",
+    "en": "automatic selection",
+    "de": "automatische Auswahl",
+    "es": "selección automática"
+  },
+  "choix manuel verrouillé": {
+    "fr": "choix manuel verrouillé",
+    "en": "manual selection locked",
+    "de": "manuelle Auswahl gesperrt",
+    "es": "selección manual bloqueada"
+  },
+  "Modèle exécuté": {
+    "fr": "Modèle exécuté",
+    "en": "Model used",
+    "de": "Verwendetes Modell",
+    "es": "Modelo utilizado"
+  },
+  " · estimation {0}": {
+    "fr": " · estimation {0}",
+    "en": " · estimate {0}",
+    "de": " · Schätzung {0}",
+    "es": " · estimación {0}"
+  },
+  " · {0} modèles économiques compatibles": {
+    "fr": " · {0} modèles économiques compatibles",
+    "en": " · {0} compatible low-cost models",
+    "de": " · {0} kompatible kostengünstige Modelle",
+    "es": " · {0} modelos económicos compatibles"
+  },
+  " · historique {0} requête{1} / {2}": {
+    "fr": " · historique {0} requête{1} / {2}",
+    "en": " · history: {0} requests / {2}",
+    "de": " · Verlauf: {0} Anfragen / {2}",
+    "es": " · historial: {0} solicitudes / {2}"
+  },
+  " · crédits {0} · prévision {1}": {
+    "fr": " · crédits {0} · prévision {1}",
+    "en": " · credits {0} · forecast {1}",
+    "de": " · Guthaben {0} · Prognose {1}",
+    "es": " · créditos {0} · previsión {1}"
+  },
+  "Routage économique": {
+    "fr": "Routage économique",
+    "en": "Cost-aware routing",
+    "de": "Kostenbewusste Auswahl",
+    "es": "Selección económica"
+  },
+  "modèle compatible": {
+    "fr": "modèle compatible",
+    "en": "compatible model",
+    "de": "kompatibles Modell",
+    "es": "modelo compatible"
+  },
+  " · {0}% économisé": {
+    "fr": " · {0}% économisé",
+    "en": " · {0}% saved",
+    "de": " · {0}% gespart",
+    "es": " · {0}% ahorrado"
+  },
+  " · {0} ancien{1} en mémoire condensée": {
+    "fr": " · {0} ancien{1} en mémoire condensée",
+    "en": " · {0} previous turns in compacted memory",
+    "de": " · {0} frühere Runden im komprimierten Speicher",
+    "es": " · {0} turnos anteriores en memoria compactada"
+  },
+  "Contexte optimisé": {
+    "fr": "Contexte optimisé",
+    "en": "Optimized context",
+    "de": "Optimierter Kontext",
+    "es": "Contexto optimizado"
+  },
+  "{0} tour{1} actif{2}{3}{4}": {
+    "fr": "{0} tour{1} actif{2}{3}{4}",
+    "en": "Active turns: {0}{3}{4}",
+    "de": "Aktive Runden: {0}{3}{4}",
+    "es": "Turnos activos: {0}{3}{4}"
+  },
+  "Utilisation du modèle": {
+    "fr": "Utilisation du modèle",
+    "en": "Model usage",
+    "de": "Modellnutzung",
+    "es": "Uso del modelo"
+  },
+  "{0} · {1} tokens entrée · {2} sortie · {3}": {
+    "fr": "{0} · {1} tokens entrée · {2} sortie · {3}",
+    "en": "{0} · {1} input tokens · {2} output · {3}",
+    "de": "{0} · {1} Eingabe-Token · {2} Ausgabe · {3}",
+    "es": "{0} · {1} tokens de entrada · {2} salida · {3}"
+  },
+  "Erreur inconnue": {
+    "fr": "Erreur inconnue",
+    "en": "Unknown error",
+    "de": "Unbekannter Fehler",
+    "es": "Error desconocido"
+  },
+  "Erreur : {0}": {
+    "fr": "Erreur : {0}",
+    "en": "Error: {0}",
+    "de": "Fehler: {0}",
+    "es": "Error: {0}"
+  },
+  "La requête a échoué : {0}": {
+    "fr": "La requête a échoué : {0}",
+    "en": "Request failed: {0}",
+    "de": "Anfrage fehlgeschlagen: {0}",
+    "es": "La solicitud falló: {0}"
+  },
+  "Conversation effacée": {
+    "fr": "Conversation effacée",
+    "en": "Conversation cleared",
+    "de": "Unterhaltung geleert",
+    "es": "Conversación vaciada"
+  },
+  "Clé OVH enregistrée de façon sécurisée": {
+    "fr": "Clé OVH enregistrée de façon sécurisée",
+    "en": "OVH key saved securely",
+    "de": "OVH-Schlüssel sicher gespeichert",
+    "es": "Clave OVH guardada de forma segura"
+  },
+  "Accès lecture seule à la facturation enregistré": {
+    "fr": "Accès lecture seule à la facturation enregistré",
+    "en": "Read-only billing access saved",
+    "de": "Schreibgeschützter Abrechnungszugriff gespeichert",
+    "es": "Acceso de solo lectura a facturación guardado"
+  },
+  "Tâche interrompue — clique sur ▶ pour la reprendre.": {
+    "fr": "Tâche interrompue — clique sur ▶ pour la reprendre.",
+    "en": "Task interrupted — click ▶ to resume.",
+    "de": "Aufgabe unterbrochen — zum Fortsetzen auf ▶ klicken.",
+    "es": "Tarea interrumpida — haz clic en ▶ para reanudarla."
+  },
+  "Suppression définitive en cours…": {
+    "fr": "Suppression définitive en cours…",
+    "en": "Permanently deleting…",
+    "de": "Endgültiges Löschen läuft…",
+    "es": "Eliminando definitivamente…"
+  },
+  "La suppression a échoué.": {
+    "fr": "La suppression a échoué.",
+    "en": "Deletion failed.",
+    "de": "Löschen fehlgeschlagen.",
+    "es": "La eliminación falló."
+  },
+  "{0} modèles OVHcloud chargés": {
+    "fr": "{0} modèles OVHcloud chargés",
+    "en": "{0} OVHcloud models loaded",
+    "de": "{0} OVHcloud-Modelle geladen",
+    "es": "{0} modelos OVHcloud cargados"
+  },
+  "Conversation restaurée avec son contexte": {
+    "fr": "Conversation restaurée avec son contexte",
+    "en": "Conversation restored with context",
+    "de": "Unterhaltung mit Kontext wiederhergestellt",
+    "es": "Conversación restaurada con su contexto"
+  },
+  "Archive restaurée": {
+    "fr": "Archive restaurée",
+    "en": "Archive restored",
+    "de": "Archiv wiederhergestellt",
+    "es": "Archivo restaurado"
+  },
+  "Conversation restaurée": {
+    "fr": "Conversation restaurée",
+    "en": "Conversation restored",
+    "de": "Unterhaltung wiederhergestellt",
+    "es": "Conversación restaurada"
+  },
+  "Ajouter à la réponse": {
+    "fr": "Ajouter à la réponse",
+    "en": "Add to reply",
+    "de": "Zur Antwort hinzufügen",
+    "es": "Añadir a la respuesta"
+  },
+  "Citer le texte sélectionné dans votre message": {
+    "fr": "Citer le texte sélectionné dans votre message",
+    "en": "Quote selected text in your message",
+    "de": "Ausgewählten Text in Ihrer Nachricht zitieren",
+    "es": "Citar el texto seleccionado en tu mensaje"
+  },
+  "Chemin d’archivage indisponible": {
+    "fr": "Chemin d’archivage indisponible",
+    "en": "Archive path unavailable",
+    "de": "Archivpfad nicht verfügbar",
+    "es": "Ruta de archivo no disponible"
+  },
+  "Retour à l’historique": {
+    "fr": "Retour à l’historique",
+    "en": "Back to history",
+    "de": "Zurück zum Verlauf",
+    "es": "Volver al historial"
+  },
+  "Choisir le modèle": {
+    "fr": "Choisir le modèle",
+    "en": "Choose model",
+    "de": "Modell auswählen",
+    "es": "Elegir modelo"
+  },
+  "Solde OVHcloud": {
+    "fr": "Solde OVHcloud",
+    "en": "OVHcloud balance",
+    "de": "OVHcloud-Guthaben",
+    "es": "Saldo OVHcloud"
+  },
+  "Configurer la clé OVH": {
+    "fr": "Configurer la clé OVH",
+    "en": "Configure OVH key",
+    "de": "OVH-Schlüssel konfigurieren",
+    "es": "Configurar la clave OVH"
+  },
+  "Configurer la clé": {
+    "fr": "Configurer la clé",
+    "en": "Configure key",
+    "de": "Schlüssel konfigurieren",
+    "es": "Configurar clave"
+  },
+  "Conversations": {
+    "fr": "Conversations",
+    "en": "Conversations",
+    "de": "Unterhaltungen",
+    "es": "Conversaciones"
+  },
+  "Chargement du chemin d’archivage…": {
+    "fr": "Chargement du chemin d’archivage…",
+    "en": "Loading archive path…",
+    "de": "Archivpfad wird geladen…",
+    "es": "Cargando ruta de archivo…"
+  },
+  "Fermer": {
+    "fr": "Fermer",
+    "en": "Close",
+    "de": "Schließen",
+    "es": "Cerrar"
+  },
+  "Chargement…": {
+    "fr": "Chargement…",
+    "en": "Loading…",
+    "de": "Wird geladen…",
+    "es": "Cargando…"
+  },
+  "Supprimer définitivement ?": {
+    "fr": "Supprimer définitivement ?",
+    "en": "Permanently delete?",
+    "de": "Endgültig löschen?",
+    "es": "¿Eliminar definitivamente?"
+  },
+  "Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.": {
+    "fr": "Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.",
+    "en": "The messages, attachments and memory of this conversation will be deleted. This action cannot be undone.",
+    "de": "Die Nachrichten, Anhänge und der Speicher dieser Unterhaltung werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+    "es": "Se eliminarán los mensajes, los adjuntos y la memoria de esta conversación. Esta acción es irreversible."
+  },
+  "Annuler": {
+    "fr": "Annuler",
+    "en": "Cancel",
+    "de": "Abbrechen",
+    "es": "Cancelar"
+  },
+  "Supprimer définitivement": {
+    "fr": "Supprimer définitivement",
+    "en": "Permanently delete",
+    "de": "Endgültig löschen",
+    "es": "Eliminar definitivamente"
+  },
+  "Modèles OVHcloud": {
+    "fr": "Modèles OVHcloud",
+    "en": "OVHcloud models",
+    "de": "OVHcloud-Modelle",
+    "es": "Modelos OVHcloud"
+  },
+  "Catalogue et tarifs en direct": {
+    "fr": "Catalogue et tarifs en direct",
+    "en": "Live catalog and pricing",
+    "de": "Aktueller Katalog und Preise",
+    "es": "Catálogo y precios en directo"
+  },
+  "Rechercher un modèle…": {
+    "fr": "Rechercher un modèle…",
+    "en": "Search models…",
+    "de": "Modelle suchen…",
+    "es": "Buscar un modelo…"
+  },
+  "Actualiser les tarifs": {
+    "fr": "Actualiser les tarifs",
+    "en": "Refresh prices",
+    "de": "Preise aktualisieren",
+    "es": "Actualizar precios"
+  },
+  "Chargement du catalogue…": {
+    "fr": "Chargement du catalogue…",
+    "en": "Loading catalog…",
+    "de": "Katalog wird geladen…",
+    "es": "Cargando catálogo…"
+  },
+  "Tarifs OVHcloud HT. Les modèles non conversationnels sont affichés à titre informatif.": {
+    "fr": "Tarifs OVHcloud HT. Les modèles non conversationnels sont affichés à titre informatif.",
+    "en": "OVHcloud prices exclude tax. Non-chat models are shown for information.",
+    "de": "OVHcloud-Preise ohne Steuern. Nicht-Chat-Modelle werden zur Information angezeigt.",
+    "es": "Precios OVHcloud sin impuestos. Los modelos no conversacionales se muestran a título informativo."
+  },
+  "Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.": {
+    "fr": "Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.",
+    "en": "I can analyze images, read and edit files, search the project and run commands.",
+    "de": "Ich kann Bilder analysieren, Dateien lesen und bearbeiten, das Projekt durchsuchen und Befehle ausführen.",
+    "es": "Puedo analizar imágenes, leer y editar archivos, buscar en el proyecto y ejecutar comandos."
+  },
+  "Demander à {0}…": {
+    "fr": "Demander à {0}…",
+    "en": "Ask {0}…",
+    "de": "{0} fragen…",
+    "es": "Preguntar a {0}…"
+  },
+  "Joindre une image": {
+    "fr": "Joindre une image",
+    "en": "Attach image",
+    "de": "Bild anhängen",
+    "es": "Adjuntar imagen"
+  },
+  "Basculer le niveau d’accès": {
+    "fr": "Basculer le niveau d’accès",
+    "en": "Toggle access level",
+    "de": "Zugriffsstufe wechseln",
+    "es": "Cambiar nivel de acceso"
+  },
+  "Configurer ou actualiser le solde OVHcloud": {
+    "fr": "Configurer ou actualiser le solde OVHcloud",
+    "en": "Configure or refresh OVHcloud balance",
+    "de": "OVHcloud-Guthaben konfigurieren oder aktualisieren",
+    "es": "Configurar o actualizar el saldo OVHcloud"
+  },
+  "Solde : chargement…": {
+    "fr": "Solde : chargement…",
+    "en": "Balance: loading…",
+    "de": "Guthaben: wird geladen…",
+    "es": "Saldo: cargando…"
+  },
+  "Arrêter": {
+    "fr": "Arrêter",
+    "en": "Stop",
+    "de": "Stoppen",
+    "es": "Detener"
+  },
+  "Secret OVH invalide.": {
+    "fr": "Secret OVH invalide.",
+    "en": "Invalid OVH secret.",
+    "de": "Ungültiges OVH-Geheimnis.",
+    "es": "Secreto OVH no válido."
+  },
+  "Clé OVHcloud AI Endpoints": {
+    "fr": "Clé OVHcloud AI Endpoints",
+    "en": "OVHcloud AI Endpoints key",
+    "de": "OVHcloud-AI-Endpoints-Schlüssel",
+    "es": "Clave OVHcloud AI Endpoints"
+  },
+  "La clé sera conservée sur le serveur dans un fichier privé, même après redémarrage.": {
+    "fr": "La clé sera conservée sur le serveur dans un fichier privé, même après redémarrage.",
+    "en": "The key will be stored in a private file on the server and kept after restarts.",
+    "de": "Der Schlüssel wird in einer privaten Datei auf dem Server gespeichert und bleibt nach Neustarts erhalten.",
+    "es": "La clave se guardará en un archivo privado del servidor y se conservará tras reiniciar."
+  },
+  "Impossible d’enregistrer la clé OVH sur le serveur. Vérifie les droits du dossier de secrets serveur.": {
+    "fr": "Impossible d’enregistrer la clé OVH sur le serveur. Vérifie les droits du dossier de secrets serveur.",
+    "en": "Unable to save the OVH key on the server. Check the server secrets directory permissions.",
+    "de": "Der OVH-Schlüssel konnte nicht auf dem Server gespeichert werden. Prüfen Sie die Berechtigungen des Geheimnisverzeichnisses.",
+    "es": "No se puede guardar la clave OVH en el servidor. Comprueba los permisos del directorio de secretos."
+  },
+  "États-Unis (OVHcloud US)": {
+    "fr": "États-Unis (OVHcloud US)",
+    "en": "United States (OVHcloud US)",
+    "de": "USA (OVHcloud US)",
+    "es": "Estados Unidos (OVHcloud US)"
+  },
+  "Facturation OVHcloud · région du compte": {
+    "fr": "Facturation OVHcloud · région du compte",
+    "en": "OVHcloud billing · account region",
+    "de": "OVHcloud-Abrechnung · Kontoregion",
+    "es": "Facturación OVHcloud · región de la cuenta"
+  },
+  "Le solde requiert des identifiants API OVHcloud distincts de la clé AI Endpoints, avec des droits GET uniquement sur usage et credit.": {
+    "fr": "Le solde requiert des identifiants API OVHcloud distincts de la clé AI Endpoints, avec des droits GET uniquement sur usage et credit.",
+    "en": "Balance tracking requires OVHcloud API credentials separate from the AI Endpoints key, with GET-only access to usage and credit.",
+    "de": "Die Guthabenanzeige benötigt separate OVHcloud-API-Zugangsdaten mit ausschließlich GET-Rechten für usage und credit.",
+    "es": "El saldo requiere credenciales API OVHcloud distintas de la clave AI Endpoints, con permisos solo GET sobre usage y credit."
+  },
+  "J’ai les identifiants": {
+    "fr": "J’ai les identifiants",
+    "en": "I have the credentials",
+    "de": "Ich habe die Zugangsdaten",
+    "es": "Tengo las credenciales"
+  },
+  "Créer les identifiants": {
+    "fr": "Créer les identifiants",
+    "en": "Create credentials",
+    "de": "Zugangsdaten erstellen",
+    "es": "Crear credenciales"
+  },
+  "Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans OVH Agent.": {
+    "fr": "Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans OVH Agent.",
+    "en": "Create read-only credentials, then click the balance icon again.",
+    "de": "Erstellen Sie schreibgeschützte Zugangsdaten und klicken Sie dann erneut auf das Guthabensymbol.",
+    "es": "Crea credenciales de solo lectura y vuelve a pulsar el icono del saldo."
+  },
+  "Facturation OVHcloud · 1/4": {
+    "fr": "Facturation OVHcloud · 1/4",
+    "en": "OVHcloud billing · 1/4",
+    "de": "OVHcloud-Abrechnung · 1/4",
+    "es": "Facturación OVHcloud · 1/4"
+  },
+  "Facturation OVHcloud · 2/4": {
+    "fr": "Facturation OVHcloud · 2/4",
+    "en": "OVHcloud billing · 2/4",
+    "de": "OVHcloud-Abrechnung · 2/4",
+    "es": "Facturación OVHcloud · 2/4"
+  },
+  "Facturation OVHcloud · 3/4": {
+    "fr": "Facturation OVHcloud · 3/4",
+    "en": "OVHcloud billing · 3/4",
+    "de": "OVHcloud-Abrechnung · 3/4",
+    "es": "Facturación OVHcloud · 3/4"
+  },
+  "Facturation OVHcloud · 4/4": {
+    "fr": "Facturation OVHcloud · 4/4",
+    "en": "OVHcloud billing · 4/4",
+    "de": "OVHcloud-Abrechnung · 4/4",
+    "es": "Facturación OVHcloud · 4/4"
+  },
+  "ID du projet Public Cloud qui porte AI Endpoints.": {
+    "fr": "ID du projet Public Cloud qui porte AI Endpoints.",
+    "en": "ID of the Public Cloud project hosting AI Endpoints.",
+    "de": "ID des Public-Cloud-Projekts für AI Endpoints.",
+    "es": "ID del proyecto Public Cloud que aloja AI Endpoints."
+  },
+  "Identifiant du projet Public Cloud": {
+    "fr": "Identifiant du projet Public Cloud",
+    "en": "Public Cloud project ID",
+    "de": "Public-Cloud-Projekt-ID",
+    "es": "Identificador del proyecto Public Cloud"
+  },
+  "L’identifiant du projet est requis.": {
+    "fr": "L’identifiant du projet est requis.",
+    "en": "The project ID is required.",
+    "de": "Die Projekt-ID ist erforderlich.",
+    "es": "Se requiere el identificador del proyecto."
+  },
+  "Application Key OVH avec droits GET sur usage et credit.": {
+    "fr": "Application Key OVH avec droits GET sur usage et credit.",
+    "en": "OVH Application Key with GET permissions on usage and credit.",
+    "de": "OVH Application Key mit GET-Rechten für usage und credit.",
+    "es": "Application Key OVH con permisos GET sobre usage y credit."
+  },
+  "Application Secret OVH. Stockage dans les secrets serveur Docker.": {
+    "fr": "Application Secret OVH. Stockage dans les secrets serveur Docker.",
+    "en": "OVH Application Secret. Stored in Docker server secrets.",
+    "de": "OVH Application Secret. Speicherung in Docker-Server-Geheimnissen.",
+    "es": "Application Secret OVH. Se guarda en los secretos del servidor Docker."
+  },
+  "Consumer Key OVH en lecture seule.": {
+    "fr": "Consumer Key OVH en lecture seule.",
+    "en": "Read-only OVH Consumer Key.",
+    "de": "Schreibgeschützter OVH Consumer Key.",
+    "es": "Consumer Key OVH de solo lectura."
+  },
+  "L’API de facturation ne répond pas.": {
+    "fr": "L’API de facturation ne répond pas.",
+    "en": "The billing API is not responding.",
+    "de": "Die Abrechnungs-API antwortet nicht.",
+    "es": "La API de facturación no responde."
+  },
+  "Réponse de facturation illisible.": {
+    "fr": "Réponse de facturation illisible.",
+    "en": "Unreadable billing response.",
+    "de": "Unlesbare Abrechnungsantwort.",
+    "es": "Respuesta de facturación ilegible."
+  },
+  "Historique indisponible : {0}": {
+    "fr": "Historique indisponible : {0}",
+    "en": "History unavailable: {0}",
+    "de": "Verlauf nicht verfügbar: {0}",
+    "es": "Historial no disponible: {0}"
+  },
+  "L’agent ne s’est pas arrêté ; suppression annulée.": {
+    "fr": "L’agent ne s’est pas arrêté ; suppression annulée.",
+    "en": "The agent did not stop; deletion cancelled.",
+    "de": "Der Agent wurde nicht beendet; Löschen abgebrochen.",
+    "es": "El agente no se detuvo; eliminación cancelada."
+  },
+  "Suppression impossible : {0}": {
+    "fr": "Suppression impossible : {0}",
+    "en": "Unable to delete: {0}",
+    "de": "Löschen nicht möglich: {0}",
+    "es": "No se puede eliminar: {0}"
+  },
+  "Impossible de lire ou conserver la clé OVH sur le serveur.": {
+    "fr": "Impossible de lire ou conserver la clé OVH sur le serveur.",
+    "en": "Unable to read or store the OVH key on the server.",
+    "de": "Der OVH-Schlüssel konnte nicht auf dem Server gelesen oder gespeichert werden.",
+    "es": "No se puede leer o guardar la clave OVH en el servidor."
+  },
+  "Aucune clé OVH n’est configurée.": {
+    "fr": "Aucune clé OVH n’est configurée.",
+    "en": "No OVH key configured.",
+    "de": "Kein OVH-Schlüssel konfiguriert.",
+    "es": "No hay ninguna clave OVH configurada."
+  },
+  "Aucune clé OVH n’est configurée": {
+    "fr": "Aucune clé OVH n’est configurée",
+    "en": "No OVH key configured",
+    "de": "Kein OVH-Schlüssel konfiguriert",
+    "es": "No hay ninguna clave OVH configurada"
+  },
+  "Impossible de démarrer OVH Agent : {0}": {
+    "fr": "Impossible de démarrer OVH Agent : {0}",
+    "en": "Unable to start OVH Agent: {0}",
+    "de": "OVH Agent konnte nicht gestartet werden: {0}",
+    "es": "No se puede iniciar OVH Agent: {0}"
+  },
+  "OVH Agent s’est arrêté (code {0}{1}).": {
+    "fr": "OVH Agent s’est arrêté (code {0}{1}).",
+    "en": "OVH Agent stopped (code {0}{1}).",
+    "de": "OVH Agent wurde beendet (Code {0}{1}).",
+    "es": "OVH Agent se detuvo (código {0}{1})."
+  },
+  "Fichier introuvable : {0}": {
+    "fr": "Fichier introuvable : {0}",
+    "en": "File not found: {0}",
+    "de": "Datei nicht gefunden: {0}",
+    "es": "Archivo no encontrado: {0}"
+  },
+  "Identifiant de conversation invalide.": {
+    "fr": "Identifiant de conversation invalide.",
+    "en": "Invalid conversation ID.",
+    "de": "Ungültige Unterhaltungs-ID.",
+    "es": "Identificador de conversación no válido."
+  },
+  "Conversation introuvable.": {
+    "fr": "Conversation introuvable.",
+    "en": "Conversation not found.",
+    "de": "Unterhaltung nicht gefunden.",
+    "es": "Conversación no encontrada."
+  },
+  "Chemin de conversation invalide.": {
+    "fr": "Chemin de conversation invalide.",
+    "en": "Invalid conversation path.",
+    "de": "Ungültiger Unterhaltungspfad.",
+    "es": "Ruta de conversación no válida."
+  },
+  "Le dossier existe encore après suppression.": {
+    "fr": "Le dossier existe encore après suppression.",
+    "en": "The directory still exists after deletion.",
+    "de": "Das Verzeichnis existiert nach dem Löschen noch.",
+    "es": "El directorio sigue existiendo tras la eliminación."
+  },
+  "Liste des fichiers": {
+    "fr": "Liste des fichiers",
+    "en": "List files",
+    "de": "Dateien auflisten",
+    "es": "Listar archivos"
+  },
+  "Dossier introuvable": {
+    "fr": "Dossier introuvable",
+    "en": "Directory not found",
+    "de": "Verzeichnis nicht gefunden",
+    "es": "Directorio no encontrado"
+  },
+  "Liste partielle : délai de 15 secondes atteint": {
+    "fr": "Liste partielle : délai de 15 secondes atteint",
+    "en": "Partial list: 15-second timeout",
+    "de": "Unvollständige Liste: Zeitlimit von 15 Sekunden erreicht",
+    "es": "Lista parcial: límite de 15 segundos alcanzado"
+  },
+  "Liste impossible": {
+    "fr": "Liste impossible",
+    "en": "Unable to list files",
+    "de": "Dateien konnten nicht aufgelistet werden",
+    "es": "No se pueden listar los archivos"
+  },
+  "Erreur de lecture du dossier": {
+    "fr": "Erreur de lecture du dossier",
+    "en": "Directory read error",
+    "de": "Fehler beim Lesen des Verzeichnisses",
+    "es": "Error al leer el directorio"
+  },
+  "{0} éléments": {
+    "fr": "{0} éléments",
+    "en": "{0} items",
+    "de": "{0} Einträge",
+    "es": "{0} elementos"
+  },
+  "Lecture du fichier": {
+    "fr": "Lecture du fichier",
+    "en": "Reading file",
+    "de": "Datei wird gelesen",
+    "es": "Leyendo archivo"
+  },
+  "{0} · lignes {1}–{2}": {
+    "fr": "{0} · lignes {1}–{2}",
+    "en": "{0} · lines {1}–{2}",
+    "de": "{0} · Zeilen {1}–{2}",
+    "es": "{0} · líneas {1}–{2}"
+  },
+  "{0} lignes lues": {
+    "fr": "{0} lignes lues",
+    "en": "{0} lines read",
+    "de": "{0} Zeilen gelesen",
+    "es": "{0} líneas leídas"
+  },
+  "Recherche dans le projet": {
+    "fr": "Recherche dans le projet",
+    "en": "Searching project",
+    "de": "Projekt wird durchsucht",
+    "es": "Buscando en el proyecto"
+  },
+  "Recherche interrompue après 30 secondes": {
+    "fr": "Recherche interrompue après 30 secondes",
+    "en": "Search stopped after 30 seconds",
+    "de": "Suche nach 30 Sekunden abgebrochen",
+    "es": "Búsqueda interrumpida tras 30 segundos"
+  },
+  "Recherche impossible": {
+    "fr": "Recherche impossible",
+    "en": "Search unavailable",
+    "de": "Suche nicht möglich",
+    "es": "No se puede realizar la búsqueda"
+  },
+  "Erreur de recherche": {
+    "fr": "Erreur de recherche",
+    "en": "Search error",
+    "de": "Suchfehler",
+    "es": "Error de búsqueda"
+  },
+  "{0} correspondances": {
+    "fr": "{0} correspondances",
+    "en": "{0} matches",
+    "de": "{0} Treffer",
+    "es": "{0} coincidencias"
+  },
+  "Modifier un fichier": {
+    "fr": "Modifier un fichier",
+    "en": "Edit a file",
+    "de": "Datei bearbeiten",
+    "es": "Modificar un archivo"
+  },
+  "Modification du fichier": {
+    "fr": "Modification du fichier",
+    "en": "Editing file",
+    "de": "Datei wird bearbeitet",
+    "es": "Modificando archivo"
+  },
+  "Modification appliquée": {
+    "fr": "Modification appliquée",
+    "en": "Change applied",
+    "de": "Änderung angewendet",
+    "es": "Cambio aplicado"
+  },
+  "Créer un fichier": {
+    "fr": "Créer un fichier",
+    "en": "Create a file",
+    "de": "Datei erstellen",
+    "es": "Crear un archivo"
+  },
+  "Remplacer un fichier": {
+    "fr": "Remplacer un fichier",
+    "en": "Replace a file",
+    "de": "Datei ersetzen",
+    "es": "Reemplazar un archivo"
+  },
+  "{0} octets écrits": {
+    "fr": "{0} octets écrits",
+    "en": "{0} bytes written",
+    "de": "{0} Bytes geschrieben",
+    "es": "{0} bytes escritos"
+  },
+  "Commande dans le conteneur IDE": {
+    "fr": "Commande dans le conteneur IDE",
+    "en": "Command in IDE container",
+    "de": "Befehl im IDE-Container",
+    "es": "Comando en el contenedor IDE"
+  },
+  "Exécuter une commande": {
+    "fr": "Exécuter une commande",
+    "en": "Run a command",
+    "de": "Befehl ausführen",
+    "es": "Ejecutar un comando"
+  },
+  "Interrompue après 120 secondes": {
+    "fr": "Interrompue après 120 secondes",
+    "en": "Stopped after 120 seconds",
+    "de": "Nach 120 Sekunden abgebrochen",
+    "es": "Interrumpido tras 120 segundos"
+  },
+  "{0} · code de sortie {1}": {
+    "fr": "{0} · code de sortie {1}",
+    "en": "{0} · exit code {1}",
+    "de": "{0} · Rückgabecode {1}",
+    "es": "{0} · código de salida {1}"
+  },
+  "Exécuter sur {0}": {
+    "fr": "Exécuter sur {0}",
+    "en": "Run on {0}",
+    "de": "Auf {0} ausführen",
+    "es": "Ejecutar en {0}"
+  },
+  "Commande SSH sur {0}": {
+    "fr": "Commande SSH sur {0}",
+    "en": "SSH command on {0}",
+    "de": "SSH-Befehl auf {0}",
+    "es": "Comando SSH en {0}"
+  },
+  "{0} : délai de 120 secondes dépassé": {
+    "fr": "{0} : délai de 120 secondes dépassé",
+    "en": "{0}: 120-second timeout",
+    "de": "{0}: Zeitlimit von 120 Sekunden überschritten",
+    "es": "{0}: límite de 120 segundos superado"
+  },
+  "Recherche sur Internet": {
+    "fr": "Recherche sur Internet",
+    "en": "Searching the web",
+    "de": "Internetsuche",
+    "es": "Buscando en Internet"
+  },
+  "{0} résultats web": {
+    "fr": "{0} résultats web",
+    "en": "{0} web results",
+    "de": "{0} Webergebnisse",
+    "es": "{0} resultados web"
+  },
+  "Recherche web indisponible": {
+    "fr": "Recherche web indisponible",
+    "en": "Web search unavailable",
+    "de": "Websuche nicht verfügbar",
+    "es": "Búsqueda web no disponible"
+  },
+  "Lecture d’une page web": {
+    "fr": "Lecture d’une page web",
+    "en": "Reading web page",
+    "de": "Webseite wird gelesen",
+    "es": "Leyendo página web"
+  },
+  "{0} caractères lus": {
+    "fr": "{0} caractères lus",
+    "en": "{0} characters read",
+    "de": "{0} Zeichen gelesen",
+    "es": "{0} caracteres leídos"
+  },
+  "Page inaccessible": {
+    "fr": "Page inaccessible",
+    "en": "Page unavailable",
+    "de": "Seite nicht verfügbar",
+    "es": "Página no disponible"
+  },
+  "Le modèle {0} n’est pas compatible avec le chat agent.": {
+    "fr": "Le modèle {0} n’est pas compatible avec le chat agent.",
+    "en": "Model {0} is not compatible with agent chat.",
+    "de": "Modell {0} ist nicht mit dem Agent-Chat kompatibel.",
+    "es": "El modelo {0} no es compatible con el chat del agente."
+  },
+  "Archive introuvable.": {
+    "fr": "Archive introuvable.",
+    "en": "Archive not found.",
+    "de": "Archiv nicht gefunden.",
+    "es": "Archivo no encontrado."
+  },
+  "Conversation à reprendre introuvable.": {
+    "fr": "Conversation à reprendre introuvable.",
+    "en": "Conversation to resume not found.",
+    "de": "Die fortzusetzende Unterhaltung wurde nicht gefunden.",
+    "es": "No se encontró la conversación que se quiere reanudar."
+  },
+  "Aucune tâche interrompue à reprendre.": {
+    "fr": "Aucune tâche interrompue à reprendre.",
+    "en": "No interrupted task to resume.",
+    "de": "Keine unterbrochene Aufgabe zum Fortsetzen.",
+    "es": "No hay ninguna tarea interrumpida que reanudar."
+  },
+  "modèle Vision temporaire": {
+    "fr": "modèle Vision temporaire",
+    "en": "temporary Vision model",
+    "de": "temporäres Vision-Modell",
+    "es": "modelo Vision temporal"
+  },
+  "modèle gratuit compatible": {
+    "fr": "modèle gratuit compatible",
+    "en": "compatible free model",
+    "de": "kompatibles kostenloses Modell",
+    "es": "modelo gratuito compatible"
+  },
+  "{0} analyse la demande…": {
+    "fr": "{0} analyse la demande…",
+    "en": "{0} is analyzing the request…",
+    "de": "{0} analysiert die Anfrage…",
+    "es": "{0} está analizando la solicitud…"
+  },
+  "{0} analyse {1} image{2}…": {
+    "fr": "{0} analyse {1} image{2}…",
+    "en": "{0} is analyzing images: {1}…",
+    "de": "{0} analysiert Bilder: {1}…",
+    "es": "{0} está analizando imágenes: {1}…"
+  },
+  "coût resserré selon le solde OVHcloud": {
+    "fr": "coût resserré selon le solde OVHcloud",
+    "en": "cost constrained by OVHcloud balance",
+    "de": "Kosten durch OVHcloud-Guthaben begrenzt",
+    "es": "coste ajustado al saldo OVHcloud"
+  },
+  "meilleur coût utile pour une tâche complexe": {
+    "fr": "meilleur coût utile pour une tâche complexe",
+    "en": "best suitable cost for a complex task",
+    "de": "bester geeigneter Preis für eine komplexe Aufgabe",
+    "es": "mejor coste adecuado para una tarea compleja"
+  },
+  "meilleur coût utile": {
+    "fr": "meilleur coût utile",
+    "en": "best suitable cost",
+    "de": "bester geeigneter Preis",
+    "es": "mejor coste adecuado"
+  },
+  "Actualisation du catalogue OVHcloud…": {
+    "fr": "Actualisation du catalogue OVHcloud…",
+    "en": "Refreshing OVHcloud catalog…",
+    "de": "OVHcloud-Katalog wird aktualisiert…",
+    "es": "Actualizando catálogo OVHcloud…"
+  },
+  "{0} : format non pris en charge. Utilise JPEG, PNG, WebP ou GIF.": {
+    "fr": "{0} : format non pris en charge. Utilise JPEG, PNG, WebP ou GIF.",
+    "en": "{0}: unsupported format. Use JPEG, PNG, WebP or GIF.",
+    "de": "{0}: nicht unterstütztes Format. Verwenden Sie JPEG, PNG, WebP oder GIF.",
+    "es": "{0}: formato no compatible. Usa JPEG, PNG, WebP o GIF."
+  },
+  "Retirer {0}": {
+    "fr": "Retirer {0}",
+    "en": "Remove {0}",
+    "de": "{0} entfernen",
+    "es": "Quitar {0}"
+  },
+  "Maximum {0} images par message.": {
+    "fr": "Maximum {0} images par message.",
+    "en": "Maximum {0} images per message.",
+    "de": "Maximal {0} Bilder pro Nachricht.",
+    "es": "Máximo {0} imágenes por mensaje."
+  },
+  "Clé OVH absente": {
+    "fr": "Clé OVH absente",
+    "en": "OVH key missing",
+    "de": "OVH-Schlüssel fehlt",
+    "es": "Falta la clave OVH"
+  },
+  "Aucun modèle Vision n’est disponible dans le catalogue OVHcloud.": {
+    "fr": "Aucun modèle Vision n’est disponible dans le catalogue OVHcloud.",
+    "en": "No Vision model is available in the OVHcloud catalog.",
+    "de": "Im OVHcloud-Katalog ist kein Vision-Modell verfügbar.",
+    "es": "No hay modelos Vision disponibles en el catálogo OVHcloud."
+  },
+  "Aucun modèle OVHcloud compatible n’est disponible.": {
+    "fr": "Aucun modèle OVHcloud compatible n’est disponible.",
+    "en": "No compatible OVHcloud model available.",
+    "de": "Kein kompatibles OVHcloud-Modell verfügbar.",
+    "es": "No hay modelos OVHcloud compatibles disponibles."
+  },
+  "Tu peux joindre au maximum {0} images par message.": {
+    "fr": "Tu peux joindre au maximum {0} images par message.",
+    "en": "You can attach up to {0} images per message.",
+    "de": "Sie können bis zu {0} Bilder pro Nachricht anhängen.",
+    "es": "Puedes adjuntar hasta {0} imágenes por mensaje."
+  },
+  "L’image {0} est invalide.": {
+    "fr": "L’image {0} est invalide.",
+    "en": "Image {0} is invalid.",
+    "de": "Bild {0} ist ungültig.",
+    "es": "La imagen {0} no es válida."
+  },
+  "Le format de l’image {0} est invalide.": {
+    "fr": "Le format de l’image {0} est invalide.",
+    "en": "Image {0} has an invalid format.",
+    "de": "Das Format von Bild {0} ist ungültig.",
+    "es": "El formato de la imagen {0} no es válido."
+  },
+  "Formats acceptés : JPEG, PNG, WebP et GIF.": {
+    "fr": "Formats acceptés : JPEG, PNG, WebP et GIF.",
+    "en": "Accepted formats: JPEG, PNG, WebP and GIF.",
+    "de": "Akzeptierte Formate: JPEG, PNG, WebP und GIF.",
+    "es": "Formatos aceptados: JPEG, PNG, WebP y GIF."
+  },
+  "L’image {0} est illisible.": {
+    "fr": "L’image {0} est illisible.",
+    "en": "Image {0} cannot be read.",
+    "de": "Bild {0} kann nicht gelesen werden.",
+    "es": "No se puede leer la imagen {0}."
+  },
+  "L’image {0} est vide.": {
+    "fr": "L’image {0} est vide.",
+    "en": "Image {0} is empty.",
+    "de": "Bild {0} ist leer.",
+    "es": "La imagen {0} está vacía."
+  },
+  "L’image {0} dépasse la limite de 10 Mo.": {
+    "fr": "L’image {0} dépasse la limite de 10 Mo.",
+    "en": "Image {0} exceeds the 10 MB limit.",
+    "de": "Bild {0} überschreitet das Limit von 10 MB.",
+    "es": "La imagen {0} supera el límite de 10 MB."
+  }
+}
