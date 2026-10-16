@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.13.3
+
+- Marketplace package uses the stopyz publisher.
+- User timestamps appear outside message bubbles; assistant timestamps align left.
+
 ## 1.13.2
 
 - Persistent follow-up queue and safe steering of active tasks.

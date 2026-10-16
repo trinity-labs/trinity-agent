@@ -6,7 +6,7 @@ const {execFileSync} = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json')));
-const publisher = process.env.MARKETPLACE_PUBLISHER || 'trinity-labs';
+const publisher = process.env.MARKETPLACE_PUBLISHER || 'stopyz';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
 try {

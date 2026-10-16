@@ -3,7 +3,7 @@
 ## One-time Marketplace connection
 
 The VS Code Marketplace requires a publisher controlled by the maintainer. The
-requested public publisher is `trinity-labs`; the `trinity` ID in the existing
+requested public publisher is `stopyz`; the `trinity` ID in the existing
 local Docker manifest is retained for compatibility. Neither proves Marketplace ownership.
 Do not enable publishing until the publisher ID has been verified.
 
@@ -14,7 +14,7 @@ Do not enable publishing until the publisher ID has been verified.
    subject `repo:trinity-labs/trinity-agent:environment:marketplace`, audience
    `api://AzureADTokenExchange`. Authorize that identity as a Contributor on the
    Marketplace publisher, following Microsoft's publishing guide.
-3. Set GitHub repository variables `MARKETPLACE_PUBLISHER=trinity-labs`,
+3. Set GitHub repository variables `MARKETPLACE_PUBLISHER=stopyz`,
    `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`. The workflow uses Azure login with OIDC
    and `vsce publish --azure-credential`; no paid Azure subscription is requested
    by the workflow (`allow-no-subscriptions: true`).
