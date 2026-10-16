@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.13.5
+
+- Add purple and black square markers to Marketplace README headings.
+
 ## 1.13.4
 
 - Enable verified automated Marketplace releases through GitHub Actions.

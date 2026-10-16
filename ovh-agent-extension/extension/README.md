@@ -1,10 +1,10 @@
-# TRINITY Agent
+# 🟪 TRINITY Agent
 
 An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with conversation archives, tool approvals, task resumption, steering and a persistent follow-up queue.
 
 **This extension is the client for the self-hosted TRINITY Agent backend. Installing this VSIX alone does not install Python, the agent backend or an OVH account.** Use it in the supplied Linux Docker environment, or connect VS Code Remote to that environment. It is not an official OVHcloud or OpenAI extension.
 
-## Install and configure
+## ⬛ Install and configure
 
 1. Deploy the companion backend using the [repository installation guide](https://github.com/trinity-labs/trinity-agent/blob/main/README.rst) and its Docker Compose example. The backend and Python dependencies must be installed on the same host as the VS Code extension.
 2. Install this extension in that environment. With VS Code Remote, install it on the remote host.
@@ -14,7 +14,7 @@ An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with
 
 The extension itself is free and licensed under **0BSD**. OVHcloud API usage and any hosting are charged by their providers. No model subscription or API credit is included.
 
-## Features
+## ⬛ Features
 
 - Model selection and context compaction with local Markdown memory.
 - Persistent conversation history, deletion and interrupted-task resumption.
@@ -24,11 +24,11 @@ The extension itself is free and licensed under **0BSD**. OVHcloud API usage and
 - French, English, German and Spanish interface; automatic locale or Docker override.
 - Configurable names, colors and custom logos in self-hosted deployments.
 
-## Privacy and storage
+## ⬛ Privacy and storage
 
 Prompts, relevant workspace contents, tool results and images can be sent to the configured AI endpoint. Conversations, task state and the follow-up queue are stored on the backend's persistent volume. Deleting a local conversation does not delete provider-side logs. The extension does not include a separate analytics service.
 
-## Source, issues and licensing
+## ⬛ Source, issues and licensing
 
 [GitHub](https://github.com/trinity-labs/trinity-agent) · [Codeberg](https://codeberg.org/trinity-labs/trinity-agent) · [Issues](https://github.com/trinity-labs/trinity-agent/issues)
 

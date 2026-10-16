@@ -2,7 +2,7 @@
   "name": "ovh-agent",
   "displayName": "TRINITY Agent",
   "description": "Agent de développement utilisant OVHcloud AI Endpoints.",
-  "version": "1.13.4",
+  "version": "1.13.5",
   "icon": "media/ovh-agent-brand-000e9c.svg",
   "publisher": "trinity",
   "engines": {
