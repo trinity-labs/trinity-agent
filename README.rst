@@ -135,3 +135,23 @@ Recreate the service with ``docker compose up -d --no-build vscode`` and reload
 the browser. Empty or invalid settings restore the default icons. Content-based
 asset filenames refresh the icon cache when a file changes. Custom images are
 excluded from the public export, whose manifest uses the bundled defaults.
+
+Interface icons
+---------------
+
+Interface controls use Font Awesome Free (CC BY 4.0 icons), attributed in
+``media/FontAwesome.LICENSE.txt``. The build selects 27 solid icons and minifies
+a shared renderer; no webfont, CDN or Font Awesome runtime is loaded.
+Application and activity-bar branding logos remain independently configurable.
+VS Code's native status bar displays the brand name as text, since it does not
+support custom SVG icons. Native command icons include light/dark SVG variants.
+
+To rebuild after changing the selection::
+
+    cd ovh-agent-extension/extension
+    npm ci
+    npm run build:icons
+    npm test
+
+Font Awesome and Terser are build-only development dependencies. Generated
+assets are versioned and work with production dependencies alone.

@@ -290,24 +290,6 @@ main {
   user-select: none;
 }
 .activity summary::-webkit-details-marker { display: none; }
-.activity summary::after {
-  content: "⌄";
-  margin-left: auto;
-  transition: transform .15s ease;
-}
-.activity:not([open]) summary::after { transform: rotate(-90deg); }
-.run-spinner {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 11px;
-  border: 1.5px solid color-mix(in srgb, var(--vscode-descriptionForeground) 35%, transparent);
-  border-top-color: var(--vscode-progressBar-background);
-  border-radius: 50%;
-}
-.working .run-spinner { animation: spin .8s linear infinite; }
-.done .run-spinner, .stopped .run-spinner { border: 0; }
-.done .run-spinner::before { content: "✓"; color: var(--vscode-testing-iconPassed, #43a047); }
-.failure .run-spinner { border-color: var(--vscode-errorForeground); animation: none; }
 .activity-list {
   padding: 2px 9px 8px;
   border-top: 1px solid var(--vscode-panel-border);
@@ -357,13 +339,6 @@ main {
   user-select: none;
 }
 .file-change > summary::-webkit-details-marker { display: none; }
-.file-change > summary::after {
-  content: "⌄";
-  margin-left: auto;
-  color: var(--vscode-descriptionForeground);
-  transition: transform .15s ease;
-}
-.file-change:not([open]) > summary::after { transform: rotate(-90deg); }
 .file-change-icon {
   width: 18px;
   height: 18px;
@@ -652,7 +627,6 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .access:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
 .access svg { width: 14px; height: 14px; }
 .access.full { color: #d97706; }
-.access.full svg path:first-child { fill: color-mix(in srgb, currentColor 16%, transparent); }
 .round {
   width: 29px;
   height: 29px;
@@ -795,8 +769,8 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 .activity { border: 0; border-radius: 0; background: transparent; }
 .activity > summary { min-height: 26px; padding: 3px 0; gap: 8px; font-size: 12px; color: var(--vscode-descriptionForeground); }
 .activity-summary-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: .72; }
-.activity > summary::after { flex-shrink: 0; opacity: 0; }
-.activity > summary:hover::after, .activity > summary:focus-visible::after, .activity[open] > summary::after { opacity: .65; }
+.activity > summary > .summary-chevron { flex-shrink: 0; opacity: 0; }
+.activity > summary:hover > .summary-chevron, .activity > summary:focus-visible > .summary-chevron, .activity[open] > summary > .summary-chevron { opacity: .65; }
 .run-indicator { display: inline-flex; width: 17px; height: 17px; flex: 0 0 17px; opacity: .75; }
 .run-indicator svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .activity[open] .activity-list { margin-top: 5px; padding: 4px 0 6px 25px; }
@@ -832,3 +806,18 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 #live-balance .balance-amount.negative { color: var(--vscode-errorForeground, #d32f2f); }
 
 #archive-banner[hidden] { display: none; }
+
+/* Font Awesome Free: selected vectors only, colored by the current branding. */
+svg.fa-icon { display: inline-block; fill: currentColor; stroke: none; flex-shrink: 0; vertical-align: middle; }
+svg.fa-icon path { fill: inherit; stroke: none; }
+.icon svg.fa-icon, .round svg.fa-icon, .access svg.fa-icon,
+#model-picker svg.fa-icon, .run-indicator svg.fa-icon { fill: currentColor; stroke: none; }
+.delete-title-icon.fa-icon { color: #000; fill: currentColor; stroke: none; }
+.activity-icon .fa-icon, .file-change-icon .fa-icon { width: 14px; height: 14px; }
+.attachment-preview button .fa-icon { width: 10px; height: 10px; }
+.summary-chevron { width: 10px; height: 10px; margin-left: auto; transition: transform .15s ease; }
+.activity:not([open]) > summary > .summary-chevron,
+.file-change:not([open]) > summary > .summary-chevron { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .summary-chevron { transition: none; } }
+
+.copy-diff .fa-icon { width: 12px; height: 12px; }

@@ -24,19 +24,28 @@
         "command": "ovhAgent.start",
         "title": "%ovhAgent.start.title%",
         "category": "TRINITY Agent",
-        "icon": "$(hubot)"
+        "icon": {
+          "light": "media/fa-robot-light.svg",
+          "dark": "media/fa-robot-dark.svg"
+        }
       },
       {
         "command": "ovhAgent.configureKey",
         "title": "%ovhAgent.configureKey.title%",
         "category": "TRINITY Agent",
-        "icon": "$(key)"
+        "icon": {
+          "light": "media/fa-key-light.svg",
+          "dark": "media/fa-key-dark.svg"
+        }
       },
       {
         "command": "ovhAgent.configureBilling",
         "title": "%ovhAgent.configureBilling.title%",
         "category": "TRINITY Agent",
-        "icon": "$(credit-card)"
+        "icon": {
+          "light": "media/fa-wallet-light.svg",
+          "dark": "media/fa-wallet-dark.svg"
+        }
       }
     ],
     "viewsContainers": {
@@ -64,10 +73,13 @@
     "sanitize-html": "2.18.1"
   },
   "devDependencies": {
-    "jsdom": "30.1.3"
+    "@fortawesome/free-solid-svg-icons": "7.3.1",
+    "jsdom": "30.1.3",
+    "terser": "5.51.2"
   },
   "scripts": {
-    "test": "node --test test/*.test.cjs"
+    "test": "node --test test/*.test.cjs",
+    "build:icons": "node scripts/build-icons.cjs"
   },
   "license": "0BSD",
   "repository": {

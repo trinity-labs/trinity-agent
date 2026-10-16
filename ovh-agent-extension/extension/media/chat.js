@@ -1,3 +1,4 @@
+const { svg: faIcon } = AgentIcons;
 const uiLanguage = OvhI18n.setLanguage(OvhI18n.resolveLanguage(
   document.body.dataset.language, navigator.languages?.length ? navigator.languages : [navigator.language]));
 const { t } = OvhI18n;
@@ -44,7 +45,7 @@ const sendArrow = send.innerHTML;
 function updateSendButton() {
   const resumable = !busy && resumableArchives.has(activeArchiveId);
   send.innerHTML = resumable
-    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z"/></svg>'
+    ? faIcon("play")
     : sendArrow;
   send.title = resumable ? t("Reprendre la tâche interrompue") : t("Envoyer");
   send.setAttribute("aria-label", send.title);
@@ -273,12 +274,13 @@ function addArchivedAssistant(html, failed = false) {
 function wireFileChangeCopy(details) {
   const copy = details.querySelector(".copy-diff");
   if (!copy) return;
+  copy.innerHTML = faIcon("copy");
   copy.onclick = async (event) => {
     event.preventDefault();
     event.stopPropagation();
     await navigator.clipboard.writeText(details.dataset.diff || "");
-    copy.textContent = "✓";
-    window.setTimeout(() => { copy.textContent = "⧉"; }, 1200);
+    copy.innerHTML = faIcon("check");
+    window.setTimeout(() => { copy.innerHTML = faIcon("copy"); }, 1200);
   };
 }
 
@@ -291,10 +293,11 @@ function createFileChange(data) {
   const summary = document.createElement("summary");
   const icon = document.createElement("span");
   icon.className = "file-change-icon";
-  icon.textContent = data.action === "created" ? "+" : "✎";
+  icon.innerHTML = faIcon(data.action === "created" ? "plus" : "edit");
   const title = document.createElement("strong");
   title.textContent = data.action === "created" ? t("Fichier créé") : t("Fichier modifié");
   summary.append(icon, title);
+  summary.insertAdjacentHTML("beforeend", faIcon("chevron", "summary-chevron"));
 
   const body = document.createElement("div");
   body.className = "file-change-body";
@@ -315,7 +318,7 @@ function createFileChange(data) {
   copy.type = "button";
   copy.title = t("Copier le diff");
   copy.setAttribute("aria-label", t("Copier le diff"));
-  copy.textContent = "⧉";
+  copy.innerHTML = faIcon("copy");
   stats.append(added, removed, copy);
   header.append(path, stats);
 
@@ -415,6 +418,7 @@ function applySnapshot(data) {
   activityRows.clear();
   approvalCards.clear();
   messages.innerHTML = safeHtml(data.html);
+  upgradeSnapshotIcons(messages);
   OvhI18n.translateSnapshot(messages);
   messages.querySelectorAll("details.activity").forEach(activity => { activity.open = false; });
   for (const article of messages.querySelectorAll(".message.failure")) article.remove();
@@ -475,7 +479,7 @@ function renderArchives(items) {
     remove.className = "icon archive-delete";
     remove.title = t("Supprimer définitivement la conversation");
     remove.setAttribute("aria-label", t("Supprimer définitivement : {0}", displayTitle));
-    remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>';
+    remove.innerHTML = faIcon("trash");
     remove.addEventListener("click", () => {
       if (busy) { setStatus(t("Attends la fin de la réponse avant de supprimer une conversation.")); return; }
       selectedArchiveForDeletion = item.id;
@@ -489,7 +493,7 @@ function renderArchives(items) {
       resume.type = "button";
       resume.className = "icon archive-resume";
       resume.setAttribute("aria-label", t("Reprendre la tâche interrompue"));
-      resume.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4v6h-6M4 20v-6h6M4.9 9a7.5 7.5 0 0 1 12.4-4L20 10M4 14l2.7 5A7.5 7.5 0 0 0 19.1 15"/></svg>';
+      resume.innerHTML = faIcon("reload");
       resume.title = t("Reprendre la tâche interrompue après vérification de son état");
       resume.addEventListener("click", () => {
         if (busy) { setStatus(t("Arrête la tâche en cours avant de reprendre une autre conversation.")); return; }
@@ -518,11 +522,12 @@ function createAssistantRun() {
   const summary = document.createElement("summary");
   const spinner = document.createElement("span");
   spinner.className = "run-indicator";
-  spinner.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m7 8 3 3-3 3M13 16h4"/></svg>';
+  spinner.innerHTML = faIcon("terminal");
   const summaryText = document.createElement("span");
   summaryText.className = "activity-summary-text";
   summaryText.textContent = t("Réflexion en cours…");
   summary.append(spinner, summaryText);
+  summary.insertAdjacentHTML("beforeend", faIcon("chevron", "summary-chevron"));
   const list = document.createElement("div");
   list.className = "activity-list";
   activity.append(summary, list);
@@ -603,18 +608,31 @@ function setMarkdown(html) {
 }
 
 function iconForTool(tool) {
-  return {
-    list: "≡",
-    read: "⌕",
-    search: "⌕",
-    edit: "✎",
-    write: "✎",
-    command: ">_",
-    route: "↻",
-    context: "≋",
-    cost: "$",
-    model: "◆",
-  }[tool] || "•";
+  const name = { list: "list", read: "read", search: "search", edit: "edit", write: "edit",
+    command: "terminal", route: "reload", context: "context", cost: "cost", model: "model" }[tool];
+  return typeof name === "string" ? name : "terminal";
+}
+
+// Old saved conversations retain their content while adopting the current icon set.
+function upgradeSnapshotIcons(root) {
+  for (const indicator of root.querySelectorAll(".run-indicator, .run-spinner")) {
+    indicator.classList.remove("run-spinner");
+    indicator.classList.add("run-indicator");
+    indicator.innerHTML = faIcon("terminal");
+  }
+  for (const icon of root.querySelectorAll(".file-change-icon")) {
+    if (!icon.querySelector(".fa-icon")) icon.innerHTML = faIcon(icon.textContent.trim() === "+" ? "plus" : "edit");
+  }
+  const old = { "≡":"list", "⌕":"search", "✎":"edit", ">_":"terminal", "↻":"reload", "≋":"context", "$":"cost", "◆":"model", "✓":"check", "!":"error" };
+  for (const icon of root.querySelectorAll(".activity-icon")) {
+    if (!icon.querySelector(".fa-icon")) {
+      const name = old[icon.textContent.trim()];
+      icon.innerHTML = faIcon(typeof name === "string" ? name : "terminal");
+    }
+  }
+  for (const summary of root.querySelectorAll(".activity > summary, .file-change > summary")) {
+    if (!summary.querySelector(".summary-chevron")) summary.insertAdjacentHTML("beforeend", faIcon("chevron", "summary-chevron"));
+  }
 }
 
 function addActivity(data) {
@@ -627,7 +645,7 @@ function addActivity(data) {
   row.className = "activity-row running";
   const icon = document.createElement("span");
   icon.className = "activity-icon";
-  icon.textContent = iconForTool(data.tool);
+  icon.innerHTML = faIcon(iconForTool(data.tool));
   const body = document.createElement("div");
   const title = document.createElement("strong");
   title.textContent = data.title || t("Action");
@@ -646,7 +664,7 @@ function finishActivity(data) {
   if (!item) return;
   item.row.classList.remove("running");
   item.row.classList.add(data.success ? "success" : "failure");
-  item.icon.textContent = data.success ? "✓" : "!";
+  item.icon.innerHTML = faIcon(data.success ? "check" : "error");
   if (currentRun?.activeId === data.id) {
     currentRun.currentAction = "";
     currentRun.activeId = null;
@@ -842,7 +860,7 @@ function renderPendingImages() {
     remove.type = "button";
     remove.title = t("Retirer {0}", image.name);
     remove.setAttribute("aria-label", t("Retirer {0}", image.name));
-    remove.textContent = "×";
+    remove.innerHTML = faIcon("close");
     remove.addEventListener("click", () => {
       pendingImages.splice(index, 1);
       renderPendingImages();
@@ -906,6 +924,7 @@ function submit() {
 
 if (saved?.html) {
   messages.innerHTML = safeHtml(saved.html);
+  upgradeSnapshotIcons(messages);
   OvhI18n.translateSnapshot(messages);
   for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
