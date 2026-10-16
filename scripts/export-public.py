@@ -33,6 +33,15 @@ for relative in paths:
         raise SystemExit('Credential detected in: ' + relative)
     if re.search(rb'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|\b(?:ghp_|github_pat_)[A-Za-z0-9_]{20,}|https?://[^\s/@:]+:[^\s/@]+@', content):
         raise SystemExit('Potential credential detected in: ' + relative)
+    # Custom deployment images stay private; public manifests use bundled defaults.
+    if relative == 'ovh-agent-extension/extension/package.json':
+        package = json.loads(content)
+        if package.get('icon', '').startswith('media/custom-'):
+            package['icon'] = 'media/ovh-agent.svg'
+        for view in package.get('contributes', {}).get('viewsContainers', {}).get('activitybar', []):
+            if view.get('icon', '').startswith('media/custom-'):
+                view['icon'] = 'media/ovh-activity.svg'
+        content = (json.dumps(package, indent=2, ensure_ascii=False) + '\n').encode()
     prepared[relative] = (content, file.stat().st_mode & 0o777)
 # Publish a parameterized deployment example instead of the live host configuration.
 compose = (source / 'docker-compose.yml').read_text()

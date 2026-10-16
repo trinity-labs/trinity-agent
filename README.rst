@@ -114,3 +114,24 @@ DOMPurify is vendored with its license in
 Other dependencies and their exact versions are recorded in package-lock.json
 and the Dockerfile; their licenses continue to apply. Downloaded packages,
 including optional development tools, retain their own licenses and ownership.
+
+Custom icons
+------------
+
+``OVH_AGENT_APP_ICON`` selects a local PNG or SVG for the extension list.
+``OVH_AGENT_MENU_ICON`` selects a local SVG for the activity bar (prefer a
+monochrome 24x24 vector). Paths must be absolute and accessible inside the
+container. Images are limited to 1 MiB; SVGs are restricted to static vectors.
+Custom images replace the complete icon; their colors are preserved.
+The default application icon continues to follow ``OVH_AGENT_PRIMARY_COLOR``.
+
+Place images in the private, Git-ignored ``branding/`` directory beside the
+compose file, then set these variables in the compose project's ``.env``::
+
+    OVH_AGENT_APP_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/app.png
+    OVH_AGENT_MENU_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/menu.svg
+
+Recreate the service with ``docker compose up -d --no-build vscode`` and reload
+the browser. Empty or invalid settings restore the default icons. Content-based
+asset filenames refresh the icon cache when a file changes. Custom images are
+excluded from the public export, whose manifest uses the bundled defaults.

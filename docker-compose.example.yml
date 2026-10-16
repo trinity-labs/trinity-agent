@@ -20,6 +20,9 @@ services:
       OVH_AGENT_LANG: "${OVH_AGENT_LANG:-auto}"
       # agent name
       OVH_AGENT_NAME: "TRINITY Agent"
+      # Local paths inside the container; empty = default icon
+      OVH_AGENT_APP_ICON: "${OVH_AGENT_APP_ICON:-}"
+      OVH_AGENT_MENU_ICON: "${OVH_AGENT_MENU_ICON:-}"
       # Branding color
       OVH_AGENT_PRIMARY_COLOR: "#000E9C"
     volumes:
