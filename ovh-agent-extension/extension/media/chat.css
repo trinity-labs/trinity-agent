@@ -831,3 +831,7 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 .history-brand { opacity: .25; }
 
 #close-history svg.agent-icon { width: 8.5px; height: 8.5px; }
+
+.message-time { display: block; margin-top: 5px; font-size: 9px; line-height: 1.35; font-weight: 400; color: var(--vscode-foreground); opacity: .33; }
+.message > .message-time { text-align: right; }
+.file-change > summary > .message-time { margin: 0 0 0 auto; white-space: nowrap; }

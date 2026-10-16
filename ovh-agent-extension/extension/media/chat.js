@@ -207,6 +207,38 @@ function removeWelcome() {
   messages.querySelector(".welcome")?.remove();
 }
 
+function updateStopIcon() {
+  stop.innerHTML = uiIcon(prompt.value.length || busy ? "stopFilled" : "stop");
+}
+
+function stamp(block, timestamp = new Date().toISOString()) {
+  let time = block.querySelector(":scope > .message-time");
+  if (!time) { time = document.createElement("time"); time.className = "message-time"; block.appendChild(time); }
+  const date = timestamp ? new Date(timestamp) : null;
+  if (!date || !Number.isFinite(date.getTime())) { time.textContent = "—"; return; }
+  time.dateTime = date.toISOString();
+  time.textContent = new Intl.DateTimeFormat(uiLanguage, { dateStyle: "short", timeStyle: "short" }).format(date);
+  time.title = date.toLocaleString(uiLanguage);
+}
+
+function restoreTimestamps(root, timeline = []) {
+  const queue = type => timeline.filter(item => item.type === type).map(item => item.timestamp);
+  const users = queue("user"), replies = queue("response"), changes = queue("file_change"), tools = queue("tool_start"), approvals = queue("approval");
+  for (const block of root.querySelectorAll(":scope > .message")) {
+    const recorded = block.classList.contains("user") ? users.shift()
+      : block.classList.contains("archived-file-change") ? changes.shift() : replies.shift();
+    const existing = block.querySelector(":scope > .message-time");
+    stamp(block, existing?.dateTime || recorded || null);
+  }
+  for (const [selector, dates] of [[".activity-row > div", tools], [".approval-card", approvals], [".file-change > summary", changes]]) {
+    for (const block of root.querySelectorAll(selector)) {
+      const recorded = dates.shift();
+      const existing = block.querySelector(":scope > .message-time");
+      stamp(block, existing?.dateTime || recorded || null);
+    }
+  }
+}
+
 function formatElapsed(startedAt) {
   const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
   if (seconds < 60) return `${seconds} s`;
@@ -223,7 +255,8 @@ function setBusy(value, text = "", failed = false) {
   busy = value;
   send.disabled = value;
   updateSendButton();
-  stop.hidden = !value;
+  stop.hidden = false;
+  updateStopIcon();
   setStatus(text, failed);
 }
 
@@ -247,7 +280,7 @@ function appendMessageImages(container, images) {
   container.appendChild(gallery);
 }
 
-function addUserMessage(text, images = []) {
+function addUserMessage(text, images = [], timestamp = undefined) {
   removeWelcome();
   const article = document.createElement("article");
   article.className = "message user";
@@ -260,12 +293,13 @@ function addUserMessage(text, images = []) {
   article.append(label);
   appendMessageImages(article, images);
   if (text) article.append(content);
+  stamp(article, timestamp);
   messages.appendChild(article);
   persist();
   scrollToBottom();
 }
 
-function addArchivedAssistant(html, failed = false) {
+function addArchivedAssistant(html, failed = false, timestamp = null) {
   removeWelcome();
   const article = document.createElement("article");
   article.className = `message assistant ${failed ? "failure" : "done"}`;
@@ -277,6 +311,7 @@ function addArchivedAssistant(html, failed = false) {
   content.innerHTML = safeHtml(html);
   enhanceMarkdown(content);
   article.append(label, content);
+  stamp(article, timestamp);
   messages.appendChild(article);
 }
 
@@ -306,6 +341,7 @@ function createFileChange(data) {
   const title = document.createElement("strong");
   title.textContent = data.action === "created" ? t("Fichier créé") : t("Fichier modifié");
   summary.append(icon, title);
+  stamp(summary, data.timestamp);
   summary.insertAdjacentHTML("beforeend", uiIcon("chevron", "summary-chevron"));
 
   const body = document.createElement("div");
@@ -397,7 +433,8 @@ function addArchivedFileChange(data) {
   removeWelcome();
   const article = document.createElement("article");
   article.className = "message assistant archived-file-change";
-  article.appendChild(createFileChange(data));
+  article.appendChild(createFileChange({ ...data, timestamp: data.timestamp || null }));
+  stamp(article, data.timestamp || null);
   messages.appendChild(article);
 }
 
@@ -408,10 +445,10 @@ function renderArchiveMessages(items) {
   approvalCards.clear();
   messages.innerHTML = "";
   for (const item of items || []) {
-    if (item.type === "user") addUserMessage(item.text || "", item.images || []);
+    if (item.type === "user") addUserMessage(item.text || "", item.images || [], item.timestamp || null);
     if (item.type === "file_change") addArchivedFileChange(item);
-    if (item.type === "response") addArchivedAssistant(item.html || "");
-    if (item.type === "error") addArchivedAssistant(item.html || "", true);
+    if (item.type === "response") addArchivedAssistant(item.html || "", false, item.timestamp || null);
+    if (item.type === "error") addArchivedAssistant(item.html || "", true, item.timestamp || null);
   }
   if (!messages.children.length) {
     messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
@@ -428,6 +465,7 @@ function applySnapshot(data) {
   approvalCards.clear();
   messages.innerHTML = safeHtml(data.html);
   upgradeSnapshotIcons(messages);
+  restoreTimestamps(messages, data.timeline || []);
   OvhI18n.translateSnapshot(messages);
   messages.querySelectorAll("details.activity").forEach(activity => { activity.open = false; });
   for (const article of messages.querySelectorAll(".message.failure")) article.remove();
@@ -545,6 +583,7 @@ function createAssistantRun() {
   content.className = "content markdown streaming";
   content.innerHTML = "";
   article.append(label, activity, content);
+  stamp(article);
   messages.appendChild(article);
 
   const run = {
@@ -661,6 +700,7 @@ function addActivity(data) {
   const detail = document.createElement("code");
   detail.textContent = data.detail || "";
   body.append(title, detail);
+  stamp(body, data.timestamp);
   row.append(icon, body);
   run.list.appendChild(row);
   activityRows.set(data.id, { row, icon, detail });
@@ -789,6 +829,7 @@ function addApproval(data) {
   allow.addEventListener("click", () => answer(true));
   actions.append(result, deny, allow);
   card.appendChild(actions);
+  stamp(card, data.timestamp);
   run.list.appendChild(card);
   approvalCards.set(data.id, { card, deny, allow, result });
   persist();
@@ -924,6 +965,7 @@ function submit() {
   addUserMessage(displayText, images);
   createAssistantRun();
   prompt.value = "";
+  updateStopIcon();
   prompt.style.height = "auto";
   pendingImages = [];
   renderPendingImages();
@@ -934,6 +976,7 @@ function submit() {
 if (saved?.html) {
   messages.innerHTML = safeHtml(saved.html);
   upgradeSnapshotIcons(messages);
+  restoreTimestamps(messages);
   OvhI18n.translateSnapshot(messages);
   for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
@@ -1031,6 +1074,7 @@ prompt.addEventListener("keydown", (event) => {
   }
 });
 function resizePrompt() {
+  updateStopIcon();
   prompt.style.height = "auto";
   prompt.style.height = `${Math.min(prompt.scrollHeight, 180)}px`;
 }
@@ -1247,7 +1291,8 @@ window.addEventListener("message", ({ data }) => {
 
 updateAccessButton();
 updateModelButton();
-stop.hidden = true;
+stop.hidden = false;
+updateStopIcon();
 prompt.focus();
 vscode.postMessage({ type: "webviewReady", language: uiLanguage });
 

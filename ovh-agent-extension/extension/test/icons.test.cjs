@@ -12,7 +12,7 @@ test('Bootstrap outline subset and Font Awesome logo works offline in Node and b
   assert.ok(zlib.gzipSync(js).length<5000);
   const dom=new JSDOM('',{runScripts:'outside-only'});
   dom.window.eval(js);
-  for(const name of ['nodes','archive','back','chevron','database','key','plus','close','reload','image','shield','stop','send','play','trash','terminal','list','read','search','edit','context','cost','model','copy','check','error','robot','wallet']) {
+  for(const name of ['nodes','archive','back','chevron','database','key','plus','close','reload','image','shield','stop','stopFilled','send','play','trash','terminal','list','read','search','edit','context','cost','model','copy','check','error','robot','wallet']) {
     const html=svg(name,'custom-class');
     assert.equal(dom.window.AgentIcons.svg(name,'custom-class'),html);
     dom.window.document.body.innerHTML=html;

@@ -154,3 +154,12 @@ Rebuild the versioned assets with::
     npm test
 
 Bootstrap Icons, Font Awesome and Terser are development-only dependencies.
+
+Conversation timestamps
+-----------------------
+
+Message, file-change, activity and approval blocks display a small timestamp
+at 33% opacity, formatted in the browser locale and timezone. ISO timestamps
+are preserved in saved HTML. Older snapshots recover dates from archived events;
+when a date is unavailable the interface displays a dash, never the reopening time.
+The Stop square becomes filled while a draft contains text or a task is running.

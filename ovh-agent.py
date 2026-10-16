@@ -220,6 +220,7 @@ if "--billing-status" not in sys.argv:
 def emit(payload: dict[str, object]) -> None:
     if not JSON_MODE:
         return
+    payload.setdefault("timestamp", now_iso())
     archive_event(payload)
     with OUTPUT_LOCK:
         print(json.dumps(payload, ensure_ascii=False), flush=True)
@@ -1349,7 +1350,7 @@ def delete_archive(conversation_id: str) -> bool:
     return was_current
 
 
-def read_archive(conversation_id: str) -> list[dict[str, object]]:
+def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[dict[str, object]]:
     if not re.fullmatch(r"[0-9A-Za-z_-]+", conversation_id):
         return []
     events_file = conversation_dir(conversation_id) / "events.jsonl"
@@ -1357,7 +1358,10 @@ def read_archive(conversation_id: str) -> list[dict[str, object]]:
     try:
         for line in events_file.read_text(encoding="utf-8").splitlines():
             event = json.loads(line)
-            if event.get("type") in {"user", "response", "file_change"}:
+            if timeline_only:
+                items.append({"type": event.get("type"), "timestamp": event.get("timestamp")})
+                continue
+            if event.get("type") in {"user", "response", "file_change", "error"}:
                 if event.get("type") == "user" and isinstance(event.get("images"), list):
                     restored_images: list[dict[str, str]] = []
                     base_folder = conversation_dir(conversation_id).resolve()
@@ -1556,7 +1560,7 @@ def main_json_lines() -> None:
     if read_task_state().get("status") == "interrupted":
         emit({"type": "task_interrupted", "id": CONVERSATION_ID})
     if initial_snapshot:
-        emit({"type": "snapshot_loaded", "automatic": True, **initial_snapshot, "model": selected_model})
+        emit({"type": "snapshot_loaded", "automatic": True, **initial_snapshot, "timeline": read_archive(CONVERSATION_ID, timeline_only=True), "model": selected_model})
     else:
         initial_messages = read_archive(CONVERSATION_ID)
         if initial_messages:
@@ -1635,7 +1639,7 @@ def main_json_lines() -> None:
             history = load_history(candidate)
             stored_snapshot = read_snapshot(candidate)
             if stored_snapshot:
-                emit({"type": "snapshot_loaded", "automatic": False, **stored_snapshot, "model": selected_model, "id": candidate, "resumable": read_task_state().get("status") in {"running", "interrupted"}})
+                emit({"type": "snapshot_loaded", "automatic": False, **stored_snapshot, "timeline": read_archive(candidate, timeline_only=True), "model": selected_model, "id": candidate, "resumable": read_task_state().get("status") in {"running", "interrupted"}})
             else:
                 emit({
                     "type": "archive_loaded",
