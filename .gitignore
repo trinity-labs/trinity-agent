@@ -14,6 +14,7 @@
 !/ovh-branding.cjs
 !/ovh_memory.py
 !/ovh-agent-extension/extension/archive-store.js
+!/ovh-agent-extension/extension/window-lock.js
 !/ovh-agent-extension/extension/extension.js
 !/ovh-agent-extension/extension/media/DOMPurify.LICENSE
 !/ovh-agent-extension/extension/media/chat.css
@@ -47,6 +48,10 @@
 
 !/ovh-agent-extension/extension/scripts/
 !/ovh-agent-extension/extension/scripts/build-icons.cjs
+!/ovh-agent-extension/extension/scripts/build-highlighting.cjs
+!/ovh-agent-extension/extension/media/highlight.min.js
+!/ovh-agent-extension/extension/media/monokai.min.css
+!/ovh-agent-extension/extension/media/HighlightJS.LICENSE
 !/ovh-agent-extension/extension/media/icons.min.js
 !/ovh-agent-extension/extension/media/FontAwesome.LICENSE.txt
 
@@ -72,3 +77,19 @@
 
 !/scripts/auto-update.py
 !/scripts/test-auto-update.py
+
+!/scripts/test-inference.py
+!/scripts/evaluate-cyber-models.py
+
+!/ovh_context.py
+!/ovh_cache.py
+!/ovh_request.py
+!/ovh_budget.py
+!/ovh_budget_model.py
+!/scripts/test-budget.py
+!/scripts/test-budget-model.py
+!/scripts/test-cache.py
+!/scripts/test-context.py
+!/scripts/test-request.py
+!/scripts/test-session.py
+!/scripts/test-billing.py

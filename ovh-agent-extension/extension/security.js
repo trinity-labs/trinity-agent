@@ -31,7 +31,7 @@ function validMessage(message) {
     case "webviewReady": return message.language === undefined || text(message.language, 32);
     case "listModels": return boolean(message.refresh);
     case "clear": case "cancel": case "configureKey": case "billing":
-    case "billingRefresh": case "listArchives": return true;
+    case "billingRefresh": case "listArchives": case "retryWindow": return true;
     default: return false;
   }
 }

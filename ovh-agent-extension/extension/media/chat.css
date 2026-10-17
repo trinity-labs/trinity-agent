@@ -65,6 +65,10 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   overflow-y: auto;
   background: var(--vscode-sideBar-background);
 }
+#archive-panel { display: flex; flex-direction: column; overflow: hidden; }
+#archive-panel > .archive-head,
+#archive-notice,
+#archive-panel > .agent-disclaimer { flex-shrink: 0; }
 #archive-panel[hidden], #model-panel[hidden] { display: none; }
 .archive-head, .model-head {
   position: sticky;
@@ -79,7 +83,7 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
 }
 .archive-head strong, .archive-head span, .model-head strong, .model-head span { display: block; }
 .archive-head span, .model-head span { color: var(--vscode-descriptionForeground); font-size: 10px; }
-#archive-list { padding: 7px; }
+#archive-list { flex: 1; min-height: 0; padding: 7px; overflow-y: auto; }
 .archive-item {
   display: block;
   width: 100%;
@@ -163,6 +167,15 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .model-price { margin-top: 5px; color: var(--ovh-primary-text); font-size: 10px; }
 .model-meta { margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 9px; }
 .model-empty { padding: 18px 10px; color: var(--vscode-descriptionForeground); text-align: center; }
+#model-availability { white-space: normal; }
+.agent-disclaimer {
+  margin: 8px 12px 12px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+footer .agent-disclaimer { margin: 6px 0 0; font-size: 8px; line-height: 1.25; }
 .model-foot {
   padding: 9px 12px 14px;
   color: var(--vscode-descriptionForeground);
@@ -191,7 +204,7 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   bottom: 4px;
   width: 6px;
   height: 6px;
-  border: 1px solid var(--vscode-sideBar-background);
+  border: 0;
   border-radius: 50%;
   background: var(--vscode-descriptionForeground);
 }
@@ -479,6 +492,7 @@ main {
 .markdown h4 { font-size: 13px; }
 .markdown p { margin: .55em 0; }
 .markdown ul, .markdown ol { margin: .55em 0; padding-left: 22px; }
+.markdown ul > li::marker { color: color-mix(in srgb, currentColor 33%, transparent); }
 .markdown li + li { margin-top: 3px; }
 .markdown blockquote {
   margin: .8em 0;
@@ -493,8 +507,8 @@ main {
 .markdown :not(pre) > code {
   padding: 3px 7px;
   border-radius: 4px;
-  color: #fff;
-  background: var(--ovh-primary);
+  color: var(--vscode-foreground);
+  background: rgba(128, 128, 128, .05);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   font: .92em var(--vscode-editor-font-family);
@@ -505,35 +519,59 @@ main {
   margin: .8em 0;
   padding: 11px 12px;
   overflow: auto;
-  border: 1px solid var(--vscode-panel-border);
+  border: 1px solid #49483e;
   border-radius: 7px;
-  background: var(--vscode-textCodeBlock-background);
+  color: #ddd;
+  background: #272822;
 }
-.markdown pre code { font: 11px/1.55 var(--vscode-editor-font-family); white-space: pre; }
+.markdown pre code {
+  font: 11px/1.55 ui-monospace, "DejaVu Sans Mono", "Liberation Mono", Consolas, monospace;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  tab-size: 4;
+}
+.markdown pre code * { font-family: inherit; font-size: inherit; line-height: inherit; letter-spacing: inherit; }
+.markdown pre code.hljs { display: block; padding: 0; overflow: visible; background: transparent; }
 .copy-code {
   position: absolute;
   top: 5px;
   right: 5px;
   padding: 3px 7px;
-  border: 1px solid var(--vscode-panel-border);
+  border: 1px solid #49483e;
   border-radius: 4px;
-  color: var(--vscode-foreground);
-  background: var(--vscode-editor-background);
+  color: #ddd;
+  background: #3e3d32;
   font-size: 10px;
   opacity: 0;
 }
 .markdown pre:hover .copy-code, .copy-code:focus-visible { opacity: 1; }
-.markdown table {
-  display: block;
-  width: max-content;
+.markdown .table-scroll {
+  width: 100%;
   max-width: 100%;
   margin: .8em 0;
   overflow-x: auto;
+}
+.markdown table {
+  width: 100%;
   border-spacing: 0;
   border-collapse: collapse;
+  background: var(--vscode-editor-background);
 }
-.markdown th, .markdown td { padding: 6px 9px; border: 1px solid var(--vscode-panel-border); text-align: left; }
-.markdown th { background: var(--vscode-editor-background); font-weight: 600; }
+.markdown th, .markdown td {
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+  text-align: left;
+}
+.markdown th {
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  font-weight: 600;
+}
+.markdown thead th { border-bottom-width: 2px; }
+.markdown tbody > tr:nth-child(odd) { background: color-mix(in srgb, var(--vscode-foreground) 2%, transparent); }
+.markdown tbody > tr:nth-child(even) { background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent); }
 .thinking { color: var(--vscode-descriptionForeground); font-style: italic; }
 footer {
   padding: 7px 10px 11px;
@@ -678,7 +716,7 @@ button:disabled { cursor: default; opacity: .45; }
 #stop svg rect { fill: currentColor; stroke: none; }
 
 .send-column { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
-.composer-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 3px; }
+.composer-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 12px; margin-bottom: 3px; }
 .composer-meta #status { flex: 1; min-width: 0; }
 .composer-meta #live-balance { flex: 0 0 auto; margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 10px; font-style: normal; text-align: right; white-space: nowrap; }
 
@@ -731,11 +769,25 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 .archive-item { display: flex; align-items: center; padding: 0; cursor: default; }
 .archive-open { flex: 1; min-width: 0; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .archive-item:hover, .archive-item:focus-within { background: var(--ovh-primary-pastel); }
-.archive-delete { flex-shrink: 0; margin-right: 7px; opacity: 0; pointer-events: none; color: #d65c5c; }
-.archive-item:hover .archive-delete, .archive-item:focus-within .archive-delete { opacity: 1; pointer-events: auto; }
-.archive-delete:hover, .archive-delete:focus-visible { color: #fff; background: #d65c5c; }
-.archive-open:focus-visible, .archive-delete:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-@media (hover: none) { .archive-delete { opacity: 1; pointer-events: auto; } }
+.archive-action {
+  flex-shrink: 0;
+  margin-right: 4px;
+  visibility: hidden;
+  color: var(--ovh-primary);
+  opacity: .33;
+  background: transparent;
+}
+.archive-item:hover .archive-action,
+.archive-item:has(:focus-visible) .archive-action { visibility: visible; }
+.archive-action:hover, .archive-action:focus-visible {
+  color: var(--ovh-primary);
+  opacity: 1;
+  background: transparent;
+}
+.archive-view:hover, .archive-view:focus-visible { color: var(--vscode-testing-iconPassed, #43a047); }
+.archive-delete { margin-right: 7px; }
+.archive-delete:hover, .archive-delete:focus-visible { color: #d65c5c; }
+.archive-open:focus-visible, .archive-action:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
 .archive-head > div { min-width: 0; flex: 1; }
 .archive-head .archive-title { display: flex; align-items: center; gap: 6px; }
@@ -752,20 +804,30 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 #delete-dialog { max-width: 420px; width: calc(100% - 48px); border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-sideBar-background); color: var(--vscode-foreground); padding: 18px; }
 #delete-dialog::backdrop { background: #0007; }
 .delete-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-.delete-dialog-actions button { border: 0; border-radius: 4px; padding: 6px 10px; background: var(--ovh-primary); color: #fff; cursor: pointer; }
-#delete-confirm { background: #dc2626; }
-.archive-resume { margin-right: 4px; flex-shrink: 0; opacity: 0; pointer-events: none; color: var(--ovh-primary-text); background: transparent; }
-.archive-item:hover .archive-resume, .archive-item:focus-within .archive-resume { opacity: 1; pointer-events: auto; }
-.archive-resume:hover, .archive-resume:focus-visible { color: #fff; background: var(--ovh-primary); }
-.archive-resume:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-@media (hover: none) { .archive-resume { opacity: 1; pointer-events: auto; } }
+.delete-dialog-actions button {
+  --dialog-button-color: var(--ovh-primary);
+  border: 0; border-radius: 4px; padding: 6px 10px;
+  background: var(--dialog-button-color); color: #fff; cursor: pointer;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+#delete-confirm { --dialog-button-color: #dc2626; }
+.delete-dialog-actions button:hover:not(:disabled),
+.delete-dialog-actions button:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--dialog-button-color) 82%, #000);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dialog-button-color) 20%, transparent),
+              0 3px 8px #0002;
+}
+.delete-dialog-actions button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--dialog-button-color) 68%, #000);
+  box-shadow: inset 0 2px 4px #0004;
+}
 
 #delete-dialog h3 { display: flex; align-items: center; gap: 10px; }
-.delete-title-icon { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: #000; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .66; }
+.delete-title-icon { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: #000; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .33; }
 
 /* Derived brand text stays visible on dark backgrounds. */
 body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 55%, #fff); }
-#send:hover:not(:disabled), .delete-dialog-actions button:not(#delete-confirm):hover { background: var(--ovh-primary-hover); }
+#send:hover:not(:disabled) { background: var(--ovh-primary-hover); }
 
 /* Compact activity journal: one muted line, details only on demand. */
 .activity { border: 0; border-radius: 0; background: transparent; }
@@ -802,7 +864,7 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
   background: color-mix(in srgb, var(--ovh-primary) 60%, #000);
 }
 @media (prefers-reduced-motion: reduce) {
-  .header-actions .icon, .back-history, #send { transition: none; }
+  .header-actions .icon, .back-history, #send, .delete-dialog-actions button { transition: none; }
 }
 
 #live-balance .balance-amount { color: var(--ovh-primary-text); font-weight: 500; }

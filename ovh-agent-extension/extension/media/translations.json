@@ -1,4 +1,119 @@
 {
+  "Agent déjà ouvert": {
+    "fr": "Agent déjà ouvert",
+    "en": "Agent already open",
+    "de": "Agent bereits geöffnet",
+    "es": "Agente ya abierto"
+  },
+  "Une autre fenêtre utilise déjà {0}. Ferme l’autre fenêtre VS Code, puis réessaie ici.": {
+    "fr": "Une autre fenêtre utilise déjà {0}. Ferme l’autre fenêtre VS Code, puis réessaie ici.",
+    "en": "Another window is already using {0}. Close the other VS Code window, then try again here.",
+    "de": "Ein anderes Fenster verwendet bereits {0}. Schließe das andere VS-Code-Fenster und versuche es hier erneut.",
+    "es": "Otra ventana ya está usando {0}. Cierra la otra ventana de VS Code y vuelve a intentarlo aquí."
+  },
+  "Réessayer": {
+    "fr": "Réessayer", "en": "Try again", "de": "Erneut versuchen", "es": "Reintentar"
+  },
+  "Un agent utilise déjà cette installation. Ferme l’autre fenêtre ou attends son arrêt avant de réessayer.": {
+    "fr": "Un agent utilise déjà cette installation. Ferme l’autre fenêtre ou attends son arrêt avant de réessayer.",
+    "en": "An agent is already using this installation. Close the other window or wait for it to stop before trying again.",
+    "de": "Ein Agent verwendet diese Installation bereits. Schließe das andere Fenster oder warte, bis er beendet ist, bevor du es erneut versuchst.",
+    "es": "Un agente ya está usando esta instalación. Cierra la otra ventana o espera a que se detenga antes de reintentarlo."
+  },
+  "Contexte préparé": {
+    "fr": "Contexte préparé",
+    "en": "Context prepared",
+    "de": "Kontext vorbereitet",
+    "es": "Contexto preparado"
+  },
+  "{0} fichiers ciblés · préparation locale : {1} ms": {
+    "fr": "{0} fichiers ciblés · préparation locale : {1} ms",
+    "en": "{0} files selected · local preparation: {1} ms",
+    "de": "{0} Dateien ausgewählt · lokale Vorbereitung: {1} ms",
+    "es": "{0} archivos seleccionados · preparación local: {1} ms"
+  },
+  " · recherche partielle, complétée au besoin par les outils": {
+    "fr": " · recherche partielle, complétée au besoin par les outils",
+    "en": " · partial search; tools can retrieve more as needed",
+    "de": " · Teilrecherche; Werkzeuge können bei Bedarf mehr abrufen",
+    "es": " · búsqueda parcial; las herramientas pueden recuperar más si hace falta"
+  },
+  "Budgets {0}": {
+    "fr": "Budgets {0}",
+    "en": "{0} budgets",
+    "de": "{0}-Budgets",
+    "es": "Presupuestos {0}"
+  },
+  "Budget insuffisant": {
+    "fr": "Budget insuffisant",
+    "en": "Insufficient budget",
+    "de": "Budget unzureichend",
+    "es": "Presupuesto insuficiente"
+  },
+  "Budget indisponible": {
+    "fr": "Budget indisponible",
+    "en": "Budget unavailable",
+    "de": "Budget nicht verfügbar",
+    "es": "Presupuesto no disponible"
+  },
+  "Dépenses estimées de l’agent en {0}, distinctes du solde OVHcloud. Plafonds partagés entre tous les projets et toutes les conversations.": {
+    "fr": "Dépenses estimées de l’agent en {0}, distinctes du solde OVHcloud. Plafonds partagés entre tous les projets et toutes les conversations.",
+    "en": "Estimated agent spending in {0}, separate from the OVHcloud balance. Limits are shared across all projects and conversations.",
+    "de": "Geschätzte Ausgaben des Agenten in {0}, getrennt vom OVHcloud-Guthaben. Die Grenzen gelten für alle Projekte und Unterhaltungen gemeinsam.",
+    "es": "Gasto estimado del agente en {0}, separado del saldo de OVHcloud. Los límites se comparten entre todos los proyectos y conversaciones."
+  },
+  "{0} : {1} dépensés / {2} · {3} réservés · {4} disponibles · remise à zéro {5}": {
+    "fr": "{0} : {1} dépensés / {2} · {3} réservés · {4} disponibles · remise à zéro {5}",
+    "en": "{0}: {1} spent / {2} · {3} reserved · {4} available · resets {5}",
+    "de": "{0}: {1} ausgegeben / {2} · {3} reserviert · {4} verfügbar · Zurücksetzung {5}",
+    "es": "{0}: {1} gastados / {2} · {3} reservados · {4} disponibles · reinicio {5}"
+  },
+  "Périodes calendaires en UTC ; la semaine commence le lundi. Les réservations couvrent les appels en cours.": {
+    "fr": "Périodes calendaires en UTC ; la semaine commence le lundi. Les réservations couvrent les appels en cours.",
+    "en": "Calendar periods in UTC; weeks start on Monday. Reservations cover calls in progress.",
+    "de": "Kalenderzeiträume in UTC; Wochen beginnen montags. Reservierungen decken laufende Aufrufe ab.",
+    "es": "Periodos de calendario en UTC; la semana comienza el lunes. Las reservas cubren las llamadas en curso."
+  },
+  "Les nouveaux appels au modèle sont bloqués tant que le budget disponible est insuffisant.": {
+    "fr": "Les nouveaux appels au modèle sont bloqués tant que le budget disponible est insuffisant.",
+    "en": "New model calls are blocked while the available budget is insufficient.",
+    "de": "Neue Modellaufrufe werden blockiert, solange das verfügbare Budget nicht ausreicht.",
+    "es": "Las nuevas llamadas al modelo se bloquean mientras el presupuesto disponible sea insuficiente."
+  },
+  "Les nouveaux appels au modèle sont bloqués jusqu’à ce que les budgets puissent être vérifiés.": {
+    "fr": "Les nouveaux appels au modèle sont bloqués jusqu’à ce que les budgets puissent être vérifiés.",
+    "en": "New model calls are blocked until the budgets can be verified.",
+    "de": "Neue Modellaufrufe werden blockiert, bis die Budgets überprüft werden können.",
+    "es": "Las nuevas llamadas al modelo se bloquean hasta que se puedan verificar los presupuestos."
+  },
+  "Jour": {"fr": "Jour", "en": "Day", "de": "Tag", "es": "Día"},
+  "Semaine": {"fr": "Semaine", "en": "Week", "de": "Woche", "es": "Semana"},
+  "Mois": {"fr": "Mois", "en": "Month", "de": "Monat", "es": "Mes"},
+  "illimité": {"fr": "illimité", "en": "unlimited", "de": "unbegrenzt", "es": "ilimitado"},
+  "{0} modèles disponibles dans l’agent · {1} au catalogue OVHcloud": {
+    "fr": "{0} modèles disponibles dans l’agent · {1} au catalogue OVHcloud",
+    "en": "{0} models available in the agent · {1} in the OVHcloud catalogue",
+    "de": "{0} Modelle im Agenten verfügbar · {1} im OVHcloud-Katalog",
+    "es": "{0} modelos disponibles en el agente · {1} en el catálogo de OVHcloud"
+  },
+  "Tarifs OVHcloud HT. Seuls les modèles sélectionnables sont affichés. Les modèles non conversationnels ou indisponibles sont exclus. Le mode Auto ne compte pas comme un modèle.": {
+    "fr": "Tarifs OVHcloud HT. Seuls les modèles sélectionnables sont affichés. Les modèles non conversationnels ou indisponibles sont exclus. Le mode Auto ne compte pas comme un modèle.",
+    "en": "OVHcloud prices exclude tax. Only selectable models are shown. Non-conversational or unavailable models are excluded. Auto mode is not counted as a model.",
+    "de": "OVHcloud-Preise ohne Steuern. Nur auswählbare Modelle werden angezeigt. Nicht dialogfähige oder nicht verfügbare Modelle sind ausgeschlossen. Der Auto-Modus zählt nicht als Modell.",
+    "es": "Precios de OVHcloud sin impuestos. Solo se muestran modelos seleccionables. Se excluyen los modelos no conversacionales o no disponibles. El modo Auto no cuenta como modelo."
+  },
+  "{0} est un outil d’assistance. Vous restez responsable des actions exécutées. L’IA peut se tromper : vérifiez ses réponses et les commandes.": {
+    "fr": "{0} est un outil d’assistance. Vous restez responsable des actions exécutées. L’IA peut se tromper : vérifiez ses réponses et les commandes.",
+    "en": "{0} is an assistance tool. You remain responsible for the actions performed. AI can make mistakes: check its answers and commands.",
+    "de": "{0} ist ein Assistenzwerkzeug. Sie bleiben für ausgeführte Aktionen verantwortlich. KI kann Fehler machen: Prüfen Sie ihre Antworten und Befehle.",
+    "es": "{0} es una herramienta de asistencia. Usted sigue siendo responsable de las acciones ejecutadas. La IA puede equivocarse: verifique sus respuestas y los comandos."
+  },
+  "Consulter la conversation archivée": {
+    "fr": "Consulter la conversation archivée",
+    "en": "View archived conversation",
+    "de": "Archivierte Unterhaltung ansehen",
+    "es": "Ver conversación archivada"
+  },
   "Reprendre la tâche interrompue": {
     "fr": "Reprendre la tâche interrompue",
     "en": "Resume interrupted task",
@@ -95,11 +210,11 @@
     "de": "Günstigster geeigneter Preis · komprimierter Kontext",
     "es": "Precio mínimo adecuado · contexto compactado"
   },
-  "${0}/heure": {
-    "fr": "${0}/heure",
-    "en": "${0}/hour",
-    "de": "${0}/Stunde",
-    "es": "${0}/hora"
+  "{0}/heure": {
+    "fr": "{0}/heure",
+    "en": "{0}/hour",
+    "de": "{0}/Stunde",
+    "es": "{0}/hora"
   },
   "Gratuit": {
     "fr": "Gratuit",
@@ -635,12 +750,6 @@
     "de": "Anfrage fehlgeschlagen: {0}",
     "es": "La solicitud falló: {0}"
   },
-  "Conversation effacée": {
-    "fr": "Conversation effacée",
-    "en": "Conversation cleared",
-    "de": "Unterhaltung geleert",
-    "es": "Conversación vaciada"
-  },
   "Clé OVH enregistrée de façon sécurisée": {
     "fr": "Clé OVH enregistrée de façon sécurisée",
     "en": "OVH key saved securely",
@@ -923,11 +1032,11 @@
     "de": "Zugangsdaten erstellen",
     "es": "Crear credenciales"
   },
-  "Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans OVH Agent.": {
-    "fr": "Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans OVH Agent.",
-    "en": "Create read-only credentials, then click the balance icon again.",
-    "de": "Erstellen Sie schreibgeschützte Zugangsdaten und klicken Sie dann erneut auf das Guthabensymbol.",
-    "es": "Crea credenciales de solo lectura y vuelve a pulsar el icono del saldo."
+  "Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans {0}.": {
+    "fr": "Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans {0}.",
+    "en": "Create read-only credentials, then click the balance icon in {0} again.",
+    "de": "Erstellen Sie schreibgeschützte Zugangsdaten und klicken Sie dann erneut auf das Guthabensymbol in {0}.",
+    "es": "Crea credenciales de solo lectura y vuelve a pulsar el icono del saldo en {0}."
   },
   "Facturation OVHcloud · 1/4": {
     "fr": "Facturation OVHcloud · 1/4",
@@ -1037,17 +1146,17 @@
     "de": "Kein OVH-Schlüssel konfiguriert",
     "es": "No hay ninguna clave OVH configurada"
   },
-  "Impossible de démarrer OVH Agent : {0}": {
-    "fr": "Impossible de démarrer OVH Agent : {0}",
-    "en": "Unable to start OVH Agent: {0}",
-    "de": "OVH Agent konnte nicht gestartet werden: {0}",
-    "es": "No se puede iniciar OVH Agent: {0}"
+  "Impossible de démarrer {0} : {1}": {
+    "fr": "Impossible de démarrer {0} : {1}",
+    "en": "Unable to start {0}: {1}",
+    "de": "{0} konnte nicht gestartet werden: {1}",
+    "es": "No se puede iniciar {0}: {1}"
   },
-  "OVH Agent s’est arrêté (code {0}{1}).": {
-    "fr": "OVH Agent s’est arrêté (code {0}{1}).",
-    "en": "OVH Agent stopped (code {0}{1}).",
-    "de": "OVH Agent wurde beendet (Code {0}{1}).",
-    "es": "OVH Agent se detuvo (código {0}{1})."
+  "{0} s’est arrêté (code {1}{2}).": {
+    "fr": "{0} s’est arrêté (code {1}{2}).",
+    "en": "{0} stopped (code {1}{2}).",
+    "de": "{0} wurde beendet (Code {1}{2}).",
+    "es": "{0} se detuvo (código {1}{2})."
   },
   "Fichier introuvable : {0}": {
     "fr": "Fichier introuvable : {0}",
@@ -1564,5 +1673,65 @@
     "en": "TRINITY backend missing: configure ovhAgent.backendPath. See the extension installation guide.",
     "de": "TRINITY-Backend fehlt: Konfiguriere ovhAgent.backendPath. Siehe Installationsanleitung der Erweiterung.",
     "es": "Falta el servidor TRINITY: configura ovhAgent.backendPath. Consulta la guía de instalación de la extensión."
+  },
+  "Solde estimé : {0}{1}": {
+    "fr": "Solde estimé : {0}{1}",
+    "en": "Estimated balance: {0}{1}",
+    "de": "Geschätzter Saldo: {0}{1}",
+    "es": "Saldo estimado: {0}{1}"
+  },
+  "Crédit OVH : {0}{1}": {
+    "fr": "Crédit OVH : {0}{1}",
+    "en": "OVH credit: {0}{1}",
+    "de": "OVH-Guthaben: {0}{1}",
+    "es": "Crédito OVH: {0}{1}"
+  },
+  "Solde estimé {0} = crédit OVH {1} − consommation courante du projet {2}. Montants affichés au centime ; calculs conservés sans arrondi intermédiaire.": {
+    "fr": "Solde estimé {0} = crédit OVH {1} − consommation courante du projet {2}. Montants affichés au centime ; calculs conservés sans arrondi intermédiaire.",
+    "en": "Estimated balance {0} = OVH credit {1} − current project usage {2}. Amounts are displayed to the cent; calculations retain precision without intermediate rounding.",
+    "de": "Geschätzter Saldo {0} = OVH-Guthaben {1} − aktueller Projektverbrauch {2}. Beträge werden auf den Cent angezeigt; Berechnungen bleiben ohne Zwischenrundung erhalten.",
+    "es": "Saldo estimado {0} = crédito OVH {1} − consumo actual del proyecto {2}. Importes mostrados al céntimo; cálculos conservados sin redondeo intermedio."
+  },
+  "Crédit OVH {0} · consommation {1} · déduction indisponible : {2}": {
+    "fr": "Crédit OVH {0} · consommation {1} · déduction indisponible : {2}",
+    "en": "OVH credit {0} · usage {1} · deduction unavailable: {2}",
+    "de": "OVH-Guthaben {0} · Verbrauch {1} · Abzug nicht verfügbar: {2}",
+    "es": "Crédito OVH {0} · consumo {1} · deducción no disponible: {2}"
+  },
+  "Relevé OVH {0} · vérification toutes les {1} s. La consommation peut être publiée avec retard ; les dépenses de l’agent sont comprises dans le relevé OVH et ne sont pas déduites une seconde fois.": {
+    "fr": "Relevé OVH {0} · vérification toutes les {1} s. La consommation peut être publiée avec retard ; les dépenses de l’agent sont comprises dans le relevé OVH et ne sont pas déduites une seconde fois.",
+    "en": "OVH report {0} · checked every {1} s. Usage may be reported with a delay; agent spending is included in the OVH report and is not deducted again.",
+    "de": "OVH-Bericht {0} · Prüfung alle {1} s. Der Verbrauch kann verzögert gemeldet werden; die Ausgaben des Agenten sind im OVH-Bericht enthalten und werden nicht erneut abgezogen.",
+    "es": "Informe OVH {0} · comprobación cada {1} s. El consumo puede publicarse con retraso; los gastos del agente se incluyen en el informe de OVH y no se deducen de nuevo."
+  },
+  "Prévision de consommation {0} · cliquer pour actualiser": {
+    "fr": "Prévision de consommation {0} · cliquer pour actualiser",
+    "en": "Usage forecast {0} · click to refresh",
+    "de": "Verbrauchsprognose {0} · zum Aktualisieren klicken",
+    "es": "Previsión de consumo {0} · pulsar para actualizar"
+  },
+  " · solde estimé {0} · prévision {1}": {
+    "fr": " · solde estimé {0} · prévision {1}",
+    "en": " · estimated balance {0} · forecast {1}",
+    "de": " · geschätzter Saldo {0} · Prognose {1}",
+    "es": " · saldo estimado {0} · previsión {1}"
+  },
+  "Devises du crédit et de la consommation incompatibles ; déduction indisponible.": {
+    "fr": "Devises du crédit et de la consommation incompatibles ; déduction indisponible.",
+    "en": "Credit and usage currencies do not match; deduction unavailable.",
+    "de": "Guthaben- und Verbrauchswährungen stimmen nicht überein; Abzug nicht verfügbar.",
+    "es": "Las divisas del crédito y del consumo no coinciden; deducción no disponible."
+  },
+  "Montants de facturation incomplets ; déduction indisponible.": {
+    "fr": "Montants de facturation incomplets ; déduction indisponible.",
+    "en": "Billing amounts are incomplete; deduction unavailable.",
+    "de": "Abrechnungsbeträge unvollständig; Abzug nicht verfügbar.",
+    "es": "Importes de facturación incompletos; deducción no disponible."
+  },
+  "Jusqu’à {0}k selon le modèle": {
+    "fr": "Jusqu’à {0}k selon le modèle",
+    "en": "Up to {0}k depending on the model",
+    "de": "Bis zu {0}k je nach Modell",
+    "es": "Hasta {0}k según el modelo"
   }
 }

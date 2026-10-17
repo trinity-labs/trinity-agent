@@ -5,9 +5,12 @@ const { t } = OvhI18n;
 document.documentElement.lang = uiLanguage;
 OvhI18n.translateStatic(document.body);
 const vscode = acquireVsCodeApi();
-const brandName = document.body.dataset.brandName || "OVH Agent";
+const brandName = document.body.dataset.brandName || document.title || "TRINITY Agent";
+for (const notice of document.querySelectorAll(".agent-disclaimer")) {
+  notice.textContent = t("{0} est un outil d’assistance. Vous restez responsable des actions exécutées. L’IA peut se tromper : vérifiez ses réponses et les commandes.", brandName);
+}
 document.getElementById("prompt").placeholder = t("Demander à {0}…", brandName);
-document.documentElement.style.setProperty("--ovh-brand-badge", JSON.stringify(document.body.dataset.brandBadge || "OVH"));
+document.documentElement.style.setProperty("--ovh-brand-badge", JSON.stringify(document.body.dataset.brandBadge || Array.from(brandName.split(/\s+/)[0]).slice(0, 3).join("").toUpperCase()));
 const messages = document.getElementById("messages");
 const prompt = document.getElementById("prompt");
 const send = document.getElementById("send");
@@ -180,19 +183,26 @@ function compactTokens(value) {
 
 function priceLabel(model) {
   if (model.id === "auto-balanced") return t("Prix minimal utile · contexte compacté");
-  if (model.hourly != null) return t("${0}/heure", Number(model.hourly).toFixed(3));
+  const currency = model.currency || "EUR";
+  if (model.hourly != null) return t("{0}/heure", formatModelCost(model.hourly, currency));
   if (model.free) return t("Gratuit");
   const input = Number(model.input_per_million || 0);
   const output = Number(model.output_per_million || 0);
   if (input || output) {
-    const inputText = input ? `$${input.toFixed(2)}` : "—";
-    const outputText = output ? `$${output.toFixed(2)}` : "—";
+    const inputText = input ? formatModelCost(input, currency) : "—";
+    const outputText = output ? formatModelCost(output, currency) : "—";
     return t("{0} entrée · {1} sortie / 1M tokens", inputText, outputText);
   }
   return t("Tarif non communiqué par l’API");
 }
 
+function modelAvailabilityLabel() {
+  const models = modelCatalog.filter((item) => item.id !== "auto-balanced" && item.kind !== "auto");
+  return t("{0} modèles disponibles dans l’agent · {1} au catalogue OVHcloud", models.filter((item) => item.selectable).length, models.length);
+}
+
 function renderModels() {
+  document.getElementById("model-availability").textContent = modelAvailabilityLabel();
   const query = modelSearch.value.trim().toLowerCase();
   const visible = modelCatalog.filter((item) =>
     item.selectable && (!query || item.id.toLowerCase().includes(query) || String(item.owner).toLowerCase().includes(query)),
@@ -214,15 +224,29 @@ function renderModels() {
     const name = document.createElement("strong");
     name.textContent = model.id === "auto-balanced" ? t("Auto équilibré") : model.id;
     const badge = document.createElement("span");
-    badge.textContent = model.kind === "auto" ? t("Éco · Auto") : model.vision ? "Vision · Agent" : modelKindLabel(model.kind);
+    badge.textContent = model.kind === "auto" ? t("Éco · Auto") : model.vision ? (model.supports_tools === false ? "Vision" : "Vision · Agent") : modelKindLabel(model.kind);
     top.append(name, badge);
     const price = document.createElement("div");
     price.className = "model-price";
     price.textContent = priceLabel(model);
     const meta = document.createElement("div");
     meta.className = "model-meta";
-    meta.textContent = [model.owner, compactTokens(model.context_length)].filter(Boolean).join(" · ");
+    const size = model.parameters_b ? `${model.parameters_b}B` : "";
+    const active = model.active_parameters_b ? t("{0}B actifs", model.active_parameters_b) : "";
+    const contextLabel = model.id === "auto-balanced"
+      ? t("Jusqu’à {0}k selon le modèle", Math.round(model.context_length / 1024))
+      : compactTokens(model.context_length);
+    meta.textContent = [model.owner, size, active, model.quantization, contextLabel].filter(Boolean).join(" · ");
+    if (model.parameters_b) meta.title = t("Taille documentée du modèle ; ne garantit ni sa vitesse ni sa qualité.");
     row.append(top, price, meta);
+    if (model.cyber_eval) {
+      const evaluation = document.createElement("div");
+      evaluation.className = "model-meta";
+      const e = model.cyber_eval;
+      evaluation.textContent = t("Labo cyber : {0}/{1} cas validés · {2}/{3} refus · {4} erreurs", e.passed, e.samples, e.refusals, e.answered, e.errors);
+      evaluation.title = t("Échantillon limité : SQLi, XSS DOM, traversée de chemins. Aucune garantie d’absence de refus sur d’autres demandes.");
+      row.appendChild(evaluation);
+    }
     if (model.selectable) {
       row.addEventListener("click", () => {
         selectedModel = model.id;
@@ -566,16 +590,24 @@ function renderArchives(items) {
       : item.id;
     meta.textContent = [dateText, item.model].filter(Boolean).join(" · ");
     button.append(title, meta);
-    button.addEventListener("click", () => {
+    const openArchive = () => {
       activeArchiveId = item.id;
       updateSendButton();
       setArchiveVisible(false);
       setStatus(t("Chargement de la conversation…"));
       vscode.postMessage({ type: "loadArchive", id: item.id });
-    });
+    };
+    button.addEventListener("click", openArchive);
+    const view = document.createElement("button");
+    view.type = "button";
+    view.className = "icon archive-action archive-view";
+    view.title = t("Consulter la conversation archivée");
+    view.setAttribute("aria-label", `${view.title} : ${displayTitle}`);
+    view.innerHTML = uiIcon("archive");
+    view.addEventListener("click", openArchive);
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = "icon archive-delete";
+    remove.className = "icon archive-action archive-delete";
     remove.title = t("Supprimer définitivement la conversation");
     remove.setAttribute("aria-label", t("Supprimer définitivement : {0}", displayTitle));
     remove.innerHTML = uiIcon("trash");
@@ -586,11 +618,11 @@ function renderArchives(items) {
       document.getElementById("delete-dialog").showModal();
       document.getElementById("delete-cancel").focus();
     });
-    row.appendChild(button);
+    row.append(button, view);
     if (item.resumable) {
       const resume = document.createElement("button");
       resume.type = "button";
-      resume.className = "icon archive-resume";
+      resume.className = "icon archive-action archive-resume";
       resume.setAttribute("aria-label", t("Reprendre la tâche interrompue"));
       resume.innerHTML = uiIcon("reload");
       resume.title = t("Reprendre la tâche interrompue après vérification de son état");
@@ -676,15 +708,101 @@ function finishRun(state = "done") {
   run.article.classList.remove("working");
   run.article.classList.add(state);
   run.content.classList.remove("streaming");
+  enhanceMarkdown(run.content);
   // Preserve the user’s expanded/collapsed choice through completion.
   persist();
   currentRun = null;
   scrollToBottom();
 }
 
+function alignTextTables(source) {
+  if (source.length > 100000) return source;
+  const lines = source.split("\n");
+  for (let start = 0; start < lines.length; start++) {
+    const top = /^( *)┌[─┬]+┐ *$/.exec(lines[start]);
+    if (!top) continue;
+    const indent = top[1];
+    let end = start + 1;
+    while (end < lines.length && end - start <= 200 && !lines[end].startsWith(indent + "└")) end++;
+    if (end >= lines.length || end - start > 200 || !/^└[─┴]+┘ *$/.test(lines[end].slice(indent.length))) continue;
+    const rows = lines.slice(start, end + 1).map(line => {
+      if (!line.startsWith(indent)) return null;
+      const text = line.slice(indent.length).trimEnd();
+      // Pad only single-cell-width Latin text and box drawing, never guess emoji/CJK widths.
+      if (!/^[\x20-\x7e\u00a0-\u024f\u2500-\u257f]+$/.test(text)) return null;
+      if (/^│.*│$/.test(text)) return {cells: text.slice(1, -1).split("│").map(cell => cell.trimEnd())};
+      if (/^[┌├└][─┬┼┴]+[┐┤┘]$/.test(text)) return {border: text};
+      return null;
+    });
+    if (rows.some(row => !row)) continue;
+    const body = rows.filter(row => row.cells);
+    const columns = Math.max(0, ...body.map(row => row.cells.length));
+    if (!columns || columns > 16 || body.some(row => row.cells.length !== 1 && row.cells.length !== columns)) continue;
+    const widths = Array.from({length: columns}, (_, column) =>
+      Math.max(...body.filter(row => row.cells.length === columns).map(row => row.cells[column].length + 1)));
+    let innerWidth = widths.reduce((sum, width) => sum + width, 0) + columns - 1;
+    const extraWidth = Math.max(0, rows[0].border.length - 2 - innerWidth);
+    widths[columns - 1] += extraWidth;
+    innerWidth += extraWidth;
+    for (const row of body.filter(row => row.cells.length < columns)) {
+      const extra = Math.max(0, row.cells[0].trim().length + 2 - innerWidth);
+      widths[columns - 1] += extra;
+      innerWidth += extra;
+    }
+    const aligned = rows.map(row => {
+      if (row.border) {
+        const joints = row.border.slice(1, -1).match(/[┬┼┴]/g) || [];
+        if (joints.length && joints.length !== columns - 1) return null;
+        const middle = joints.length ? widths.map((width, i) => "─".repeat(width) + (joints[i] || "")).join("") : "─".repeat(innerWidth);
+        return indent + row.border[0] + middle + row.border.at(-1);
+      }
+      if (row.cells.length === columns) return indent + "│" + row.cells.map((cell, i) => cell.padEnd(widths[i])).join("│") + "│";
+      const title = row.cells[0].trim();
+      return indent + "│" + (" ".repeat(Math.floor((innerWidth - title.length) / 2)) + title).padEnd(innerWidth) + "│";
+    });
+    if (aligned.some(line => line === null) || aligned.join("\n").length > 100000) continue;
+    lines.splice(start, aligned.length, ...aligned);
+    start = end;
+  }
+  return lines.join("\n");
+}
+
+function highlightCodeBlock(code, streaming) {
+  if (!code || !window.hljs || code.dataset.highlighted === "yes") return;
+  let source = code.textContent || "";
+  const language = (Array.from(code.classList).find(name => name.startsWith("language-")) || "").slice(9).toLowerCase();
+  // Repair complete text tables before colouring; explicit program source stays verbatim.
+  if (!language || ["text", "txt", "plaintext", "ascii"].includes(language)) {
+    source = alignTextTables(source);
+    if (source !== code.textContent) code.textContent = source;
+  }
+  code.classList.add("hljs");
+  // Bound work while streaming; detect unlabelled snippets only when complete.
+  if (source.length <= 100000 && !code.classList.contains("no-highlight") && !code.classList.contains("nohighlight")) {
+    try {
+      let result;
+      if (language && window.hljs.getLanguage(language)) {
+        result = window.hljs.highlight(source, { language, ignoreIllegals: true });
+      } else if (!language && !streaming && source.length <= 8000) {
+        result = window.hljs.highlightAuto(source, ["bash", "javascript", "typescript", "python", "json", "yaml", "xml", "css", "sql"]);
+      }
+      if (result) code.innerHTML = safeHtml(result.value);
+    } catch { /* Keep the exact source readable if a grammar fails. */ }
+  }
+  if (language || !streaming) code.dataset.highlighted = "yes";
+}
+
 function enhanceMarkdown(container) {
+  for (const table of container.querySelectorAll("table")) {
+    if (table.parentElement?.classList.contains("table-scroll")) continue;
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-scroll";
+    table.before(wrapper);
+    wrapper.appendChild(table);
+  }
   for (const block of container.querySelectorAll("pre")) {
     block.querySelector(":scope > .copy-code")?.remove();
+    highlightCodeBlock(block.querySelector(":scope > code"), container.classList.contains("streaming"));
     const button = document.createElement("button");
     button.className = "copy-code";
     button.type = "button";
@@ -767,7 +885,7 @@ function finishActivity(data) {
   item.row.classList.add(data.success ? "success" : "failure");
   item.icon.innerHTML = uiIcon(data.success ? "check" : "error");
   if (currentRun?.activeId === data.id) {
-    currentRun.currentAction = "";
+    // Keep the last displayed action until the next activity arrives.
     currentRun.activeId = null;
     updateRunSummary(currentRun);
   }
@@ -781,12 +899,8 @@ function addCompletedActivity(tool, title, detail) {
   finishActivity({ id, success: true, detail });
 }
 
-function formatUsd(value) {
-  const amount = Number(value || 0);
-  if (amount === 0) return t("gratuit");
-  const options = {style: "currency", currency: "USD", minimumFractionDigits: 0,
-    maximumFractionDigits: amount < 0.01 ? 5 : 3};
-  return new Intl.NumberFormat(uiLanguage, options).format(amount);
+function formatModelCost(value, currency = "EUR") {
+  return formatMoney(value, currency);
 }
 
 function formatMoney(value, currency = "EUR") {
@@ -794,6 +908,7 @@ function formatMoney(value, currency = "EUR") {
     return new Intl.NumberFormat(uiLanguage, {
       style: "currency",
       currency: String(currency || "EUR").toUpperCase(),
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(Number(value || 0));
   } catch {
@@ -802,6 +917,7 @@ function formatMoney(value, currency = "EUR") {
 }
 
 function applyBillingStatus(data, announce = true) {
+  if (Number.isFinite(data.refresh_seconds) && data.refresh_seconds > 0) scheduleBillingRefresh(data.refresh_seconds);
   if (data.pending) {
     billing.classList.remove("connected");
     billing.classList.add("failed");
@@ -812,17 +928,16 @@ function applyBillingStatus(data, announce = true) {
   if (!data.configured) liveBalance.textContent = t("Solde : à configurer");
   else if (!data.available) liveBalance.textContent = t("Solde : indisponible");
   else {
-    const value = Number(data.credit_available || 0);
+    const value = Number(data.balance_estimated ? data.credit_remaining ?? data.credit_remaining_display : data.credit_available || 0);
     const amount = document.createElement("span");
     amount.className = "balance-amount";
     amount.classList.toggle("negative", value < 0);
-    amount.textContent = (value < 0 ? "-" : "") + formatMoney(Math.abs(value), data.currency);
-    const [prefix, suffix = ""] = t("Solde : {0}{1}", "\uFFFC", data.stale ? t(" (non actualisé)") : "").split("\uFFFC");
+    amount.textContent = (value < 0 ? "-" : "") + formatMoney(Math.abs(value), data.credit_currency || data.currency);
+    const label = data.balance_estimated ? "Solde estimé : {0}{1}" : "Crédit OVH : {0}{1}";
+    const [prefix, suffix = ""] = t(label, "\uFFFC", data.stale ? t(" (non actualisé)") : "").split("\uFFFC");
     liveBalance.replaceChildren(document.createTextNode(prefix), amount, document.createTextNode(suffix));
   }
-  liveBalance.title = data.available
-    ? t("Crédits disponibles OVH · relevé {0} · vérification toutes les 60 s{1}", data.last_update || t("inconnu"), data.stale ? t(" · dernière valeur connue") : "")
-    : t("Cliquer pour configurer le suivi : identifiants API OVHcloud et projet Public Cloud requis (distincts de la clé AI Endpoints)");
+  liveBalance.title = t("Cliquer pour configurer le suivi : identifiants API OVHcloud et projet Public Cloud requis (distincts de la clé AI Endpoints)");
   billing.classList.toggle("connected", Boolean(data.available && !data.stale));
   billing.classList.toggle("failed", Boolean(!data.available || data.stale));
   if (!data.configured) {
@@ -836,11 +951,17 @@ function applyBillingStatus(data, announce = true) {
     return;
   }
   const currency = data.currency || "EUR";
-  const credit = formatMoney(data.credit_available, currency);
+  const credit = formatMoney(data.credit_available, data.credit_currency || currency);
+  const balance = formatMoney(data.credit_remaining, currency);
   const current = formatMoney(data.current_usage, currency);
   const forecast = formatMoney(data.forecast_usage, currency);
-  billing.title = t("Crédits disponibles {0} · consommation {1} · prévision {2} · cliquer pour actualiser", credit, current, forecast);
-  if (announce) setStatus(t("OVHcloud · crédits {0} · consommation {1} · prévision {2}", credit, current, forecast));
+  const calculation = data.balance_estimated
+    ? t("Solde estimé {0} = crédit OVH {1} − consommation courante du projet {2}. Montants affichés au centime ; calculs conservés sans arrondi intermédiaire.", balance, credit, current)
+    : t("Crédit OVH {0} · consommation {1} · déduction indisponible : {2}", credit, current, t(data.balance_error || "inconnu"));
+  const freshness = t("Relevé OVH {0} · vérification toutes les {1} s. La consommation peut être publiée avec retard ; les dépenses de l’agent sont comprises dans le relevé OVH et ne sont pas déduites une seconde fois.", data.last_update || t("inconnu"), data.refresh_seconds || 60);
+  liveBalance.title = `${calculation}\n${freshness}${data.stale ? t(" · dernière valeur connue") : ""}`;
+  billing.title = `${liveBalance.title}\n${t("Prévision de consommation {0} · cliquer pour actualiser", forecast)}`;
+  if (announce) setStatus(calculation);
 }
 
 function addApproval(data) {
@@ -1076,7 +1197,7 @@ clear.addEventListener("click", () => {
   currentRun = null;
   activityRows.clear();
   approvalCards.clear();
-  messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2>Agent OVHcloud</h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section>");
+  messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2></h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section>");
   messages.querySelector(".welcome h2").textContent = brandName;
   pendingImages = [];
   renderPendingImages();
@@ -1191,7 +1312,7 @@ window.addEventListener("message", ({ data }) => {
     } else if (data.type === "error") {
       creatingConversation = false;
       clear.disabled = false;
-    } else if (!["billing_status", "billing_configured", "configured"].includes(data.type)) return;
+    } else if (!["billing_status", "billing_configured", "budget_status", "configured"].includes(data.type)) return;
   }
   if (["status", "error", "archive_delete_failed"].includes(data.type)) data = {...data, text: OvhI18n.message(data.text)};
   if (["tool_start", "approval"].includes(data.type)) data = {...data, title: OvhI18n.message(data.title)};
@@ -1248,6 +1369,10 @@ window.addEventListener("message", ({ data }) => {
     ensureRun();
     setBusy(true, data.text);
   }
+  if (data.type === "session_busy") {
+    if (currentRun) finishRun("stopped");
+    setBusy(false, OvhI18n.message(data.text), true);
+  }
   if (data.type === "tool_start") addActivity(data);
   if (data.type === "tool_end") finishActivity(data);
   if (data.type === "file_change") addFileChange(data);
@@ -1258,23 +1383,42 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "model_routed") {
     lastRoutedModel = data.model || "";
     updateModelButton();
-    const cost = data.projected_cost_usd == null ? "" : t(" · estimation {0}", formatUsd(data.projected_cost_usd));
+    const projectedCost = data.projected_cost_eur ?? data.projected_cost_usd;
+    const cost = projectedCost == null ? "" : t(" · estimation {0}", formatModelCost(projectedCost, data.projected_cost_eur != null ? "EUR" : "USD"));
     const pool = data.eligible_models ? t(" · {0} modèles économiques compatibles", data.eligible_models) : "";
     const history = data.previous_requests
-      ? t(" · historique {0} requête{1} / {2}", data.previous_requests, data.previous_requests > 1 ? "s" : "", formatUsd(data.previous_cost_usd))
+      ? t(" · historique {0} requête{1} / {2}", data.previous_requests, data.previous_requests > 1 ? "s" : "", formatModelCost(data.previous_cost_eur ?? data.previous_cost_usd, data.previous_cost_eur != null ? "EUR" : "USD"))
       : "";
     const account = data.billing?.available
-      ? t(" · crédits {0} · prévision {1}", formatMoney(data.billing.credit_available, data.billing.currency), formatMoney(data.billing.forecast_usage, data.billing.currency))
+      ? t(data.billing.balance_estimated ? " · solde estimé {0} · prévision {1}" : " · crédits {0} · prévision {1}", formatMoney(data.billing.balance_estimated ? data.billing.credit_remaining ?? data.billing.credit_remaining_display : data.billing.credit_available, data.billing.credit_currency || data.billing.currency), formatMoney(data.billing.forecast_usage, data.billing.currency))
       : "";
     addCompletedActivity("route", t("Routage économique"), `${data.model} · ${data.reason || t("modèle compatible")}${cost}${pool}${history}${account}`);
   }
+  if (data.type === "plan_updated") {
+    const steps = Array.isArray(data.steps) ? data.steps : [];
+    const current = Number(data.current_step) || 0;
+    addCompletedActivity("context", t("Plan de la tâche"), steps.map((step, i) =>
+      `${i < current ? "✓" : i === current ? "→" : "○"} ${i + 1}. ${step}`).join("\n"));
+  }
+  if (data.type === "request_prepared") {
+    const sources = Array.isArray(data.sources) ? data.sources : [];
+    const files = new Set(sources.map(source => source.path)).size;
+    const detail = t("{0} fichiers ciblés · préparation locale : {1} ms", files, data.preparation_ms || 0);
+    addCompletedActivity("context", t("Contexte préparé"), detail +
+      (data.partial ? t(" · recherche partielle, complétée au besoin par les outils") : ""));
+  }
   if (data.type === "context_compacted") {
-    const saving = data.saved_percent ? t(" · {0}% économisé", data.saved_percent) : "";
-    const dropped = data.dropped_turns ? t(" · {0} ancien{1} en mémoire condensée", data.dropped_turns, data.dropped_turns > 1 ? "s" : "") : "";
-    addCompletedActivity("context", t("Contexte optimisé"), t("{0} tour{1} actif{2}{3}{4}", data.kept_turns, data.kept_turns > 1 ? "s" : "", data.kept_turns > 1 ? "s" : "", saving, dropped));
+    const usage = Number.isFinite(data.estimated_tokens)
+      ? t("≈ {0} / {1} tokens de contexte", data.estimated_tokens, data.budget_tokens) : "";
+    const mode = data.summary_mode === "semantic" ? t(" · résumé généré")
+      : data.summary_mode === "extractive" ? t(" · extraits archivés") : "";
+    const saved = data.saved_percent ? t(" · {0}% de contexte libéré", data.saved_percent) : "";
+    addCompletedActivity("context", data.compacted ? t("Contexte compacté") : t("Budget de contexte"), usage + mode + saved);
   }
   if (data.type === "usage") {
-    addCompletedActivity("cost", t("Utilisation du modèle"), t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens, formatUsd(data.cost_usd)));
+    const timing = Number.isFinite(data.first_text_ms)
+      ? t(" · premier texte : {0} s", (data.first_text_ms / 1000).toFixed(2)) : "";
+    addCompletedActivity("cost", data.purpose === "compaction" ? t("Coût de la compaction") : t("Utilisation du modèle"), t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens, formatModelCost(data.cost_eur ?? data.cost_usd, data.cost_eur != null ? "EUR" : "USD")) + timing);
   }
   if (data.type === "approval") addApproval(data);
   if (data.type === "approval_result") resolveApproval(data);
@@ -1301,7 +1445,7 @@ window.addEventListener("message", ({ data }) => {
     if (currentRun) finishRun("stopped");
     setBusy(false, "");
   }
-  if (data.type === "cleared") { activeArchiveId = data.conversation || ""; setBusy(false, t("Conversation effacée")); }
+  if (data.type === "cleared") { activeArchiveId = data.conversation || ""; setBusy(false, t("Nouvelle conversation")); }
   if (data.type === "configured") setBusy(false, t("Clé OVH enregistrée de façon sécurisée"));
   if (data.type === "billing_configured") setBusy(false, t("Accès lecture seule à la facturation enregistré"));
   if (data.type === "billing_status") applyBillingStatus(data, !data.silent && !busy);
@@ -1374,7 +1518,7 @@ window.addEventListener("message", ({ data }) => {
     updateModelButton();
     renderModels();
     if (pendingImages.length) ensureVisionModel();
-    setStatus(t("{0} modèles OVHcloud chargés", modelCatalog.filter((item) => item.id !== "auto-balanced").length));
+    setStatus(modelAvailabilityLabel());
   }
   if (data.type === "model_selected") {
     selectedModel = data.model;
@@ -1471,7 +1615,16 @@ removeLegacyQuoteButtons();
 function refreshLiveBalance() {
   if (!document.hidden) vscode.postMessage({type: "billingRefresh"});
 }
-window.setInterval(refreshLiveBalance, 60000);
+let billingRefreshTimer;
+let billingRefreshSeconds;
+function scheduleBillingRefresh(seconds) {
+  const next = Math.max(1, Math.min(2147483, Math.floor(seconds)));
+  if (next === billingRefreshSeconds) return;
+  window.clearInterval(billingRefreshTimer);
+  billingRefreshSeconds = next;
+  billingRefreshTimer = window.setInterval(refreshLiveBalance, next * 1000);
+}
+scheduleBillingRefresh(60);
 document.addEventListener("visibilitychange", refreshLiveBalance);
 
 liveBalance.addEventListener("click", () => vscode.postMessage({type: "billing"}));

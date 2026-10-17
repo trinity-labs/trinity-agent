@@ -4,6 +4,7 @@ const i18n = require("./media/i18n");
 const { t } = i18n;
 i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [vscode.env.language]));
 const { ArchiveStore } = require("./archive-store");
+const { acquireWindowLock, releaseWindowLock } = require("./window-lock");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -12,7 +13,8 @@ const { validMessage, localLink } = require("./security");
 const MarkdownIt = require("markdown-it");
 const sanitizeHtml = require("sanitize-html");
 
-const BRAND_NAME = (process.env.OVH_AGENT_NAME || "TRINITY Agent").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 80) || "OVH Agent";
+const BRAND_NAME = [process.env.OVH_AGENT_NAME, require("./package.json").displayName, "TRINITY Agent"]
+  .map(name => String(name || "").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 80)).find(Boolean);
 function escapeBrand(value) {
   return value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }
@@ -87,15 +89,17 @@ class OvhAgentViewProvider {
     this.store = new ArchiveStore(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir());
   }
 
-  resolveWebviewView(webviewView) {
+  async resolveWebviewView(webviewView) {
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
     };
-    webviewView.webview.html = this.getHtml(webviewView.webview);
     webviewView.webview.onDidReceiveMessage(async (message) => {
       if (!validMessage(message)) return;
+      if (this.view !== webviewView) return;
+      if (message.type === "retryWindow") { await this.openWindow(webviewView); return; }
+      if (!this.windowLock) return;
       if (message.type === "prompt") await this.sendPrompt(message.text, message.fullAccess, message.model, message.images);
       if (message.type === "followup") await this.sendControl({
         type: "followup", action: message.action, conversation: message.conversation,
@@ -103,7 +107,7 @@ class OvhAgentViewProvider {
         full_access: Boolean(message.fullAccess), model: message.model,
       });
       if (message.type === "clear") await this.clearConversation();
-      if (message.type === "cancel") this.stopAgent();
+      if (message.type === "cancel") await this.stopAgent();
       if (message.type === "configureKey") await this.configureKey();
       if (message.type === "billing") await this.refreshBilling(true);
       if (message.type === "billingRefresh") await this.refreshBilling(false);
@@ -124,6 +128,48 @@ class OvhAgentViewProvider {
       });
       if (message.type === "webviewReady") { i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [message.language, vscode.env.language])); this.showArchives(); void this.refreshBilling(false); }
     });
+    webviewView.onDidDispose(() => {
+      if (this.view !== webviewView) return;
+      this.view = undefined;
+      void this.closeWindow();
+    });
+    await this.openWindow(webviewView);
+  }
+
+  async openWindow(view) {
+    if (this.windowOpening) return this.windowOpening;
+    this.windowOpening = (async () => {
+      if (this.windowClosing) await this.windowClosing;
+      if (this.view !== view) return;
+      let errorText = "";
+      try { this.windowLock ||= await acquireWindowLock(this.store.dataRoot); }
+      catch (error) { errorText = error.message; }
+      if (this.view !== view) {
+        await releaseWindowLock(this.windowLock);
+        this.windowLock = undefined;
+        return;
+      }
+      view.webview.html = this.windowLock ? this.getHtml(view.webview) : this.getLockedHtml(errorText);
+    })().finally(() => { this.windowOpening = undefined; });
+    return this.windowOpening;
+  }
+
+  closeWindow() {
+    if (this.windowClosing) return this.windowClosing;
+    this.windowClosing = (async () => {
+      await this.stopAgent(false);
+      const lock = this.windowLock;
+      this.windowLock = undefined;
+      await releaseWindowLock(lock);
+    })().finally(() => { this.windowClosing = undefined; });
+    return this.windowClosing;
+  }
+
+  getLockedHtml(errorText = "") {
+    const nonce = crypto.randomBytes(16).toString("hex");
+    const title = escapeBrand(t("Agent déjà ouvert"));
+    const message = escapeBrand(errorText || t("Une autre fenêtre utilise déjà {0}. Ferme l’autre fenêtre VS Code, puis réessaie ici.", BRAND_NAME));
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><style nonce="${nonce}">body { padding: 20px; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font: 13px/1.5 var(--vscode-font-family); } button { padding: 6px 12px; border: 0; border-radius: 4px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }</style></head><body><h2>${title}</h2><p>${message}</p><button id="retry">${escapeBrand(t("Réessayer"))}</button><script nonce="${nonce}">const vscode=acquireVsCodeApi(); document.getElementById('retry').addEventListener('click',()=>{document.getElementById('retry').disabled=true;vscode.postMessage({type:'retryWindow'});});</script></body></html>`;
   }
 
   post(message) {
@@ -174,7 +220,7 @@ class OvhAgentViewProvider {
       const origin = region.baseUrl.replace(/\/1\.0$/, "");
       const scopes = "GET=/cloud/project/*/usage/*&GET=/cloud/project/*/credit&GET=/cloud/project/*/credit/*";
       await vscode.env.openExternal(vscode.Uri.parse(`${origin}/createToken/?${scopes}`));
-      vscode.window.showInformationMessage(t("Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans OVH Agent."));
+      vscode.window.showInformationMessage(t("Crée les identifiants en lecture seule, puis reclique sur l’icône du solde dans {0}.", BRAND_NAME));
       return false;
     }
     if (credentialAction !== t("J’ai les identifiants")) return false;
@@ -275,14 +321,16 @@ class OvhAgentViewProvider {
   }
 
   async ensureAgent() {
-    if (this.deleting) return false;
+    if (!this.windowLock) return false;
+    if (this.stopPromise) await this.stopPromise;
+    if (!this.windowLock || this.windowClosing || this.deleting) return false;
     if (this.agent && !this.agent.killed) return true;
     if (!this.startPromise) this.startPromise = this.startAgent().finally(() => { this.startPromise = undefined; });
     return this.startPromise;
   }
 
   async startAgent() {
-
+    if (!this.windowLock) return false;
     if (this.agent && !this.agent.killed) return true;
     if (!fs.existsSync(agentPath())) {
       this.post({ type: "error", text: t("Serveur TRINITY absent : configure ovhAgent.backendPath. Consulte le guide d’installation de l’extension.") });
@@ -309,6 +357,7 @@ class OvhAgentViewProvider {
     }
     const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
     const billing = await this.billingCredentials();
+    if (!this.windowLock || this.windowClosing) return false;
     this.stdoutBuffer = "";
     const agent = spawn(agentPath(), ["--json-lines"], {
       cwd: workspace,
@@ -337,16 +386,16 @@ class OvhAgentViewProvider {
     });
     agent.on("error", (error) => {
       if (this.agent !== agent) return;
-      this.post({ type: "error", text: t("Impossible de démarrer OVH Agent : {0}", error.message) });
+      this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, error.message) });
       if (this.agent === agent) this.agent = undefined;
     });
     agent.on("exit", (code, signal) => {
       if (this.agent !== agent) return;
       if (code && code !== 0) {
-        this.post({ type: "error", text: t("OVH Agent s’est arrêté (code {0}{1}).", code, signal ? `, ${signal}` : "") });
+        this.post({ type: "error", text: t("{0} s’est arrêté (code {1}{2}).", BRAND_NAME, code, signal ? `, ${signal}` : "") });
       }
       if (this.agent === agent) {
-        this.post({ type: "idle" });
+        if (!agent.sessionBusy) this.post({ type: "idle" });
         this.agent = undefined;
       }
     });
@@ -361,6 +410,7 @@ class OvhAgentViewProvider {
       if (!line.trim()) continue;
       try {
         const message = JSON.parse(line);
+        if (message.type === "session_busy" && this.agent) this.agent.sessionBusy = true;
         if (message.type === "status") this.responseText = "";
         if (message.type === "delta") {
           this.responseText += String(message.text || "");
@@ -412,9 +462,9 @@ class OvhAgentViewProvider {
   }
 
   async clearConversation() {
-    this.stopAgent(false);
+    await this.stopAgent(false);
     if (!(await this.ensureAgent())) {
-      this.post({ type: "error", text: t("Impossible de démarrer OVH Agent : {0}", "initialization failed") });
+      this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, "initialization failed") });
       return;
     }
     this.agent.stdin.write(`${JSON.stringify({ type: "clear" })}\n`);
@@ -442,13 +492,27 @@ class OvhAgentViewProvider {
   }
 
   stopAgent(notify = true) {
-    if (this.agent && !this.agent.killed) this.agent.kill("SIGTERM");
-    this.agent = undefined;
-    if (notify) this.post({ type: "idle" });
+    if (this.stopPromise) return this.stopPromise;
+    const starting = this.startPromise;
+    this.stopPromise = (async () => {
+      if (starting) await starting;
+      const agent = this.agent;
+      this.agent = undefined;
+      if (agent && agent.exitCode === null && agent.signalCode === null) {
+        await new Promise(resolve => {
+          const timer = setTimeout(() => agent.kill("SIGKILL"), 5000);
+          agent.once("close", () => { clearTimeout(timer); resolve(); });
+          agent.kill("SIGTERM");
+        });
+      }
+      if (notify) this.post({ type: "idle" });
+    })().finally(() => { this.stopPromise = undefined; });
+    return this.stopPromise;
   }
 
   dispose() {
-    this.stopAgent(false);
+    this.view = undefined;
+    void this.closeWindow();
   }
 
   getHtml(webview) {
@@ -457,6 +521,8 @@ class OvhAgentViewProvider {
     const configuredColor = String(process.env.OVH_AGENT_PRIMARY_COLOR || "").trim();
     const primaryColor = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor : "#3e3aab";
     const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "chat.css"));
+    const codeStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "monokai.min.css"));
+    const highlightUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "highlight.min.js"));
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "chat.js"));
     const i18nUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "i18n.js"));
     const translationData = JSON.stringify(require("./media/translations.json")).replace(/</g, "\\u003c");
@@ -473,20 +539,22 @@ class OvhAgentViewProvider {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; connect-src 'none'; img-src data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+  <link rel="stylesheet" href="${codeStyleUri}?build=${nonce}">
   <link rel="stylesheet" href="${styleUri}?build=${nonce}">
   <style nonce="${nonce}">:root { --ovh-primary: ${primaryColor}; }</style>
   <title>${brandName}</title>
 </head><body data-language="${localeOverride}" data-brand-name="${brandName}" data-brand-badge="${brandBadge}">
   <header><div class="header-leading"><span id="history-brand" class="history-brand" aria-hidden="true">${uiIcon("nodes")}</span><button id="history" hidden class="icon back-history" title="Retour à l’historique" aria-label="Retour à l’historique">${uiIcon("back")}</button><div class="brand"><strong>${brandName}</strong><button id="model-picker" title="Choisir le modèle"><span id="selected-model">Auto équilibré</span>${uiIcon("chevron")}</button></div></div><div class="header-actions"><button id="billing" class="icon billing" title="Configurer le suivi du solde OVHcloud" aria-label="Solde OVHcloud">${uiIcon("database")}<span class="billing-dot"></span></button><button id="configure" class="icon" title="Configurer la clé OVH" aria-label="Configurer la clé">${uiIcon("key")}</button><button id="clear" class="icon" title="Nouvelle conversation" aria-label="Nouvelle conversation">${uiIcon("plus")}</button></div></header>
-  <aside id="archive-panel">${archiveBanner}<p id="archive-notice" role="status"></p><div id="archive-list"><p class="archive-empty">Chargement…</p></div></aside><dialog id="delete-dialog"><h3>${uiIcon("trash", "delete-title-icon")}Supprimer définitivement ?</h3><p id="delete-title"></p><p>Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.</p><div class="delete-dialog-actions"><button id="delete-cancel" type="button">Annuler</button><button id="delete-confirm" type="button">Supprimer définitivement</button></div></dialog>
-  <aside id="model-panel" hidden><div class="model-head"><div><strong>Modèles OVHcloud</strong><span>Catalogue et tarifs en direct</span></div><button id="close-models" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div><div class="model-tools"><input id="model-search" type="search" placeholder="Rechercher un modèle…"><button id="refresh-models" class="icon" title="Actualiser les tarifs">${uiIcon("reload")}</button></div><div id="model-list"><p class="model-empty">Chargement du catalogue…</p></div><div class="model-foot">Tarifs OVHcloud HT. Les modèles non conversationnels sont affichés à titre informatif.</div></aside>
+  <aside id="archive-panel">${archiveBanner}<p id="archive-notice" role="status"></p><div id="archive-list"><p class="archive-empty">Chargement…</p></div><p class="agent-disclaimer"></p></aside><dialog id="delete-dialog"><h3>${uiIcon("trash", "delete-title-icon")}Supprimer définitivement ?</h3><p id="delete-title"></p><p>Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.</p><div class="delete-dialog-actions"><button id="delete-cancel" type="button">Annuler</button><button id="delete-confirm" type="button">Supprimer définitivement</button></div></dialog>
+  <aside id="model-panel" hidden><div class="model-head"><div><strong>Modèles OVHcloud</strong><span>Catalogue et tarifs en direct</span><span id="model-availability" aria-live="polite"></span></div><button id="close-models" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div><div class="model-tools"><input id="model-search" type="search" placeholder="Rechercher un modèle…"><button id="refresh-models" class="icon" title="Actualiser les tarifs">${uiIcon("reload")}</button></div><div id="model-list"><p class="model-empty">Chargement du catalogue…</p></div><div class="model-foot">Tarifs OVHcloud HT. Seuls les modèles sélectionnables sont affichés. Les modèles non conversationnels ou indisponibles sont exclus. Le mode Auto ne compte pas comme un modèle.</div></aside>
   <main id="messages"><section class="welcome"><h2>${brandName}</h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section></main>
-  <footer><div id="followups" class="followups" aria-live="polite" hidden></div><div class="composer-meta"><div id="status" aria-live="polite"></div><button type="button" id="live-balance" aria-live="polite" title="Configurer ou actualiser le solde OVHcloud">Solde : chargement…</button></div><div id="composer" class="composer"><div id="attachments" class="attachments" hidden></div><textarea id="prompt" rows="1" placeholder="Demander à ${brandName}…"></textarea><div class="composer-bar"><div class="composer-left"><button id="attach" class="round attach" title="Joindre une image" aria-label="Joindre une image">${uiIcon("image")}</button><input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden><button id="access" class="access full" title="Basculer le niveau d’accès">${uiIcon("shield")}<span>Accès complet</span></button></div><div class="send-column"><div class="send-actions"><select id="followup-mode" title="Réorienter applique la consigne à la prochaine étape, après l’appel ou l’outil en cours." aria-label="Envoi pendant une tâche" hidden><option value="queue">Mettre en attente</option><option value="steer">Réorienter</option></select><button id="stop" class="round stop" title="Arrêter" aria-label="Arrêter">${uiIcon("stop")}</button><button id="send" class="round send" title="Envoyer" aria-label="Envoyer">${uiIcon("send")}</button></div></div></div></div></footer>
+  <footer><div id="followups" class="followups" aria-live="polite" hidden></div><div class="composer-meta"><div id="status" aria-live="polite"></div><button type="button" id="live-balance" aria-live="polite" title="Configurer ou actualiser le solde OVHcloud">Solde : chargement…</button></div><div id="composer" class="composer"><div id="attachments" class="attachments" hidden></div><textarea id="prompt" rows="1" placeholder="Demander à ${brandName}…"></textarea><div class="composer-bar"><div class="composer-left"><button id="attach" class="round attach" title="Joindre une image" aria-label="Joindre une image">${uiIcon("image")}</button><input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden><button id="access" class="access full" title="Basculer le niveau d’accès">${uiIcon("shield")}<span>Accès complet</span></button></div><div class="send-column"><div class="send-actions"><select id="followup-mode" title="Réorienter applique la consigne à la prochaine étape, après l’appel ou l’outil en cours." aria-label="Envoi pendant une tâche" hidden><option value="queue">Mettre en attente</option><option value="steer">Réorienter</option></select><button id="stop" class="round stop" title="Arrêter" aria-label="Arrêter">${uiIcon("stop")}</button><button id="send" class="round send" title="Envoyer" aria-label="Envoyer">${uiIcon("send")}</button></div></div></div></div><p class="agent-disclaimer"></p></footer>
   <script nonce="${nonce}">window.OVH_TRANSLATIONS = ${translationData};</script>
   <script nonce="${nonce}" src="${i18nUri}?build=${nonce}"></script>
   <script nonce="${nonce}" src="${purifyUri}?build=${nonce}"></script>
   <script nonce="${nonce}" src="${safeHtmlUri}?build=${nonce}"></script>
   <script nonce="${nonce}" src="${iconsUri}?build=${nonce}"></script>
+  <script nonce="${nonce}" src="${highlightUri}?build=${nonce}"></script>
   <script nonce="${nonce}" src="${scriptUri}?build=${nonce}"></script>
 </body></html>`;
   }

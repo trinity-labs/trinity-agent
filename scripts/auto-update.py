@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXTENSIONS = Path.home() / '.local/share/code-server/extensions'
 API = 'https://api.github.com/repos/trinity-labs/trinity-agent/releases/latest'
 PREFIX = 'https://github.com/trinity-labs/trinity-agent/releases/download/'
-BACKEND_FILES = {'ovh-agent.py', 'ovh_memory.py', 'ovh-agent.sh'}
+BACKEND_FILES = {'ovh-agent.py', 'ovh_memory.py', 'ovh_context.py', 'ovh_cache.py', 'ovh_request.py', 'ovh_budget.py', 'ovh_budget_model.py', 'ovh-agent.sh'}
 
 
 def version(value):

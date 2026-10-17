@@ -25,6 +25,7 @@ The extension itself is free and licensed under **0BSD**. OVHcloud API usage and
 ## ⬛ Features
 
 - Model selection and context compaction with local Markdown memory.
+- Local syntax highlighting with a dark Monokai theme, including restored conversations; full-width tables with subtle alternating rows.
 - Persistent conversation history, deletion and interrupted-task resumption.
 - **Queue message** while a task runs; edit, remove or promote pending messages to steering.
 - **Steer task** applies the instruction before the next model call, after the current call/tool completes. It does not roll back running commands.
@@ -40,4 +41,4 @@ Prompts, relevant workspace contents, tool results and images can be sent to the
 
 [GitHub](https://github.com/trinity-labs/trinity-agent) · [Codeberg](https://codeberg.org/trinity-labs/trinity-agent) · [Issues](https://github.com/trinity-labs/trinity-agent/issues)
 
-Original code: 0BSD. Bootstrap Icons: MIT. The Marketplace icon is the TRINITY logo. The history header uses Font Awesome Free's **hexagon-nodes** icon under CC BY 4.0. DOMPurify, Markdown-it and other dependencies retain their respective licenses; license files are included in the package.
+Original code: 0BSD. Bootstrap Icons: MIT. Highlight.js and its bundled Monokai theme: BSD-3-Clause. The Marketplace icon is the TRINITY logo. The history header uses Font Awesome Free's **hexagon-nodes** icon under CC BY 4.0. DOMPurify, Markdown-it and other dependencies retain their respective licenses; license files are included in the package.
