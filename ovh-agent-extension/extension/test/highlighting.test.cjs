@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const {createRequire} = require('node:module');
 const {JSDOM} = require('jsdom');
 
-function browser() {
+function browser(minified) {
   const root = path.resolve(__dirname, '..');
   const nativeRequire = createRequire(path.join(root, 'extension.js'));
   const vscode = {workspace:{workspaceFolders:[{uri:{fsPath:root}}]}, Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)}, env:{language:'fr'}};
@@ -15,11 +15,12 @@ function browser() {
   const provider = new scope.module.exports.Provider(root, {});
   const dom = new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}), {runScripts:'outside-only',url:'https://test.invalid'});
   const w = dom.window;
-  w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:()=>{},postMessage:()=>{}});
+  const states=[];
+  w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:value=>states.push(value),postMessage:()=>{}});
   w.HTMLElement.prototype.scrollIntoView=function(){};
   w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
-  for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','highlight.min.js','chat.js']) w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
-  return {dom, w, render:scope.module.exports.renderMarkdown,
+  for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','highlight.min.js','chat.js']) w.eval(fs.readFileSync(minified && ['i18n.js','safe-html.js','chat.js'].includes(name) ? path.join(minified,name.replace('.js','.min.js')) : path.join(root,'media',name),'utf8'));
+  return {dom, w, states, render:scope.module.exports.renderMarkdown,
     emit:data=>w.dispatchEvent(new w.MessageEvent('message',{data}))};
 }
 
@@ -196,4 +197,48 @@ test('diff line background remains visible behind literal source', () => {
       assert.equal(w.getComputedStyle(line.querySelector('code')).backgroundColor,'rgba(0, 0, 0, 0)');
     }
   } finally {dom.window.close();}
+});
+
+test('explicit grammars run once at completion, never per streamed chunk',()=>{
+  const {dom,w,render,emit}=browser();
+  try {
+    let count=0;const original=w.hljs.highlight;
+    w.hljs.highlight=(...args)=>{count++;return original(...args);};
+    const html=render('```javascript\nconst value=42;\n```');
+    for(let i=0;i<100;i++)emit({type:'delta',html});
+    assert.equal(count,0);
+    emit({type:'response',html});assert.equal(count,1);
+    assert.equal(w.document.querySelector('pre code').textContent,'const value=42;\n');
+  } finally {dom.window.close();}
+});
+
+test('stream persistence is coalesced and final identical HTML keeps its DOM',()=>{
+  const {dom,w,states,render,emit}=browser();
+  try {
+    emit({type:'delta',html:render('First')});const initial=states.length;
+    for(let i=0;i<100;i++)emit({type:'delta',html:render('Text '+i)});
+    assert.equal(states.length,initial,'no whole-history serialization per streamed fragment');
+    const paragraph=w.document.querySelector('.markdown p');
+    emit({type:'response',html:render('Text 99')});
+    assert.equal(w.document.querySelector('.markdown p'),paragraph,'final response reuses the last DOM');
+    assert(states.at(-1).html.includes('Text 99'));
+  } finally {dom.window.close();}
+});
+
+test('generated minified frontend preserves streams, final state, safety and source maps',async()=>{
+  const os=require('node:os');const {buildFrontend}=require('../scripts/build-frontend.cjs');
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'frontend-min-'));
+  let dom;
+  try {
+    const sizes=await buildFrontend(directory);assert(sizes.every(row=>row.minified<row.source));
+    const browserState=browser(directory);dom=browserState.dom;
+    const {w,emit,render,states}=browserState;
+    emit({type:'delta',html:render('```javascript\nconst x=1;\n```')});
+    emit({type:'response',html:render('```javascript\nconst x=1;\n```')});
+    assert.equal(w.document.querySelector('pre code').textContent,'const x=1;\n');
+    assert(w.document.querySelector('.hljs-keyword'));assert(states.at(-1).html.includes('const'));
+    assert(!w.safeHtml('<img src="https://evil.invalid" onerror="alert(1)"><script>bad()</script>').includes('onerror'));
+    const map=JSON.parse(fs.readFileSync(path.join(directory,'chat.min.js.map')));
+    assert.equal(map.sourcesContent[0],fs.readFileSync(path.join(__dirname,'../media/chat.js'),'utf8'));
+  } finally {if(dom)dom.window.close();fs.rmSync(directory,{recursive:true,force:true});}
 });

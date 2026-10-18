@@ -119,3 +119,14 @@
 !/scripts/run-evaluation-campaign.py
 
 !/scripts/test-campaign.py
+
+!/scripts/benchmark-performance.py
+!/scripts/test-performance.py
+
+# Public flow modules and contributor documentation; generated frontend stays ignored.
+!/ovh-agent-extension/extension/markdown-renderer.js
+!/ovh-agent-extension/extension/backend-protocol.js
+!/ovh-agent-extension/extension/billing-channel.js
+!/ovh-agent-extension/extension/ARCHITECTURE.md
+!/ovh-agent-extension/extension/scripts/build-frontend.cjs
+!/ovh-agent-extension/extension/webview-html.js

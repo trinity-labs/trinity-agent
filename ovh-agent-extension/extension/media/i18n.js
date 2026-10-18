@@ -40,13 +40,17 @@
     }
     return text;
   }
+  const snapshotKeys = new Map();
+  for (const key of Object.keys(catalog)) for (const value of Object.values(catalog[key])) {
+    if (!snapshotKeys.has(value)) snapshotKeys.set(value, key);
+  }
   function translateSnapshot(node) {
     // Only application-owned labels; never rewrite user/model prose or code.
     const selectors = ".label,.activity-summary-text,.activity-row strong,.approval-card > strong,.approval-actions button,.file-change summary strong,.welcome p";
     for (const element of node.querySelectorAll(selectors)) {
       if (element.children.length) continue;
       const value = element.textContent;
-      const key = Object.keys(catalog).find(key => Object.values(catalog[key]).includes(value));
+      const key = snapshotKeys.get(value);
       if (key) element.textContent = t(key);
       else element.textContent = message(value);
     }

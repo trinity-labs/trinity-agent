@@ -14,6 +14,16 @@ spec.loader.exec_module(u)
 
 
 class Validation(unittest.TestCase):
+    def test_packager_and_updater_share_backend_contract(self):
+        # Catch drift between the independently maintained package and installer:
+        # a self-generated fixture alone cannot detect a missing backend module.
+        import ast
+        import re
+        source = (Path(__file__).resolve().parents[1] / 'ovh-agent-extension/extension/scripts/package-vsix.cjs').read_text()
+        lists = re.findall(r"for \(const name of (\[[^\]]+\])\)", source)
+        backend = next(ast.literal_eval(value) for value in lists if 'ovh-agent.py' in value)
+        self.assertEqual(set(backend), u.BACKEND_FILES)
+
     def test_branding_survives_replacement_and_missing_assets_defer(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

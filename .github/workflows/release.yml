@@ -35,6 +35,17 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/agent-verification"
           "$RUNNER_TEMP/agent-verification/bin/pip" install 'pydantic-ai-slim[openai]==2.56.0'
           "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/check-backend.py
+      - name: Measure offline backend cold and warm starts
+        env:
+          PYDANTIC_AI_NO_BANNER: '1'
+        run: |
+          "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/benchmark-performance.py --runs 1 --output "$RUNNER_TEMP/backend-performance.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: backend-performance
+          path: ${{ runner.temp }}/backend-performance.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify Marketplace authorization on manual runs
         if: github.event_name == 'workflow_dispatch' && vars.MARKETPLACE_AUTH_MODE == 'pat'
         env:

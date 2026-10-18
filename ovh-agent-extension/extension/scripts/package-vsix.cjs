@@ -11,7 +11,7 @@ if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketpl
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
 try {
   // Explicit allowlist: never copy local backups, credentials, archives or custom branding.
-  const files = ['extension.js','project-store.js','archive-store.js','window-lock.js','security.js','package.json','package-lock.json','README.md','CHANGELOG.md',
+  const files = ['extension.js','project-store.js','archive-store.js','window-lock.js','security.js','markdown-renderer.js','backend-protocol.js','billing-channel.js','webview-html.js','ARCHITECTURE.md','package.json','package-lock.json','README.md','CHANGELOG.md',
     'package.nls.json','package.nls.fr.json','package.nls.en.json','package.nls.de.json','package.nls.es.json',
     'media/chat.js','media/chat.css','media/i18n.js','media/translations.json','media/safe-html.js','media/purify.min.js','media/icons.min.js',
     'media/highlight.min.js','media/monokai.min.css','media/HighlightJS.LICENSE',
@@ -24,6 +24,8 @@ try {
     fs.mkdirSync(path.dirname(destination), {recursive:true});
     fs.copyFileSync(source, destination);
   }
+  // Generate from readable sources in the isolated stage: never trust stale build output.
+  execFileSync(process.execPath,[path.join(root,'scripts/build-frontend.cjs'),'--out',path.join(stage,'media')],{cwd:root,stdio:'inherit'});
   fs.copyFileSync(path.resolve(root, '../../LICENSE'), path.join(stage, 'LICENSE'));
   if (publisher === 'trinity') {
     const crypto = require('node:crypto');

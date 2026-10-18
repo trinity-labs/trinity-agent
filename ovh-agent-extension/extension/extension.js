@@ -4,21 +4,21 @@ const i18n = require("./media/i18n");
 const { t } = i18n;
 i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [vscode.env.language]));
 const { ArchiveStore } = require("./archive-store");
-const { ProjectStore } = require("./project-store");
+const { ProjectStore, assertStoragePath, readStorageFile } = require("./project-store");
 const { acquireWindowLock, releaseWindowLock } = require("./window-lock");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { validMessage, localLink } = require("./security");
-const MarkdownIt = require("markdown-it");
-const sanitizeHtml = require("sanitize-html");
+const { buildChatHtml } = require("./webview-html");
+const { validMessage, localLink, escapeHtml: escapeBrand } = require("./security");
+const { renderMarkdown, createMarkdownRenderer } = require("./markdown-renderer");
+const { BillingChannel } = require("./billing-channel");
+const { NdjsonDecoder } = require("./backend-protocol");
 
 const BRAND_NAME = [process.env.OVH_AGENT_NAME, require("./package.json").displayName, "TRINITY Agent"]
   .map(name => String(name || "").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 80)).find(Boolean);
-function escapeBrand(value) {
-  return value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-}
+
 
 function agentPath() {
   return process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-agent.sh";
@@ -52,30 +52,6 @@ function persistServerSecret(name, value) {
 function readPersistentKey() { return readServerSecret("OVH_AI_API_KEY"); }
 function persistKey(value) { return persistServerSecret("OVH_AI_API_KEY", value); }
 
-const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true, breaks: true });
-
-function renderMarkdown(source) {
-  const rendered = markdown.render(String(source || ""));
-  return sanitizeHtml(rendered, {
-    allowedTags: [
-      ...sanitizeHtml.defaults.allowedTags,
-      "h1", "h2", "h3", "h4", "h5", "h6", "img", "del",
-      "table", "thead", "tbody", "tfoot", "tr", "th", "td",
-    ],
-    allowedAttributes: {
-      a: ["href", "title", "target", "rel"],
-      img: ["src", "alt", "title"],
-      code: ["class"],
-      th: ["align"],
-      td: ["align"],
-    },
-    allowedSchemes: ["http", "https", "mailto"],
-    allowedSchemesByTag: { img: ["https"] },
-    transformTags: {
-      a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener noreferrer" }),
-    },
-  });
-}
 
 class OvhAgentViewProvider {
   constructor(extensionUri, secrets, state) {
@@ -87,8 +63,10 @@ class OvhAgentViewProvider {
     this.secrets = secrets;
     this.view = undefined;
     this.agent = undefined;
-    this.stdoutBuffer = "";
+    this.decoder = new NdjsonDecoder();
     this.responseText = "";
+    this.renderMarkdown = createMarkdownRenderer();
+    this.billingChannel = new BillingChannel();
     this.startPromise = undefined;
     this.deleting = false;
     this.store = new ArchiveStore(this.workspace);
@@ -134,7 +112,7 @@ class OvhAgentViewProvider {
       if (message.type === "billingRefresh") await this.refreshBilling(false);
       if (message.type === "approval") this.sendApproval(message.id, message.allow);
       if (message.type === "openLink") await this.openLink(message.href);
-      if (message.type === "listArchives") this.showArchives();
+      if (message.type === "listArchives") this.requestArchivesRefresh();
       if (message.type === "listModels") await this.sendControl({ type: "list_models", refresh: Boolean(message.refresh) });
       if (message.type === "selectModel") await this.sendControl({ type: "set_model", model: String(message.model || "") });
       if (message.type === "deleteArchiveConfirmed") await this.deleteArchive(message.id, message.source);
@@ -179,6 +157,8 @@ class OvhAgentViewProvider {
     if (this.windowClosing) return this.windowClosing;
     this.windowClosing = (async () => {
       await this.stopAgent(false);
+      this.renderMarkdown.clear();
+      clearTimeout(this.archiveRefreshTimer);this.archiveRefreshTimer=undefined;
       const lock = this.windowLock;
       this.windowLock = undefined;
       await releaseWindowLock(lock);
@@ -199,6 +179,7 @@ class OvhAgentViewProvider {
 
   async editProfile() {
     const file = path.join(this.store.dataRoot, "MASTER.md");
+    assertStoragePath(file);
     fs.mkdirSync(this.store.dataRoot, {recursive:true, mode:0o700});
     if (!fs.existsSync(file)) fs.writeFileSync(file, "# Contexte utilisateur\n\nPréférences et contraintes communes à tous les projets. Ne pas enregistrer de secrets.\n", {flag:"wx",mode:0o600});
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file));
@@ -279,8 +260,10 @@ class OvhAgentViewProvider {
       if (selected.action === "profile") { await this.editProfile(); return; }
       if (selected.action === "memory") {
         const folder=path.join(this.store.dataRoot,"memory/projects",this.store.session);
+        assertStoragePath(folder);
         fs.mkdirSync(folder,{recursive:true,mode:0o700});
         const file=path.join(folder,"NOTES.md");
+        assertStoragePath(file);
         if(!fs.existsSync(file))fs.writeFileSync(file,"# Notes durables du projet\n\nDécisions et faits sourcés. Ne pas enregistrer de secrets.\n",{flag:"wx",mode:0o600});
         await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file));
         return;
@@ -292,7 +275,7 @@ class OvhAgentViewProvider {
         if(fs.existsSync(archive))for(const dir of fs.readdirSync(archive,{withFileTypes:true})) {
           if(dir.isDirectory() && /^[a-f0-9]{20}$/.test(dir.name) && !entries.has(dir.name)) {
             let name=dir.name;
-            try {name=JSON.parse(fs.readFileSync(path.join(this.store.dataRoot,"memory/projects",dir.name,"project.json"),"utf8")).workspace || name;} catch {}
+            try {name=JSON.parse(readStorageFile(path.join(this.store.dataRoot,"memory/projects",dir.name,"project.json"),"utf8")).workspace || name;} catch {}
             entries.set(dir.name,{label:name,description:dir.name,id:dir.name});
           }
         }
@@ -509,6 +492,15 @@ class OvhAgentViewProvider {
     this.billingPromise = (async () => {
       this.post({ type: "billing_status", configured: true, available: false, pending: true, silent: true });
       try {
+        // An active backend owns current credentials and the provider cache.
+        // Polls must not spawn Python or force another upstream billing request.
+        const agent = this.agent;
+        if (agent && !agent.killed && agent.stdin.writable) {
+          const result = await this.billingChannel.request(payload => agent.stdin.write(JSON.stringify(payload)+"\n"), configureIfMissing);
+          this.post({...result,type:"billing_status",silent:!configureIfMissing});
+          if(!result.configured && configureIfMissing) await this.configureBilling();
+          return;
+        }
         const credentials = await this.billingCredentials();
         if (!credentials) {
           this.post({ type: "billing_status", configured: false, available: false, silent: true });
@@ -533,7 +525,16 @@ class OvhAgentViewProvider {
     return this.billingPromise;
   }
 
+  requestArchivesRefresh() {
+    // Backend archive notifications and the UI idle notification often arrive
+    // together. Scan once at the end of the burst, without caching directory state.
+    if(!this.archiveRefreshTimer) this.archiveRefreshTimer=setTimeout(()=>{
+      this.archiveRefreshTimer=undefined;this.showArchives();
+    },75);
+  }
+
   showArchives() {
+    clearTimeout(this.archiveRefreshTimer);this.archiveRefreshTimer=undefined;
     try {
       const registry=new ProjectStore(this.store.dataRoot);
       const entries=registry.catalog();
@@ -658,7 +659,7 @@ class OvhAgentViewProvider {
     const workspace = this.workspace;
     const billing = await this.billingCredentials();
     if (!this.windowLock || this.windowClosing) return false;
-    this.stdoutBuffer = "";
+    this.decoder.reset();
     const agent = spawn(agentPath(), ["--json-lines"], {
       cwd: workspace,
       env: {
@@ -678,6 +679,12 @@ class OvhAgentViewProvider {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.agent = agent;
+    agent.stdin.on?.("error", error => {
+      if(this.agent !== agent) return;
+      this.billingChannel.cancel(error);
+      this.busy=false;
+      this.post({type:"error",text:`Écriture vers le backend interrompue : ${error.message}`});
+    });
     agent.stdout.setEncoding("utf8");
     agent.stdout.on("data", (chunk) => { if (this.agent === agent) this.consumeOutput(chunk); });
     agent.stderr.setEncoding("utf8");
@@ -687,11 +694,14 @@ class OvhAgentViewProvider {
     });
     agent.on("error", (error) => {
       if (this.agent !== agent) return;
+      this.billingChannel.cancel(error);
       this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, error.message) });
       if (this.agent === agent) this.agent = undefined;
     });
     agent.on("exit", (code, signal) => {
       if (this.agent !== agent) return;
+      this.billingChannel.cancel();
+      this.flushDelta();
       if (code && code !== 0) {
         this.post({ type: "error", text: t("{0} s’est arrêté (code {1}{2}).", BRAND_NAME, code, signal ? `, ${signal}` : "") });
       }
@@ -703,44 +713,68 @@ class OvhAgentViewProvider {
     return true;
   }
 
+  flushDelta() {
+    clearTimeout(this.deltaTimer);this.deltaTimer=undefined;
+    const message=this.pendingDelta;this.pendingDelta=undefined;
+    if(message) {message.html=this.renderMarkdown(this.responseText);this.post(message);}
+  }
+
   consumeOutput(chunk) {
-    this.stdoutBuffer += chunk;
-    const lines = this.stdoutBuffer.split("\n");
-    this.stdoutBuffer = lines.pop() || "";
+    const lines = this.decoder.feed(chunk, message => this.post(message));
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
         const message = JSON.parse(line);
-        if(message.type === "archives") {this.showArchives();continue;}
+        if (!message || typeof message !== "object" || Array.isArray(message) || typeof message.type !== "string") continue;
+        if(message.type === "billing_status") {
+          const received=this.billingChannel.receive(message);
+          // Late correlated replies must not overwrite the newer displayed balance.
+          if(received || message.request_id) continue;
+        }
+        // A final response already contains all text: emitting the pending delta
+        // first would parse, sanitize and rebuild the same DOM twice.
+        if(message.type === "response") {
+          clearTimeout(this.deltaTimer);this.deltaTimer=undefined;this.pendingDelta=undefined;
+        } else if(message.type !== "delta") this.flushDelta();
+        if(message.type === "archives") {this.requestArchivesRefresh();continue;}
         if (message.type === "memory_exported") {
           const expected=path.join(this.store.dataRoot,"memory/AGGREGATE.md");
+          assertStoragePath(expected);
           if(path.resolve(message.file || "")===path.resolve(expected))vscode.workspace.openTextDocument(expected).then(doc=>vscode.window.showTextDocument(doc)).catch(error=>vscode.window.showErrorMessage(String(error.message)));
         }
+        // Refresh Explorer only after a possible filesystem mutation, not after
+        // every conversational/read-only response. Commands are conservative:
+        // even an unsuccessful command can have changed files before failing.
+        if(message.type === "file_change" || (message.type === "tool_start" &&
+          ["write_file","edit_file","run_command","run_host_command","write","edit","command"].includes(message.tool))) this.explorerDirty=true;
         if (message.type === "session_busy" && this.agent) this.agent.sessionBusy = true;
         if (message.type === "status") { this.responseText = ""; this.busy = true; }
         if (["response", "error", "idle"].includes(message.type)) this.busy = false;
         if (message.type === "delta") {
-          this.responseText += String(message.text || "");
-          message.html = renderMarkdown(this.responseText);
+          this.responseText = (this.responseText + String(message.text || "")).slice(0, 2*1024*1024);
+          this.pendingDelta = message;
+          if(!this.deltaTimer) this.deltaTimer=setTimeout(()=>this.flushDelta(),50);
+          continue;
         }
         if (message.type === "response") {
           this.responseText = String(message.text || "");
-          message.html = renderMarkdown(this.responseText);
+          message.html = this.renderMarkdown(this.responseText);
         }
-        if (message.type === "error") message.html = renderMarkdown(`**Erreur :** ${message.text}`);
+        if (message.type === "error") message.html = this.renderMarkdown(`**Erreur :** ${message.text}`);
         if (message.type === "cleared") message.workspace = this.workspace;
         if (message.type === "archive_loaded") {
           message.messages = (message.messages || []).map((item) => ({
             ...item,
-            html: item.type === "user" ? undefined : renderMarkdown(item.text || ""),
+            html: item.type === "user" ? undefined : this.renderMarkdown(item.text || ""),
           }));
         }
         this.post(message);
-        if (message.type === "response") {
+        if (["response","error","idle"].includes(message.type) && this.explorerDirty) {
+          this.explorerDirty=false;
           vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
         }
       } catch {
-        this.post({ type: "diagnostic", text: line });
+        this.post({ type: "diagnostic", text: line.slice(0, 4096) });
       }
     }
   }
@@ -815,6 +849,7 @@ class OvhAgentViewProvider {
     this.stopPromise = (async () => {
       if (starting) await starting;
       const agent = this.agent;
+      this.billingChannel.cancel();
       this.agent = undefined;
       if (agent && agent.exitCode === null && agent.signalCode === null) {
         await new Promise(resolve => {
@@ -823,6 +858,7 @@ class OvhAgentViewProvider {
           agent.kill("SIGTERM");
         });
       }
+      this.flushDelta();
       this.busy = false;
       if (notify) this.post({ type: "idle" });
     })().finally(() => { this.stopPromise = undefined; });
@@ -831,53 +867,14 @@ class OvhAgentViewProvider {
 
   dispose() {
     this.view = undefined;
+    this.renderMarkdown.clear();
+    clearTimeout(this.archiveRefreshTimer);this.archiveRefreshTimer=undefined;
     void this.closeWindow();
   }
 
   getHtml(webview) {
-    const brandName = escapeBrand(BRAND_NAME);
-    const brandBadge = escapeBrand(Array.from(BRAND_NAME.split(/\s+/)[0]).slice(0, 3).join("").toUpperCase());
-    const configuredColor = String(process.env.OVH_AGENT_PRIMARY_COLOR || "").trim();
-    const primaryColor = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor : "#3e3aab";
-    const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "chat.css"));
-    const codeStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "monokai.min.css"));
-    const highlightUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "highlight.min.js"));
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "chat.js"));
-    const i18nUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "i18n.js"));
-    const translationData = JSON.stringify(require("./media/translations.json")).replace(/</g, "\\u003c");
-    const localeOverride = escapeBrand(process.env.OVH_AGENT_LANG || "auto");
-    const showMountPoint = !["false", "0", "no", "non", "off"].includes(
-      String(process.env.OVH_AGENT_SHOW_MOUNT_POINT ?? "true").trim().toLowerCase());
-    const archiveBanner = showMountPoint ? `<div id="archive-banner" class="archive-head"><div class="archive-heading"><span class="archive-heading-icon" aria-hidden="true">${uiIcon("archive", "archive-title-icon")}</span><div class="archive-heading-text"><strong class="archive-title">Conversations</strong><div class="archive-mount"><span class="archive-mount-label">Mount Point : </span><span id="archive-path">Chargement du chemin d’archivage…</span></div></div></div><button id="close-history" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div>` : "";
-    const purifyUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "purify.min.js"));
-    const iconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "icons.min.js"));
-    const safeHtmlUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "safe-html.js"));
-    const nonce = crypto.randomBytes(24).toString("base64");
-    return `<!doctype html>
-<html lang="fr"><head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; connect-src 'none'; img-src data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
-  <link rel="stylesheet" href="${codeStyleUri}?build=${nonce}">
-  <link rel="stylesheet" href="${styleUri}?build=${nonce}">
-  <style nonce="${nonce}">:root { --ovh-primary: ${primaryColor}; }</style>
-  <title>${brandName}</title>
-</head><body data-emoji-mode="${/^[0-3]$/.test(process.env.OVH_AGENT_EMOJI_MODE || "") ? process.env.OVH_AGENT_EMOJI_MODE : "1"}" data-language="${localeOverride}" data-brand-name="${brandName}" data-brand-badge="${brandBadge}" data-primary-color="${primaryColor}" data-performance-mode="${this.performanceMode()}">
-  <header><div class="header-leading"><span id="history-brand" class="history-brand" aria-hidden="true">${uiIcon("nodes")}</span><button id="history" hidden class="icon back-history" title="Retour à l’historique" aria-label="Retour à l’historique">${uiIcon("back")}</button><div class="brand"><strong>${brandName}</strong><button id="model-picker" title="Choisir le modèle"><span id="selected-model">Auto équilibré</span>${uiIcon("chevron")}</button></div></div><div class="header-actions"><button id="project-picker" class="icon" title="Choisir ou créer un projet" aria-label="Choisir ou créer un projet">${uiIcon("project")}</button><button id="billing" class="icon billing" title="Configurer le suivi du solde OVHcloud" aria-label="Solde OVHcloud">${uiIcon("database")}<span class="billing-dot"></span></button><button id="configure" class="icon" title="Configurer la clé OVH" aria-label="Configurer la clé">${uiIcon("key")}</button><button id="clear" class="icon" title="Nouvelle conversation" aria-label="Nouvelle conversation">${uiIcon("plus")}</button></div></header>
-  <div class="workspace-content">
-  <aside id="archive-panel">${archiveBanner}<p id="archive-notice" role="status"></p><div id="archive-list"><p class="archive-empty">Chargement…</p></div><p class="agent-disclaimer"></p></aside><dialog id="delete-dialog"><h3>${uiIcon("trash", "delete-title-icon")}Supprimer définitivement ?</h3><p id="delete-title"></p><p>Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.</p><div class="delete-dialog-actions"><button id="delete-cancel" type="button">Annuler</button><button id="delete-confirm" type="button">Supprimer définitivement</button></div></dialog>
-  <aside id="model-panel" hidden><div class="model-head"><div><strong>Modèles OVHcloud</strong><span>Catalogue et tarifs en direct</span><span id="model-availability" aria-live="polite"></span></div><button id="close-models" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div><div class="model-tools"><input id="model-search" type="search" placeholder="Rechercher un modèle…"><button id="refresh-models" class="icon" title="Actualiser les tarifs">${uiIcon("reload")}</button></div><div id="model-list"><p class="model-empty">Chargement du catalogue…</p></div><div class="model-foot">Tarifs OVHcloud HT. Seuls les modèles sélectionnables sont affichés. Les modèles non conversationnels ou indisponibles sont exclus. Le mode Auto ne compte pas comme un modèle.</div></aside>
-  <main id="messages"><section class="welcome"><h2>${brandName}</h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section></main>
-  <footer><div id="followups" class="followups" aria-live="polite" hidden></div><div class="composer-meta"><div id="status" aria-live="polite"></div><button type="button" id="live-balance" aria-live="polite" title="Configurer ou actualiser le solde OVHcloud">Solde : chargement…</button></div><div id="composer" class="composer"><div id="attachments" class="attachments" hidden></div><textarea id="prompt" rows="1" placeholder="Demander à ${brandName}…"></textarea><div class="composer-bar"><div class="composer-left"><button id="attach" class="round attach" title="Joindre une image" aria-label="Joindre une image">${uiIcon("image")}</button><input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden><button id="access" class="access full" title="Basculer le niveau d’accès">${uiIcon("shield")}<span>Accès complet</span></button><select id="performance-mode" aria-label="Performances locales"><option value="auto">Perf. Auto</option><option value="max">Perf. Max</option></select></div><div class="send-column"><div class="send-actions"><button id="stop" class="round stop" title="Arrêter" aria-label="Arrêter">${uiIcon("stop")}</button><button id="send" class="round send" title="Envoyer" aria-label="Envoyer">${uiIcon("send")}</button></div></div></div></div><p class="agent-disclaimer"></p></footer>
-  </div>
-  <script nonce="${nonce}">window.OVH_TRANSLATIONS = ${translationData};</script>
-  <script nonce="${nonce}" src="${i18nUri}?build=${nonce}"></script>
-  <script nonce="${nonce}" src="${purifyUri}?build=${nonce}"></script>
-  <script nonce="${nonce}" src="${safeHtmlUri}?build=${nonce}"></script>
-  <script nonce="${nonce}" src="${iconsUri}?build=${nonce}"></script>
-  <script nonce="${nonce}" src="${highlightUri}?build=${nonce}"></script>
-  <script nonce="${nonce}" src="${scriptUri}?build=${nonce}"></script>
-</body></html>`;
+    return buildChatHtml({extensionUri:this.extensionUri, brand:BRAND_NAME,
+      performanceMode:this.performanceMode(), env:process.env, joinPath:vscode.Uri.joinPath}, webview);
   }
 }
 

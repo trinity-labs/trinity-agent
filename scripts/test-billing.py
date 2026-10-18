@@ -95,3 +95,17 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(a, 'ARCHIVE_ROOT', Path(
     assert different_currency['credit_currency'] == 'USD'
 
 print('PASS: credit minus current OVH usage, full precision, no repeated debit, period rollover, cache and invalid/cross-currency data')
+
+# Correlate the threaded response: a late timeout must not settle a newer poll.
+import threading
+received = []
+finished = threading.Event()
+def collect_billing(payload):
+    received.append(payload)
+    finished.set()
+with patch.object(a, 'fetch_billing_status', return_value={'configured': True, 'available': True}) as fetch, patch.object(a, 'emit', side_effect=collect_billing):
+    a.refresh_billing_async({'request_id': 'fixture-billing', 'refresh': False, 'silent': True})
+    assert finished.wait(2), 'billing thread did not respond'
+    assert received[0]['request_id'] == 'fixture-billing'
+    assert received[0]['silent'] is True
+    fetch.assert_called_once_with(False)

@@ -359,3 +359,25 @@ Chat Completions ; il utilise ``store=false`` et ne calibre pas le moteur couran
 Les champs ``type=message`` et ``status=completed`` des retours de fonctions sont
 explicites, conformément au schéma OVH. Une erreur HTTP 422 reste une erreur de
 compatibilité du protocole, pas une preuve de mauvaise qualité du modèle.
+
+
+Performances de l'application et réglages d'installation
+------------------------------------------------------
+
+``python scripts/benchmark-performance.py --runs 3 --output performance.json``
+mesure hors réseau le backend avec état applicatif neuf, puis état réutilisé.
+Il mesure aussi la préparation d'une requête dans le processus déjà chargé,
+les lectures répétées et une compaction synthétique. Le modèle est simulé :
+ces chiffres n'incluent ni latence OVH ni génération réelle. Les caches du
+système d'exploitation ne sont pas vidés. Les tokens sont estimés, pas facturés.
+
+Les optimisations publiques portent sur les consignes applicatives et le
+comptage linéaire du contexte. Les messages utilisateur, identifiants d'outils,
+archives exactes et contrôles de vérification restent conservés. Les budgets
+publics ne sont pas réduits pour produire artificiellement de meilleurs chiffres.
+
+Un adaptateur d'installation peut être mesuré séparément avec ``--adapter``
+et ses limites numériques avec ``--env-file``. Ces fichiers privés, les données
+mesurées, le routage personnalisé et les enveloppes de crédit ne sont pas
+embarqués dans le VSIX. Une mesure locale n'est pas une promesse de performance
+sur une autre machine. Mettre à jour le backend compagnon avec l'extension.

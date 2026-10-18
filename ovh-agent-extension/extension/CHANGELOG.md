@@ -1,6 +1,29 @@
 # Changelog
 
-## Unreleased
+## 1.14.2 — 2026-10-18
+
+- Reuse the running backend for billing polls, preserving its cache and explicit forced refresh; correlate replies and reject late results. Update the companion backend with this release.
+- Replace repeated partial-frame splitting with bounded fragment assembly; coalesce archive scans and skip Explorer refresh for read-only answers.
+- Avoid duplicate final Markdown/DOM work, keep one bounded exact render in memory, and debounce streamed webview-state serialization while saving terminal state immediately.
+- Extract protocol, billing, Markdown and webview-document modules; document message flow, cache limits/invalidation and contribution checks in ARCHITECTURE.md.
+- Build minified frontend scripts and source maps from readable sources in the isolated VSIX stage. Keep the original sources for debugging and test the generated frontend.
+
+## 1.14.1 — 2026-10-18
+
+- Reject symlinks in archive/storage ancestors before reading, moving or deleting data; read regular storage files through bounded, no-follow descriptors. Private storage must use a real directory, not a symlink. These checks do not sandbox another process running under the same OS account.
+- Bound backend frames and diagnostics; recover framing after oversized output, handle stdin errors, and use an escaped preview for unusually large Markdown responses. Storage reads are limited to 32 MiB; full responses remain in backend archives.
+- Coalesce streamed Markdown updates over 50 ms, defer syntax highlighting until completion, and bypass grapheme segmentation for prose without emojis.
+- Reuse static webview resource URLs while preserving a fresh CSP nonce; index translated labels once. Reject image inputs above 32 MiB before decoding.
+- Add regressions for symlink escapes, bounded reads, malformed/oversized streams, ordered final flushing and resource-cache/CSP separation.
+
+## 1.14.0 — 2026-10-18
+
+- Reduce repeated application instructions without removing verification, permission, source-checking or host-isolation rules; keep user instructions intact.
+- Make context compaction count protocol units once, preserving the same boundaries, current request and exact archives.
+- Avoid redundant tool-request analysis, unused reasoning-setting lookups and repeated routing budget calculations.
+- Add an offline cold/warm backend benchmark and regression coverage. Measurements separate fresh application state, restart with existing state and an already-running process; they do not measure provider cold starts.
+- Keep installation-specific model preferences, RAM-before-SQLite caching, private instructions and credit policies outside the public release.
+
 
 - Show a live duration on every activity row, record tool and context timings on the backend, and restore recorded durations from archives; distinguish missing historical measurements and interrupted actions.
 

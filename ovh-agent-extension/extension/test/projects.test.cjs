@@ -508,3 +508,15 @@ test('invalid and duplicate project paths leave the registry unchanged; failed c
  } finally {fs.renameSync=rename;}
  assert.equal(fs.readFileSync(assignments,'utf8'),before);assert.equal(fs.readFileSync(store.file,'utf8'),original);
 });
+
+test('archive assignment and attachment reject symlinked parents before moving data',t=>{
+ const {root,store}=setup(t),a=store.create(root,'source'),b=store.create(root,'target');
+ const outside=path.join(root,'outside');fs.mkdirSync(path.join(outside,'one'),{recursive:true});
+ fs.writeFileSync(path.join(outside,'one','meta.json'),JSON.stringify({workspace:a.root}));
+ fs.mkdirSync(path.join(store.dataRoot,'archive'),{recursive:true});
+ fs.symlinkSync(outside,path.join(store.dataRoot,'archive',a.id));
+ assert.throws(()=>store.assign(a.id,'one',b.id),/symbolique/);
+ assert.throws(()=>store.attach(a.root,'one',b.root),/symbolique/);
+ assert(fs.existsSync(path.join(outside,'one','meta.json')));
+ assert(!fs.existsSync(path.join(store.dataRoot,'archive',b.id,'one')));
+});

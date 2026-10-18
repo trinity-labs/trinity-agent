@@ -1135,3 +1135,5 @@ body:is(.vscode-dark, .vscode-high-contrast) {
 #archive-notice[data-status] { margin: 8px 12px 0; }
 
 .project-editor .project-path-label { flex: 1 0 100%; }
+
+.project-editor:not([hidden]) { padding: 10px 14px; background: rgb(128 128 128 / 6%); border-radius: 4px; }

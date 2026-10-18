@@ -17,17 +17,25 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--adapter',type=Path,help='Optional private deployment adapter, excluded from public packages')
+    parser.add_argument('--env-file',type=Path,help='Optional installation limits; omitted for public defaults')
     parser.add_argument('--model',help='Explicit comparison model; default is automatic routing')
     args=parser.parse_args()
     if not args.live: parser.error('--live required')
     local_keys={'OVH_AGENT_ROUTING_PRICE_FACTOR','OVH_AGENT_CONTEXT_TOKENS','OVH_AGENT_OUTPUT_TOKENS','OVH_AGENT_COMPLEX_OUTPUT_TOKENS','OVH_AGENT_TOOL_OUTPUT_CHARS','OVH_AGENT_MEMORY_CHARS','OVH_AGENT_SHARED_MEMORY_CHARS','OVH_AGENT_PREFLIGHT_CONTEXT_CHARS'}
-    if (ROOT/'.env').is_file():
-        for line in (ROOT/'.env').read_text().splitlines():
+    if args.env_file:
+        for line in args.env_file.read_text().splitlines():
             key,sep,value=line.partition('=')
             if sep and key in local_keys and value.isdecimal(): os.environ[key]=value
     sys.path.insert(0,str(ROOT));sys.argv.append('--billing-status')
-    spec=importlib.util.spec_from_file_location('pipeline_agent',ROOT/'ovh-agent.py')
-    a=importlib.util.module_from_spec(spec);sys.modules[spec.name]=a;spec.loader.exec_module(a)
+    if args.adapter:
+        sys.path.insert(0,str(args.adapter.resolve().parent))
+        spec=importlib.util.spec_from_file_location('pipeline_adapter',args.adapter.resolve())
+        adapter=importlib.util.module_from_spec(spec);spec.loader.exec_module(adapter)
+        a=adapter.load_backend()
+    else:
+        spec=importlib.util.spec_from_file_location('pipeline_agent',ROOT/'ovh-agent.py')
+        a=importlib.util.module_from_spec(spec);sys.modules[spec.name]=a;spec.loader.exec_module(a)
     for path in [Path('/run/secrets/OVH_AI_API_KEY'),Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/OVH_AI_API_KEY')]:
         if not os.environ.get('OVH_AI_API_KEY') and path.is_file():os.environ['OVH_AI_API_KEY']=path.read_text().strip()
     from pydantic_ai.usage import UsageLimits,RunUsage
@@ -38,6 +46,10 @@ def main():
         @functools.wraps(original)
         def blocked(*args,**kwargs):return 'Benchmark en lecture seule : cette action est désactivée.'
         setattr(a,name,blocked)
+    # A private adapter may add other tools; expose only the read-only fixture tools.
+    original_tools=a.agent_tools
+    allowed={'read_file','list_files','search_text','read_memory','search_memory','search_project_memory','read_project_memory','verify_changes','verification_plan'}
+    a.agent_tools=lambda:[tool for tool in original_tools() if tool.name in allowed]
     a.request_approval=lambda *args,**kwargs:False
     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     a.CONVERSATION_ID='eval-'+stamp+'-pipeline';a.JSON_MODE=True
@@ -47,7 +59,7 @@ def main():
     fixtures=Path('/home/coder/.ovh-agent-model-test')/stamp;fixtures.mkdir(parents=True)
     fixture=fixtures/'settings.json';fixture.write_text('{"port":8457,"service":"nebula-lab"}\n')
     prompt=f'Lis uniquement {fixture} et réponds en JSON avec port et service. Aucune modification ni recherche Internet.'
-    report={'local_settings':{key:os.environ.get(key) for key in local_keys},'scope':'Actual agent instructions, all tool schemas and local preparation; mutations disabled; three repetitions, no Codex baseline.','results':[]}
+    report={'adapter':str(args.adapter) if args.adapter else None,'local_settings':{key:os.environ.get(key) for key in local_keys},'scope':'Actual agent instructions and preparation, read-only fixture tools; first request vs reused client/agent, provider cold state unknown; three repetitions, no Codex baseline.','results':[]}
     with asyncio.Runner() as runner:
       for index in range(3):
           started=time.monotonic();a.VERIFICATION_GUARD=None
@@ -62,7 +74,11 @@ def main():
           try:
               async def run():return await asyncio.wait_for(agent.run(prompt,message_history=history,model_settings=settings,usage=usage,usage_limits=UsageLimits(request_limit=4),event_stream_handler=stream.handle),timeout=60)
               result=runner.run(run());text=str(result.output)
-              row.update(answer=text,passed='8457' in text and 'nebula-lab' in text)
+              import re
+              payload=re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip())
+              try: actual=json.loads(payload)
+              except ValueError: actual=None
+              row.update(answer=text,passed=actual=={'port':8457,'service':'nebula-lab'})
           except Exception as error:row.update(passed=False,error=type(error).__name__+': '+str(error)[:500])
           row.update(seconds=round(time.monotonic()-started,3),first_text_ms=stream.first_text_ms,input_tokens=usage.input_tokens,output_tokens=usage.output_tokens,requests=usage.requests)
           report['results'].append(row)

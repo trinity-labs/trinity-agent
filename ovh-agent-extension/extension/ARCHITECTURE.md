@@ -1,0 +1,93 @@
+# Architecture et contribution
+
+Ce guide décrit le code public de l’extension et son protocole avec le backend Python. Les préférences d’installation, consignes privées et politiques de crédit restent hors du VSIX et du dépôt public.
+
+## Parcours d’une demande
+
+```mermaid
+sequenceDiagram
+    participant U as Chat (webview)
+    participant E as Extension host
+    participant B as Backend Python
+    participant M as Fournisseur du modèle
+    U->>E: prompt / images / modèle / accès
+    E->>E: validMessage + verrou de fenêtre
+    E->>B: ensureAgent puis NDJSON sur stdin
+    B->>B: contexte, budget, approbations et vérifications
+    B->>M: requête d’inférence
+    M-->>B: texte / appels d’outils
+    B-->>E: NDJSON sur stdout
+    E->>E: cadrage borné puis dispatch
+    E-->>U: delta regroupé (50 ms), HTML assaini
+    U->>U: DOMPurify puis rendu; état différé (150 ms)
+    B-->>E: response complète
+    E-->>U: réponse finale, sans delta redondant
+    U->>U: coloration et sauvegarde immédiate de l’état
+    U->>E: snapshot différé (350 ms), ID de conversation
+    E->>B: snapshot si la conversation est toujours courante
+```
+
+Les événements d’outils, d’approbation et d’erreur conservent leur ordre. Seul un `delta` en attente est remplacé par la `response` complète. Un arrêt ou une erreur restitue le dernier delta. Les archives du backend sont la référence : l’état HTML du navigateur sert à restaurer l’affichage, pas à prouver une exécution ni à alimenter les autorisations.
+
+## Responsabilités des modules
+
+| Fichier | Responsabilité |
+| --- | --- |
+| `extension.js` | Activation VS Code, dispatch des messages validés, cycle de vie du processus, orchestration des projets. |
+| `security.js` | Schémas du pont webview, liens locaux autorisés, échappement HTML. |
+| `backend-protocol.js` | Découpage NDJSON, taille maximale et reprise après une ligne rejetée. Ne lance aucune action. |
+| `markdown-renderer.js` | Markdown puis assainissement HTML ; cache exact d’un rendu par provider. |
+| `billing-channel.js` | Une requête de solde à la fois, corrélation des réponses, délai et annulation. |
+| `webview-html.js` | Document initial, CSP, sélection des ressources et clés de cache navigateur. |
+| `archive-store.js` | Lecture/listage/suppression des conversations et cache de métadonnées. |
+| `project-store.js` | Registre des projets, classement, lectures bornées et protection des chemins de stockage. |
+| `window-lock.js` | Propriétaire unique du backend par stockage et compte système. |
+| `media/chat.js` | État d’interface, événements utilisateur, rendu, activités, pièces jointes et sauvegardes d’affichage. |
+| `media/safe-html.js` | Frontière DOMPurify pour tout HTML reçu ou restauré. |
+| `media/i18n.js` | Traduction des libellés applicatifs, sans réécriture du code ou des messages utilisateur. |
+| `../../ovh-agent.py` | Inférence, outils, persistance des événements et contrôles d’exécution. |
+
+`chat.js` reste le contrôleur partagé de l’interface : éviter de déplacer ses variables globales dans plusieurs scripts interdépendants sans interface explicite et tests de cycle de vie. Les modules de transport et de rendu sont isolés parce qu’ils ont des entrées/sorties testables.
+
+## Appels supprimés, regroupés ou conservés
+
+| Chemin | Politique et justification | Invalidation / limite |
+| --- | --- | --- |
+| Solde avec backend actif | Utiliser son thread de facturation ; ne pas relancer Python, recharger les secrets ou forcer l’API à chaque poll. | Cache fournisseur géré par le backend ; clic utilisateur = `refresh: true`. |
+| Solde sans backend | Conserver le processus ponctuel `--billing-status` : consulter le solde ne démarre pas une conversation. | Pas de cache de crédits supplémentaire dans l’extension. |
+| Réponse finale identique | Réutiliser le dernier rendu et le DOM du run ; pas de second parse/sanitize complet inutile. | Comparaison exacte du texte/HTML ; nouveau contenu = nouveau rendu. |
+| Cache Markdown | Une entrée en RAM par provider. Aucun résultat de modèle n’est réutilisé comme réponse. | Source ≤ 128 Ki caractères, HTML ≤ 512 Ki caractères ; remplacement, dépassement ou fermeture effacent l’entrée. |
+| Deltas | Regrouper le rendu sur 50 ms, sans différer les événements terminaux. | Le texte est accumulé ; une réponse finale complète remplace le delta en attente. |
+| État webview | Ne pas sérialiser tout l’historique pour chaque delta ; délai de 150 ms. | Événement non-stream, navigation ou fin : annulation du délai et sauvegarde immédiate. Un crash pendant ce délai peut perdre le dernier affichage, pas les événements backend déjà archivés. |
+| Snapshot backend | Débounce de 350 ms conservé ; vérifier l’ID avant envoi. | Un changement de conversation empêche la sauvegarde dans l’ancienne archive. |
+| Historique | Regrouper les notifications sur 75 ms ; lire l’état au moment du scan. | Pas de TTL sur la liste des dossiers ; une action explicite peut lancer un scan immédiat. |
+| Métadonnées d’archive | Cache borné existant, invalidé par identité/taille/horodatage du fichier. | Les protections de chemin restent vérifiées ; aucune autorisation en cache. |
+| Explorateur VS Code | Rafraîchir après modification de fichier ou commande potentiellement mutante. | Une réponse de lecture seule ne lance plus ce rafraîchissement ; erreur/idle traités aussi après mutation possible. |
+| Ressources navigateur | URL stable fondée sur les fichiers, nonce CSP distinct à chaque document. | Une modification de ressource change sa révision. |
+
+Les clés, décisions d’approbation, vérifications de chemins, résultats d’outils mutables et réponses d’inférence ne sont pas mis en cache par ces changements. Une amélioration du rendu n’accélère pas nécessairement le fournisseur du modèle et ne réduit pas ses tokens.
+
+## Protocole de facturation
+
+Le frontend transmet `billingRefresh` pour le polling et `billing` pour l’action explicite. Avec un processus actif, l’extension envoie `billing_status` avec un `request_id` unique, `refresh` et `silent`. Le backend renvoie le même identifiant. Une réponse tardive ne peut pas terminer une nouvelle requête. Une fermeture du processus annule l’attente ; le délai maximum est de 30 secondes. Déployer le backend de la même release : un ancien backend qui ne renvoie pas l’identifiant n’est pas compatible avec ce chemin corrélé.
+
+## Développement et minification
+
+```sh
+npm ci
+npm test
+npm run build:frontend
+npm run package:vsix
+```
+
+Les sources `media/chat.js`, `media/i18n.js` et `media/safe-html.js` restent lisibles et constituent la référence. Terser produit les `.min.js` et leurs source maps, sans renommer les API de premier niveau partagées. `npm run build:frontend` sert à tester localement les assets générés ; le packaging les reconstruit toujours dans son répertoire temporaire, pour éviter d’embarquer un ancien build. Dans un checkout sans assets générés, la webview charge les sources. Après une édition locale, reconstruire les assets ou supprimer les trois `.min.js` générés pour revenir au mode source.
+
+Le VSIX contient aussi les sources et les maps pour le diagnostic. Le gain porte sur le JavaScript chargé par la webview ; la taille ZIP totale n’est pas nécessairement réduite. Les bibliothèques déjà minifiées ne sont pas retraitées. Aucun CDN n’est ajouté et la CSP n’est pas élargie.
+
+## Vérifier une contribution
+
+- Expliquer dans les commentaires **pourquoi** un cache, un délai ou un contournement est nécessaire ; décrire son invalidation et sa limite.
+- Ajouter un test de comportement pour toute modification du protocole, de la sécurité ou de l’ordre des événements. Les tests de performance comptent les opérations évitées plutôt que d’imposer une durée fragile en CI.
+- Exécuter `npm test` ; les tests couvrent aussi le frontend minifié et les source maps. Pour un changement backend, exécuter `python scripts/check-backend.py` depuis la racine du dépôt avec l’environnement Python du projet.
+- Ajouter tout nouveau module à la liste blanche de `scripts/package-vsix.cjs` et à celle d’export Git. Vérifier le contenu du VSIX après génération.
+- Ne pas publier les consignes, archives ou secrets locaux. Garder le même numéro de version dans `package.json`, `package-lock.json` et le tag de release.

@@ -273,6 +273,7 @@ let backendReady = false;
 let creatingConversation = false;
 let selectedArchiveForDeletion = null;
 let snapshotTimer;
+let viewStateTimer;
 const noticeTimers = new WeakMap();
 let pendingImages = [];
 const activityRows = new Map();
@@ -281,9 +282,14 @@ const supportedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "i
 const maxImages = 5;
 const maxClientImageBytes = 4 * 1024 * 1024;
 
-function persist() {
+function persist(streaming = false) {
   if (loadingArchive) return;
-  vscode.setState({ html: messages.innerHTML, fullAccess, model: selectedModel, lastRoutedModel, promptHistory });
+  // Full history serialization is expensive. Coalesce streamed updates only;
+  // approvals, navigation and terminal events cancel the delay and save now.
+  window.clearTimeout(viewStateTimer);
+  const saveView = () => vscode.setState({ html: messages.innerHTML, fullAccess, model: selectedModel, lastRoutedModel, promptHistory });
+  if (streaming === true) viewStateTimer = window.setTimeout(saveView, 150);
+  else saveView();
   if (!backendReady || creatingConversation || !activeArchiveId) return;
   window.clearTimeout(snapshotTimer);
   const snapshotConversation = activeArchiveId;
@@ -872,7 +878,10 @@ archiveList.addEventListener('drop',event=>{
   endArchiveDrag();
 });
 window.addEventListener('dragend',endArchiveDrag);
-window.addEventListener('blur',()=>{if(archiveDrag)endArchiveDrag();});
+// Native dragging can blur an embedded webview; only stop edge scrolling then.
+window.addEventListener('blur',()=>{if(archiveDrag){archivePointerY=null;clearArchiveDropTargets();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden && archiveDrag)endArchiveDrag();});
+document.addEventListener('pointerdown',()=>{if(archiveDrag)endArchiveDrag();});
 window.addEventListener('keydown',event=>{if(event.key==='Escape' && archiveDrag)endArchiveDrag();});
 
 function restoreOrganizationFocus() {
@@ -887,7 +896,19 @@ function restoreOrganizationFocus() {
 
 function renderArchives(items, projects) {
   // Keep native color pickers, title drafts and dragged elements alive during refreshes.
-  if(archiveDrag || archiveList.querySelector('.project-editor:not([hidden])')) {deferredArchives={items,projects};return;}
+  if(archiveDrag) {deferredArchives={items,projects};return;}
+  if(archiveList.querySelector('.project-editor:not([hidden])')) {
+    deferredArchives={items,projects};
+    // Reorder existing nodes without destroying a focused editor or unsaved drafts.
+    const groups=new Map([...archiveList.querySelectorAll('.archive-project')].map(group=>[group.dataset.projectId,group]));
+    const ungrouped=archiveList.querySelector('.archive-ungrouped');
+    const ordered=(projects || []).map(project=>groups.get(project.id)).filter(Boolean);
+    if(ordered.some((group,index)=>[...groups.values()][index]!==group)) {
+      for(const group of ordered)archiveList.insertBefore(group,ungrouped);
+    }
+    restoreOrganizationFocus();
+    return;
+  }
   const expanded=new Map([...archiveList.querySelectorAll('.archive-project')].map(group=>[group.dataset.projectId,group.open]));
   const expandedDocuments=new Map([...archiveList.querySelectorAll('.archive-project')].map(group=>[group.dataset.projectId,group.querySelector('.project-documents')?.open]));
   archiveList.innerHTML="";
@@ -919,11 +940,11 @@ function renderArchives(items, projects) {
       event.preventDefault();event.stopPropagation();
       const groups=[...archiveList.querySelectorAll('.archive-project')],index=groups.indexOf(group),up=event.key==='ArrowUp';
       const target=groups[index+(up?-1:1)];
-      if(target)organizeArchives({type:'moveProject',source:project.id,target:target.dataset.projectId,position:up?'before':'after'});
+      if(target)organizeArchives({type:'moveProject',source:group.dataset.projectId,target:target.dataset.projectId,position:up?'before':'after'});
     });
     summary.addEventListener('dragstart',event=>{
       if(!event.target.closest('.project-drag-handle')) {event.preventDefault();return;}
-      beginArchiveDrag(event,{kind:'project',source:project.id},group);
+      beginArchiveDrag(event,{kind:'project',source:group.dataset.projectId},group);
     });
     const caret=document.createElement('button');caret.type='button';caret.className='icon project-caret';caret.innerHTML=uiIcon('chevron');
     const updateCaret=()=>{caret.setAttribute('aria-expanded',String(group.open));caret.title=t(group.open?'Replier le projet':'Déplier le projet');caret.setAttribute('aria-label',caret.title+' : '+project.name);};
@@ -1243,7 +1264,7 @@ function alignTextTables(source) {
 }
 
 function highlightCodeBlock(code, streaming) {
-  if (!code || !window.hljs || code.dataset.highlighted === "yes") return;
+  if (!code || !window.hljs || code.dataset.highlighted === "yes" || streaming) return;
   let source = code.textContent || "";
   const language = (Array.from(code.classList).find(name => name.startsWith("language-")) || "").slice(9).toLowerCase();
   // Repair complete text tables before colouring; explicit program source stays verbatim.
@@ -1271,8 +1292,10 @@ const responseEmojiSegments = new Intl.Segmenter(undefined, { granularity: "grap
 const responseEmojiPattern = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u20e3/u;
 
 function presentationText(text, mode = emojiMode) {
+  const source = String(text).replace(/\u2014/g, "-");
+  if (mode >= 2 || !responseEmojiPattern.test(source)) return source;
   let filtered = "";
-  for (const { segment } of responseEmojiSegments.segment(String(text).replace(/\u2014/g, "-"))) {
+  for (const { segment } of responseEmojiSegments.segment(source)) {
     const base = segment.replace(/[\ufe0e\ufe0f]/g, "");
     if (!responseEmojiPattern.test(segment) || /^[©®™]$/.test(segment)) filtered += segment;
     else if (mode >= 2) filtered += segment;
@@ -1300,7 +1323,8 @@ function filterResponseEmojis(container) {
   while ((node = walker.nextNode())) {
     // Literal source and evidence must stay exact, including punctuation.
     if (node.parentElement?.closest("pre,code,blockquote,a")) continue;
-    node.textContent = presentationText(node.textContent);
+    const cleaned = presentationText(node.textContent);
+    if (cleaned !== node.textContent) node.textContent = cleaned;
   }
 }
 
@@ -1332,9 +1356,13 @@ function enhanceMarkdown(container) {
 
 function setMarkdown(html) {
   const run = ensureRun();
+  // The response often repeats the last delta. Preserve its DOM and selection;
+  // finishRun still performs final highlighting and immediate persistence.
+  if (run.lastHtml === html) return;
+  run.lastHtml = html;
   run.content.innerHTML = safeHtml(html);
   enhanceMarkdown(run.content);
-  persist();
+  persist(true);
   scrollToBottom();
 }
 
@@ -1689,6 +1717,7 @@ async function prepareImage(file) {
   if (!supportedImageTypes.has(file.type)) {
     throw new Error(t("{0} : format non pris en charge. Utilise JPEG, PNG, WebP ou GIF.", file.name));
   }
+  if (file.size > 32 * 1024 * 1024) throw new Error(t("Image trop volumineuse (32 Mio maximum avant optimisation)."));
   const originalDataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(originalDataUrl);
   const maxDimension = 2560;

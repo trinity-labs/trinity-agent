@@ -177,3 +177,38 @@ test('delete controls retain source identity across confirmation and updates',t=
  emit({type:'archive_deleted',id:'same-id',source:SOURCE,active:false,was_current:false});
  assert.equal(row(),undefined);assert(row(A));
 });
+
+test('folder order refreshes while an editor is open without discarding its draft',t=>{
+ const {doc,archives,group,target,event,transfer,sent,emit}=setup(t);
+ archives([folder(A,'Alpha'),folder(B,'Beta'),folder(C,'Gamma')]);
+ group(A).querySelector('.project-edit').click();
+ const editor=group(A).querySelector('.project-editor'),input=editor.querySelector('input[type=text]');input.value='Unsaved name';
+ const data=transfer();event(group(C).querySelector('.project-drag-handle'),'dragstart',data);event(target(A),'drop',data,105);
+ assert.deepEqual(sent.at(-1),{type:'moveProject',source:C,target:A,position:'before'});
+ emit({type:'archives_organized'});archives([folder(C,'Gamma'),folder(A,'Alpha'),folder(B,'Beta')]);
+ assert.deepEqual([...doc.querySelectorAll('.archive-project')].map(g=>g.dataset.projectId),[C,A,B]);
+ assert.equal(group(A).querySelector('.project-editor'),editor);assert.equal(editor.hidden,false);assert.equal(input.value,'Unsaved name');
+ assert.equal(doc.activeElement,group(C).querySelector('.project-drag-handle'));
+ editor.querySelector('button[type=button]').click();
+ assert.deepEqual([...doc.querySelectorAll('.archive-project')].map(g=>g.dataset.projectId),[C,A,B]);
+});
+
+test('webview blur during native dragging does not cancel a valid folder drop',t=>{
+ const {w,archives,group,target,event,transfer,sent}=setup(t);
+ archives([folder(A,'Alpha'),folder(B,'Beta')]);sent.length=0;
+ const data=transfer();event(group(B).querySelector('.project-drag-handle'),'dragstart',data);
+ w.dispatchEvent(new w.Event('blur'));
+ event(target(A),'drop',data,105);
+ assert.deepEqual(sent.at(-1),{type:'moveProject',source:B,target:A,position:'before'});
+});
+
+test('folder handles use the current identity after a project path changes',t=>{
+ const {archives,group,target,event,transfer,sent,emit,w}=setup(t);
+ archives([folder(A,'Alpha'),folder(B,'Beta')]);
+ group(A).querySelector('.project-edit').click();
+ const editor=group(A).querySelector('.project-editor');editor.querySelector('.project-path-input').value='/new';
+ editor.dispatchEvent(new w.Event('submit',{cancelable:true}));const request=sent.at(-1);
+ emit({type:'project_updated',previousId:A,requestId:request.requestId,project:{...folder(C,'Alpha'),root:'/new'}});
+ const data=transfer();event(group(C).querySelector('.project-drag-handle'),'dragstart',data);event(target(B),'drop',data,139);
+ assert.deepEqual(sent.at(-1),{type:'moveProject',source:C,target:B,position:'after'});
+});

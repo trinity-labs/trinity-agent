@@ -16,10 +16,10 @@ test('archive metadata cache reuses reads and invalidates edited, replaced and d
     fs.writeFileSync(task, JSON.stringify({status:'running'}));
     fs.writeFileSync(path.join(store.root, 'current'), 'one');
     assert(store.list()[0].resumable);
-    const original = fs.readFileSync;
+    const original = fs.openSync;
     let reads = 0;
-    fs.readFileSync = (...args) => {reads++; return original(...args);};
-    try {assert.equal(store.list()[0].title, 'Before');} finally {fs.readFileSync = original;}
+    fs.openSync = (...args) => {reads++; return original(...args);};
+    try {assert.equal(store.list()[0].title, 'Before');} finally {fs.openSync = original;}
     assert.equal(reads, 1, 'only current pointer is reread');
     fs.writeFileSync(meta, JSON.stringify({title:'Edited'}));
     fs.writeFileSync(task+'.new', JSON.stringify({status:'completed'}));
@@ -53,5 +53,37 @@ test('history recovers a missing automatic title while preserving custom titles'
     }
     fs.writeFileSync(meta,JSON.stringify({title:'Custom title'}));
     assert.equal(store.list()[0].title,'Custom title');
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('archive operations reject symlinked storage parents and metadata', () => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'archive-boundary-'));
+  try {
+    const store=new ArchiveStore(root,path.join(root,'data'));
+    const outside=path.join(root,'outside');
+    fs.mkdirSync(path.join(outside,'victim'),{recursive:true});
+    fs.mkdirSync(path.dirname(store.root),{recursive:true});
+    fs.symlinkSync(outside,store.root);
+    assert.throws(()=>store.remove('victim'),/symbolique/);
+    assert.throws(()=>store.list(),/symbolique/);
+    assert(fs.existsSync(path.join(outside,'victim')));
+    fs.unlinkSync(store.root);fs.mkdirSync(path.join(store.root,'one'),{recursive:true});
+    const secret=path.join(outside,'private.json');fs.writeFileSync(secret,'{"title":"private"}');
+    fs.symlinkSync(secret,path.join(store.root,'one','meta.json'));
+    assert.deepEqual(store.list(),[]);
+    assert.throws(()=>store.readCached(secret),/./); // outside storage must also be refused
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('storage reader rejects large and special files and refuses parent links',()=>{
+  const {readStorageFile}=require('../project-store');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'storage-read-'));
+  try {
+    const file=path.join(root,'file');fs.writeFileSync(file,'12345');
+    assert.throws(()=>readStorageFile(file,'utf8',4),/volumineux/);
+    assert.equal(readStorageFile(file,'utf8',5),'12345');
+    assert.throws(()=>readStorageFile(root),/régulier/);
+    fs.symlinkSync(file,path.join(root,'link'));
+    assert.throws(()=>readStorageFile(path.join(root,'link')),/symbolique/);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });

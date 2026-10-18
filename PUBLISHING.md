@@ -84,6 +84,19 @@ The GitHub repository is public and uses standard hosted Ubuntu runners. Packagi
 and publishing require no paid service plan. OVH inference and server hosting are
 separate costs. Codeberg mirrors the sources and tags; the release workflow runs on GitHub.
 
+## Performance scope in 1.14.0
+
+The source release includes `scripts/benchmark-performance.py` for offline
+cold/warm measurements and `scripts/test-performance.py` for protocol-preserving
+compaction checks. Cold means fresh application state in a new process; warm
+restart reuses application data, while warm requests reuse the running process.
+Neither flushes OS caches nor measures an OVH model's cold start.
+
+Application instruction reductions and context algorithms belong to the companion
+backend. Private adapters, per-installation routing, cache tuning, credit limits,
+raw benchmark results and `.local-agent/` stay out of public exports and VSIX files.
+The Marketplace VSIX alone does not update the companion Python backend.
+
 ## Local packaging
 
 ```sh

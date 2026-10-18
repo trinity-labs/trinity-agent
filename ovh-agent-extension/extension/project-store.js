@@ -1,6 +1,34 @@
 'use strict';
 const fs=require('fs'), path=require('path'), crypto=require('crypto');
+// Storage paths are private: do not follow symlinks, including parent components.
+// This is not a sandbox against a concurrent writer with the same OS account.
+function assertStoragePath(file) {
+  let cursor=path.resolve(file);
+  for (;;) {
+    try {if(fs.lstatSync(cursor).isSymbolicLink())throw new Error('Chemin de stockage symbolique refusé.');}
+    catch(error) {if(error.code!=='ENOENT')throw error;}
+    const parent=path.dirname(cursor);if(parent===cursor)break;cursor=parent;
+  }
+}
+function readStorageFile(file, encoding, limit=32*1024*1024) {
+  assertStoragePath(file);
+  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+  try {
+    const stat=fs.fstatSync(fd);
+    if(!stat.isFile() || stat.size>limit)throw new Error('Fichier de stockage trop volumineux ou non régulier.');
+    const chunks=[];let total=0;
+    for (;;) {
+      const chunk=Buffer.allocUnsafe(Math.min(65536,limit-total+1));
+      const count=fs.readSync(fd,chunk,0,chunk.length,null);
+      if(!count)break;
+      total+=count;if(total>limit)throw new Error('Fichier de stockage trop volumineux.');
+      chunks.push(chunk.subarray(0,count));
+    }
+    const data=Buffer.concat(chunks,total);return encoding?data.toString(encoding):data;
+  } finally {fs.closeSync(fd);}
+}
 function writeAtomic(file,content) {
+  assertStoragePath(file);
   if(fs.existsSync(file)&&fs.lstatSync(file).isSymbolicLink())throw new Error('Fichier symbolique refusé.');
   const temporary=file+'.'+crypto.randomUUID();
   try {fs.writeFileSync(temporary,content,{mode:0o600,flag:'wx'});fs.renameSync(temporary,file);}
@@ -8,7 +36,9 @@ function writeAtomic(file,content) {
 }
 function invalidateProjectMemory(dataRoot, project) {
   if(!/^[a-f0-9]{20}$/.test(project))throw new Error('Projet mémoire invalide.');
+  dataRoot=path.resolve(dataRoot);
   const root=path.join(dataRoot,'memory/projects',project);
+  assertStoragePath(root);
   for(let cursor=root;cursor!==dataRoot;cursor=path.dirname(cursor)) {
     if(fs.existsSync(cursor)&&fs.lstatSync(cursor).isSymbolicLink())throw new Error('Dossier mémoire symbolique refusé.');
   }
@@ -22,7 +52,8 @@ function invalidateProjectMemory(dataRoot, project) {
 }
 class ProjectStore {
   constructor(dataRoot, allowedRoot='/home/coder') {
-    this.dataRoot=dataRoot;
+    assertStoragePath(dataRoot);
+    this.dataRoot=path.resolve(dataRoot);
     this.root=fs.realpathSync(allowedRoot);
     this.file=path.join(dataRoot,'projects.json');
   }
@@ -34,7 +65,7 @@ class ProjectStore {
   entries() {
     try {
       if(fs.lstatSync(this.file).isSymbolicLink())throw new Error('Registre symbolique refusé.');
-      const entries=JSON.parse(fs.readFileSync(this.file,'utf8'));
+      const entries=JSON.parse(readStorageFile(this.file,'utf8'));
       if(!Array.isArray(entries))throw new Error('Registre de projets invalide.');
       return entries;
     }
@@ -51,6 +82,7 @@ class ProjectStore {
       }
     }
     const archive=path.join(this.dataRoot,'archive');
+    assertStoragePath(archive);
     if(!fs.existsSync(archive))return [...entries.values()];
     for(const dir of fs.readdirSync(archive,{withFileTypes:true})) {
       if(!dir.isDirectory() || !/^[a-f0-9]{20}$/.test(dir.name) || entries.has(dir.name))continue;
@@ -60,7 +92,7 @@ class ProjectStore {
         const file=path.join(project,conversation.name,'meta.json');
         try {
           if(fs.lstatSync(file).isSymbolicLink())continue;
-          const root=this.validate(JSON.parse(fs.readFileSync(file,'utf8')).workspace);
+          const root=this.validate(JSON.parse(readStorageFile(file,'utf8')).workspace);
           const id=crypto.createHash('sha256').update(root).digest('hex').slice(0,20);
           if(id!==dir.name)continue;
           entries.set(id,{id,name:path.basename(root),root});break;
@@ -90,7 +122,7 @@ class ProjectStore {
     const file=path.join(this.dataRoot,'pending-project-moves.json');
     if(!fs.existsSync(file))return [];
     if(fs.lstatSync(file).isSymbolicLink())throw new Error('Plan symbolique refusé.');
-    const moves=JSON.parse(fs.readFileSync(file,'utf8')),remaining=[];
+    const moves=JSON.parse(readStorageFile(file,'utf8')),remaining=[];
     if(!Array.isArray(moves))throw new Error('Plan de classement invalide.');
     for(const move of moves) {
       try {this.attach(move.source,move.conversation,move.target,{includeInterrupted:move.includeInterrupted===true});}
@@ -140,7 +172,7 @@ class ProjectStore {
         try {
           const file=path.join(archive,folder.name,'meta.json');
           if(fs.lstatSync(file).isSymbolicLink())continue;
-          const meta=JSON.parse(fs.readFileSync(file,'utf8'));
+          const meta=JSON.parse(readStorageFile(file,'utf8'));
           if(typeof meta.previous_workspace==='string' && meta.previous_workspace && meta.previous_workspace!==entry.root)assignments[key]=target.id;
         } catch(error) {if(!['ENOENT'].includes(error.code) && !(error instanceof SyntaxError))throw error;}
       }
@@ -148,7 +180,7 @@ class ProjectStore {
     entry.archiveSources=[...new Set([...(entry.archiveSources || []),entry.root])].filter(folder=>folder!==target.root);
     entry.root=target.root;entry.id=target.id;
     const file=path.join(this.dataRoot,'project-conversations.json');
-    const previous=fs.existsSync(file)?fs.readFileSync(file):null;
+    const previous=fs.existsSync(file)?readStorageFile(file):null;
     writeAtomic(file,JSON.stringify(assignments,null,2));
     try {writeAtomic(this.file,JSON.stringify(entries,null,2));}
     catch(error) {if(previous===null)fs.unlinkSync(file);else writeAtomic(file,previous);throw error;}
@@ -171,7 +203,7 @@ class ProjectStore {
     try {
       const file=path.join(this.dataRoot,'project-conversations.json');
       if(fs.lstatSync(file).isSymbolicLink())throw new Error('Registre symbolique refusé.');
-      const entries=JSON.parse(fs.readFileSync(file,'utf8'));
+      const entries=JSON.parse(readStorageFile(file,'utf8'));
       if(!entries||typeof entries!=='object'||Array.isArray(entries))throw new Error('Classement invalide.');
       return entries;
     } catch(error) {if(error.code==='ENOENT')return {};throw error;}
@@ -188,6 +220,7 @@ class ProjectStore {
     if(!/^[a-f0-9]{20}$/.test(source)||!/^[A-Za-z0-9_-]+$/.test(conversation))throw new Error('Conversation invalide.');
     if(target!==null&&!this.list().some(entry=>entry.id===target))throw new Error('Projet introuvable.');
     const root=path.join(this.dataRoot,'archive',source),folder=path.join(root,conversation);
+    assertStoragePath(folder);
     if(fs.lstatSync(folder).isSymbolicLink()||path.dirname(fs.realpathSync(folder))!==fs.realpathSync(root))throw new Error('Archive invalide.');
     const entries=this.assignments(),key=source+':'+conversation;
     // Keep an explicit opt-out so a legacy attachment cannot reappear after removal.
@@ -198,7 +231,7 @@ class ProjectStore {
     const file=path.join(this.dataRoot,'active-projects.json');
     try {
       if(fs.lstatSync(file).isSymbolicLink())return undefined;
-      const root=JSON.parse(fs.readFileSync(file,'utf8'))[fs.realpathSync(workspace)];
+      const root=JSON.parse(readStorageFile(file,'utf8'))[fs.realpathSync(workspace)];
       if(typeof root!=='string')return undefined;
       const validated=this.validate(root);
       return this.list().find(p=>p.root===validated) || this.identity(validated);
@@ -208,7 +241,7 @@ class ProjectStore {
     const entry=register?this.register(folder):this.identity(folder),file=path.join(this.dataRoot,'active-projects.json');
     fs.mkdirSync(this.dataRoot,{recursive:true,mode:0o700});
     let selections={};
-    try {selections=JSON.parse(fs.readFileSync(file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+    try {selections=JSON.parse(readStorageFile(file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
     if(!selections || typeof selections!=='object' || Array.isArray(selections))throw new Error('Sélection de projet invalide.');
     selections[fs.realpathSync(workspace)]=entry.root;
     writeAtomic(file,JSON.stringify(selections,null,2));
@@ -228,10 +261,12 @@ class ProjectStore {
     if(source.id===target.id) {this.assign(source.id,conversation,target.id);return target;}
     const fromRoot=path.join(this.dataRoot,'archive',source.id), toRoot=path.join(this.dataRoot,'archive',target.id);
     const from=path.join(fromRoot,conversation), to=path.join(toRoot,conversation);
+    assertStoragePath(from);assertStoragePath(to);
+    assertStoragePath(path.join(from,'task-state.json'));
     if(fs.lstatSync(from).isSymbolicLink()||path.dirname(fs.realpathSync(from))!==fs.realpathSync(fromRoot))throw new Error('Archive invalide.');
-    let task;try{task=JSON.parse(fs.readFileSync(path.join(from,'task-state.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+    let task;try{task=JSON.parse(readStorageFile(path.join(from,'task-state.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
     if(task?.status==='running' || (task?.status==='interrupted'&&!includeInterrupted))throw new Error('Termine la tâche interrompue avant de rattacher cette conversation.');
-    const oldTask=task?fs.readFileSync(path.join(from,'task-state.json'),'utf8'):null;
+    const oldTask=task?readStorageFile(path.join(from,'task-state.json'),'utf8'):null;
     if(task?.verification_id) {
       if(!/^[a-f0-9]{32}$/.test(task.verification_id))throw new Error('Identifiant de vérification invalide.');
       const journal=path.join(from,'verification',task.verification_id,'journal.json');
@@ -239,7 +274,7 @@ class ProjectStore {
         try {if(fs.lstatSync(file).isSymbolicLink())throw new Error('Journal symbolique refusé.');}catch(error){if(error.code!=='ENOENT')throw error;}
       }
       if(fs.existsSync(journal)) {
-        const verification=JSON.parse(fs.readFileSync(journal,'utf8'));
+        const verification=JSON.parse(readStorageFile(journal,'utf8'));
         if(!['passed','rolled_back'].includes(verification.status))throw new Error('Restaurer ou vérifier les modifications avant le rattachement.');
       } else if(task.status!=='completed')throw new Error('Journal de vérification introuvable.');
       task={...task,previous_verification_id:task.verification_id,previous_workspace:source.root,verification_id:''};
@@ -248,7 +283,7 @@ class ProjectStore {
     fs.mkdirSync(toRoot,{recursive:true,mode:0o700});
     if(fs.lstatSync(toRoot).isSymbolicLink())throw new Error('Archive cible invalide.');
     if(fs.lstatSync(path.join(from,'meta.json')).isSymbolicLink())throw new Error('Métadonnées symboliques refusées.');
-    const oldMeta=fs.readFileSync(path.join(from,'meta.json'),'utf8');
+    const oldMeta=readStorageFile(path.join(from,'meta.json'),'utf8');
     const meta=JSON.parse(oldMeta);
     meta.previous_workspace=meta.workspace;meta.workspace=target.root;
     fs.renameSync(from,to);
@@ -259,13 +294,13 @@ class ProjectStore {
     } catch(error) {
       writeAtomic(path.join(to,'meta.json'),oldMeta);if(oldTask)writeAtomic(path.join(to,'task-state.json'),oldTask);fs.renameSync(to,from);throw error;
     }
-    try {if(fs.readFileSync(path.join(fromRoot,'current'),'utf8').trim()===conversation)fs.unlinkSync(path.join(fromRoot,'current'));}catch(error){if(error.code!=='ENOENT')throw error;}
+    try {if(readStorageFile(path.join(fromRoot,'current'),'utf8').trim()===conversation)fs.unlinkSync(path.join(fromRoot,'current'));}catch(error){if(error.code!=='ENOENT')throw error;}
     const legacy=path.join(this.dataRoot,'sessions',source.id+'.json'), messages=path.join(to,'messages.json');
-    if(fs.existsSync(legacy)&&fs.existsSync(messages)&&fs.readFileSync(legacy).equals(fs.readFileSync(messages)))fs.unlinkSync(legacy);
+    if(fs.existsSync(legacy)&&fs.existsSync(messages)&&readStorageFile(legacy).equals(readStorageFile(messages)))fs.unlinkSync(legacy);
     invalidateProjectMemory(this.dataRoot,source.id);
     invalidateProjectMemory(this.dataRoot,target.id);
     this.assign(target.id,conversation,target.id);
     return target;
   }
 }
-module.exports={ProjectStore,invalidateProjectMemory};
+module.exports={ProjectStore,invalidateProjectMemory,assertStoragePath,readStorageFile};

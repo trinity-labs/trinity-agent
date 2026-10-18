@@ -2,11 +2,12 @@ const { t } = require("./media/i18n");
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const {invalidateProjectMemory} = require('./project-store');
+const {invalidateProjectMemory,assertStoragePath,readStorageFile} = require('./project-store');
 class ArchiveStore {
   constructor(workspace, dataRoot = process.env.OVH_AGENT_DATA_ROOT || path.join(require('os').homedir(), '.ovh-agent')) {
     this.session = crypto.createHash('sha256').update(fs.realpathSync(workspace)).digest('hex').slice(0,20);
-    this.dataRoot = dataRoot;
+    assertStoragePath(dataRoot);
+    this.dataRoot = path.resolve(dataRoot);
     this.root = path.join(dataRoot, 'archive', this.session);
     this.cache = new Map();
     this.cacheBytes = 0;
@@ -14,7 +15,11 @@ class ArchiveStore {
     this.cacheLimit = (Number.isFinite(configured) ? Math.max(0, configured) : 16) * 1024 * 1024;
   }
   readCached(file, parse = JSON.parse) {
+    const relative=path.relative(this.root,file);
+    if(relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative))throw new Error('Lecture hors archive refusée.');
+    assertStoragePath(file);
     const stat = fs.statSync(file, {bigint:true});
+    if (!stat.isFile() || stat.size > 32n * 1024n * 1024n) throw new Error("Archive trop volumineuse ou non régulière.");
     const signature = [stat.dev,stat.ino,stat.size,stat.mtimeNs,stat.ctimeNs].join(':');
     const old = this.cache.get(file);
     if (old?.signature === signature) {
@@ -22,7 +27,7 @@ class ArchiveStore {
       return old.value;
     }
     if (old) { this.cache.delete(file); this.cacheBytes -= old.size; }
-    const value = parse(fs.readFileSync(file, 'utf8'));
+    const value = parse(readStorageFile(file, 'utf8'));
     const after = fs.statSync(file, {bigint:true});
     const size = Buffer.byteLength(JSON.stringify(value) ?? '') * 4 + 512;
     if (signature === [after.dev,after.ino,after.size,after.mtimeNs,after.ctimeNs].join(':') && size <= this.cacheLimit) {
@@ -34,8 +39,9 @@ class ArchiveStore {
     }
     return value;
   }
-  current() { try { return fs.readFileSync(path.join(this.root,'current'),'utf8').trim(); } catch { return ''; } }
+  current() { try { assertStoragePath(path.join(this.root,'current')); return readStorageFile(path.join(this.root,'current'),'utf8',4096).trim(); } catch { return ''; } }
   list() {
+    assertStoragePath(this.root);
     if (!fs.existsSync(this.root)) return [];
     const current = this.current();
     return fs.readdirSync(this.root,{withFileTypes:true}).filter(e=>e.isDirectory()).flatMap(e=>{
@@ -69,12 +75,14 @@ class ArchiveStore {
   remove(id) {
     if (!/^[0-9A-Za-z_-]+$/.test(id)) throw new Error(t("Identifiant de conversation invalide."));
     const target=path.join(this.root,id);
+    assertStoragePath(target);
     if (!fs.existsSync(target)) throw new Error(t("Conversation introuvable."));
     if (fs.lstatSync(target).isSymbolicLink() || path.dirname(fs.realpathSync(target))!==fs.realpathSync(this.root)) throw new Error(t("Chemin de conversation invalide."));
     const wasCurrent=this.current()===id;
     const legacy=path.join(this.dataRoot,'sessions',this.session+'.json');
     const messages=path.join(target,'messages.json');
-    if (fs.existsSync(legacy)&&fs.existsSync(messages)&&fs.readFileSync(legacy).equals(fs.readFileSync(messages))) fs.unlinkSync(legacy);
+    assertStoragePath(legacy);assertStoragePath(messages);
+    if (fs.existsSync(legacy)&&fs.existsSync(messages)&&readStorageFile(legacy).equals(readStorageFile(messages))) fs.unlinkSync(legacy);
     fs.rmSync(target,{recursive:true,force:false});
     invalidateProjectMemory(this.dataRoot,this.session);
     this.cache.clear(); this.cacheBytes = 0;

@@ -120,3 +120,7 @@ requests for current verification, or approximate matches use the normal agent
 path with relevant memory. Source files are reread through metadata-validated
 caches; generated summaries and old model answers cannot become direct answers.
 The local lookup is bounded to avoid blocking on slow mounts. No budgets change.
+
+## Contribuer au flux de l’extension
+
+Consultez [Architecture et contribution](ARCHITECTURE.md) pour le parcours des messages, les responsabilités des modules, les règles de cache et la génération du frontend minifié.

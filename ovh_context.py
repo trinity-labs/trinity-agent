@@ -168,15 +168,20 @@ async def compact_context(messages, memory, budget, summarize=None):
     prefix = [ModelRequest(parts=system)] if system else []
     summary_allowance = min(SUMMARY_TOKENS, budget // 5)
     target = int(budget * .70)
-    kept, count = list(units), 0
-    def assemble_without_summary():
-        tail = [m for unit in kept for m in unit]
-        pinned = [user_only] if user_only and not any(m is latest_user for m in tail) else []
-        return prefix + pinned + tail
-    while kept and estimate_tokens(assemble_without_summary()) + summary_allowance > target:
-        if len(kept) == 1:
+    # Token estimates are additive: count each protocol unit once rather than
+    # rescanning the shrinking history for every removed unit (quadratic).
+    count = 0
+    costs = [estimate_tokens(unit) for unit in units]
+    remaining = sum(costs)
+    prefix_cost = estimate_tokens(prefix)
+    pinned_cost = estimate_tokens([user_only]) if user_only else 0
+    latest_unit = next((i for i,unit in enumerate(units) if any(m is latest_user for m in unit)), -1)
+    def tail_cost():
+        return prefix_cost + remaining + (pinned_cost if count > latest_unit else 0)
+    while count < len(units) and tail_cost() + summary_allowance > target:
+        if count == len(units)-1:
             pending = set()
-            for message in kept[0]:
+            for message in units[count]:
                 for part in message.parts:
                     if isinstance(part, ToolCallPart):
                         pending.add(part.tool_call_id)
@@ -184,9 +189,9 @@ async def compact_context(messages, memory, budget, summarize=None):
                         pending.discard(getattr(part, 'tool_call_id', None))
             if pending:
                 break  # Never summarize an unfinished call.
-        kept.pop(0)
+        remaining -= costs[count]
         count += 1
-    tail = assemble_without_summary()
+    tail = prefix + ([user_only] if user_only and count > latest_unit else []) + [m for unit in units[count:] for m in unit]
     if count == 0 or estimate_tokens(tail) + summary_allowance > budget:
         raise ValueError('La demande courante ou un appel d’outil indivisible dépasse le budget de contexte. Utilise des plages plus petites ou un modèle avec davantage de contexte.')
     # Retain the exact pre-compaction protocol before any lossy transformation.

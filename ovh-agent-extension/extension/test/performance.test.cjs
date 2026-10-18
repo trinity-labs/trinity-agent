@@ -7,9 +7,9 @@ const {JSDOM}=require('jsdom');
 const {validMessage}=require('../security');
 const root=path.resolve(__dirname,'..');
 function setup(settings={},env={}) {
-  const native=createRequire(path.join(root,'extension.js')),updates=[],spawned=[],sent=[];
+  const native=createRequire(path.join(root,'extension.js')),updates=[],spawned=[],sent=[],executed=[];
   const config={get:key=>settings[key],inspect:key=>({globalValue:settings[key]}),update:async(key,value)=>{updates.push({key,value});settings[key]=value;}};
-  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:root}}],getConfiguration:()=>config},Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'},ConfigurationTarget:{Global:1}};
+  const vscode={commands:{executeCommand:name=>executed.push(name)},workspace:{workspaceFolders:[{uri:{fsPath:root}}],getConfiguration:()=>config},Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'},ConfigurationTarget:{Global:1}};
   const spawn=(command,args,options)=>{
     spawned.push({command,args,mode:options.env.OVH_AGENT_PERFORMANCE_MODE});
     const process=new EventEmitter();
@@ -21,7 +21,7 @@ function setup(settings={},env={}) {
   vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider; readPersistentKey=()=>"test-only-key";',sandbox);
   const provider=new sandbox.module.exports.Provider(root,{});
   const posted=[];provider.post=value=>posted.push(JSON.parse(JSON.stringify(value)));
-  return {provider,posted,config,settings,updates,spawned,sent};
+  return {provider,posted,config,settings,updates,spawned,sent,executed};
 }
 
 test('performance bridge accepts only Auto/Max',()=>{
@@ -77,4 +77,81 @@ test('chat selector displays actual resource profile, waits for acknowledgement 
   assert.equal(picker.value,'max');assert.match(picker.title,/2 lecteurs.*128 Mio/);
   picker.value='auto';picker.dispatchEvent(new w.Event('change'));emit({type:'error',text:'Backend stopped'});
   assert(!picker.disabled);
+});
+
+test('stream bursts coalesce and flush before terminal events without losing text',async()=>{
+  const {provider,posted}=setup();
+  provider.consumeOutput(Array.from({length:100},()=>JSON.stringify({type:'delta',text:'word '})).join('\n')+'\n');
+  assert.equal(posted.length,0);
+  await new Promise(resolve=>setTimeout(resolve,70));
+  assert.equal(posted.length,1);
+  assert.equal(posted[0].html.match(/word/g).length,100);
+  provider.consumeOutput('{"type":"delta","text":"end"}\n{"type":"idle"}\n');
+  assert.equal(posted.at(-2).type,'delta');assert.match(posted.at(-2).html,/end/);
+  assert.equal(posted.at(-1).type,'idle');
+  await new Promise(resolve=>setTimeout(resolve,70));assert.equal(posted.length,3);
+});
+
+test('webview asset URLs remain cacheable while CSP nonces change',()=>{
+  const {provider}=setup();const webview={asWebviewUri:x=>x,cspSource:'local'};
+  const a=provider.getHtml(webview),b=provider.getHtml(webview);
+  assert.equal(a.match(/chat.js\?build=([^" ]+)/)[1],b.match(/chat.js\?build=([^" ]+)/)[1]);
+  assert.notEqual(a.match(/nonce="([^"]+)"/)[1],b.match(/nonce="([^"]+)"/)[1]);
+});
+
+test('malformed backend frames do not crash or flood diagnostic output',()=>{
+  const {provider,posted}=setup();
+  provider.consumeOutput('null\n[]\n42\n'+ 'x'.repeat(10000)+'\n{"type":"idle"}\n');
+  assert.equal(posted[0].text.length,4096);assert.equal(posted.at(-1).type,'idle');
+});
+
+test('oversized unterminated backend frame is dropped and framing recovers',()=>{
+  const {provider,posted}=setup();
+  provider.consumeOutput('x'.repeat(64*1024*1024+1));
+  assert.equal(provider.decoder.bufferedChars,0);assert.equal(provider.decoder.discarding,true);
+  provider.consumeOutput('tail');assert.equal(provider.decoder.bufferedChars,0);
+  provider.consumeOutput('\n{"type":"idle"}\n');
+  assert.equal(provider.decoder.discarding,false);assert.equal(posted.at(-1).type,'idle');
+});
+
+test('final response replaces pending delta instead of rendering twice',()=>{
+  const {provider,posted}=setup();let renders=0;
+  provider.renderMarkdown=text=>{renders++;return text;};
+  provider.consumeOutput('{"type":"delta","text":"complete"}\n{"type":"response","text":"complete"}\n');
+  assert.equal(renders,1);assert.equal(posted.length,1);assert.equal(posted[0].html,'complete');
+});
+
+test('billing uses the existing backend, coalesces polls and does not flush streaming',async()=>{
+  const {provider,posted,spawned}=setup();const sent=[];
+  provider.agent={stdin:{writable:true,write:line=>sent.push(JSON.parse(line))}};
+  provider.billingCredentials=()=>assert.fail('running backend already owns credentials');
+  provider.consumeOutput('{"type":"delta","text":"stream"}\n');
+  const a=provider.refreshBilling(),b=provider.refreshBilling();
+  assert.equal(a,b);assert.equal(sent.length,1);assert.equal(spawned.length,0);assert.equal(sent[0].refresh,false);
+  provider.consumeOutput(JSON.stringify({type:'billing_status',request_id:sent[0].request_id,configured:true,available:true})+'\n');
+  await a;
+  assert.equal(posted.filter(p=>p.type==='delta').length,0);
+  assert.equal(posted.filter(p=>p.type==='billing_status'&&p.available).length,1);
+  provider.flushDelta();
+  const manual=provider.refreshBilling(true);assert.equal(sent[1].refresh,true);
+  provider.consumeOutput(JSON.stringify({type:'billing_status',request_id:sent[1].request_id,configured:true,available:true})+'\n');
+  await manual;
+});
+
+test('archive notifications coalesce without retaining stale directory results',async()=>{
+  const {provider}=setup();let scans=0;provider.showArchives=()=>{scans++;};
+  for(let i=0;i<100;i++)provider.consumeOutput('{"type":"archives"}\n');
+  assert.equal(scans,0);await new Promise(resolve=>setTimeout(resolve,100));assert.equal(scans,1);
+  provider.requestArchivesRefresh();await new Promise(resolve=>setTimeout(resolve,100));assert.equal(scans,2);
+});
+
+test('Explorer refresh is reserved for possible mutations including failed commands',()=>{
+  const {provider,executed}=setup();
+  const emit=event=>provider.consumeOutput(JSON.stringify(event)+'\n');
+  emit({type:'response',text:'read-only'});assert.equal(executed.length,0);
+  emit({type:'file_change'});emit({type:'error',text:'verification failed'});
+  assert.deepEqual(executed,['workbench.files.action.refreshFilesExplorer']);
+  emit({type:'response',text:'next'});assert.equal(executed.length,1);
+  emit({type:'tool_start',tool:'read_file'});emit({type:'response',text:'read'});assert.equal(executed.length,1);
+  emit({type:'tool_start',tool:'run_command'});emit({type:'idle'});assert.equal(executed.length,2);
 });
