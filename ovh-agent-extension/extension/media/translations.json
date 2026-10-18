@@ -1,4 +1,28 @@
 {
+  "Chemin du projet": {
+    "fr": "Chemin du projet",
+    "en": "Project path",
+    "de": "Projektpfad",
+    "es": "Ruta del proyecto"
+  },
+  "Durée non enregistrée": {
+    "fr": "Durée non enregistrée",
+    "en": "Duration not recorded",
+    "de": "Dauer nicht aufgezeichnet",
+    "es": "Duración no registrada"
+  },
+  "Durée : {0}": {
+    "fr": "Durée : {0}",
+    "en": "Duration: {0}",
+    "de": "Dauer: {0}",
+    "es": "Duración: {0}"
+  },
+  "{0} fichiers ciblés": {
+    "fr": "{0} fichiers ciblés",
+    "en": "{0} targeted files",
+    "de": "{0} ausgewählte Dateien",
+    "es": "{0} archivos seleccionados"
+  },
   "Agent déjà ouvert": {
     "fr": "Agent déjà ouvert",
     "en": "Agent already open",
@@ -12,7 +36,10 @@
     "es": "Otra ventana ya está usando {0}. Cierra la otra ventana de VS Code y vuelve a intentarlo aquí."
   },
   "Réessayer": {
-    "fr": "Réessayer", "en": "Try again", "de": "Erneut versuchen", "es": "Reintentar"
+    "fr": "Réessayer",
+    "en": "Try again",
+    "de": "Erneut versuchen",
+    "es": "Reintentar"
   },
   "Un agent utilise déjà cette installation. Ferme l’autre fenêtre ou attends son arrêt avant de réessayer.": {
     "fr": "Un agent utilise déjà cette installation. Ferme l’autre fenêtre ou attends son arrêt avant de réessayer.",
@@ -86,10 +113,30 @@
     "de": "Neue Modellaufrufe werden blockiert, bis die Budgets überprüft werden können.",
     "es": "Las nuevas llamadas al modelo se bloquean hasta que se puedan verificar los presupuestos."
   },
-  "Jour": {"fr": "Jour", "en": "Day", "de": "Tag", "es": "Día"},
-  "Semaine": {"fr": "Semaine", "en": "Week", "de": "Woche", "es": "Semana"},
-  "Mois": {"fr": "Mois", "en": "Month", "de": "Monat", "es": "Mes"},
-  "illimité": {"fr": "illimité", "en": "unlimited", "de": "unbegrenzt", "es": "ilimitado"},
+  "Jour": {
+    "fr": "Jour",
+    "en": "Day",
+    "de": "Tag",
+    "es": "Día"
+  },
+  "Semaine": {
+    "fr": "Semaine",
+    "en": "Week",
+    "de": "Woche",
+    "es": "Semana"
+  },
+  "Mois": {
+    "fr": "Mois",
+    "en": "Month",
+    "de": "Monat",
+    "es": "Mes"
+  },
+  "illimité": {
+    "fr": "illimité",
+    "en": "unlimited",
+    "de": "unbegrenzt",
+    "es": "ilimitado"
+  },
   "{0} modèles disponibles dans l’agent · {1} au catalogue OVHcloud": {
     "fr": "{0} modèles disponibles dans l’agent · {1} au catalogue OVHcloud",
     "en": "{0} models available in the agent · {1} in the OVHcloud catalogue",
@@ -401,6 +448,30 @@
     "en": "Finished in {0} · {1}",
     "de": "Abgeschlossen in {0} · {1}",
     "es": "Finalizado en {0} · {1}"
+  },
+  "Terminé · {0}": {
+    "fr": "Terminé · {0}",
+    "en": "Finished · {0}",
+    "de": "Abgeschlossen · {0}",
+    "es": "Finalizado · {0}"
+  },
+  "Interrompu · {0}": {
+    "fr": "Interrompu · {0}",
+    "en": "Stopped · {0}",
+    "de": "Unterbrochen · {0}",
+    "es": "Interrumpido · {0}"
+  },
+  "Échec · {0}": {
+    "fr": "Échec · {0}",
+    "en": "Failed · {0}",
+    "de": "Fehlgeschlagen · {0}",
+    "es": "Error · {0}"
+  },
+  "Temps écoulé : {0}": {
+    "fr": "Temps écoulé : {0}",
+    "en": "Elapsed time: {0}",
+    "de": "Verstrichene Zeit: {0}",
+    "es": "Tiempo transcurrido: {0}"
   },
   "Copier": {
     "fr": "Copier",
@@ -762,11 +833,11 @@
     "de": "Schreibgeschützter Abrechnungszugriff gespeichert",
     "es": "Acceso de solo lectura a facturación guardado"
   },
-  "Tâche interrompue — clique sur ▶ pour la reprendre.": {
-    "fr": "Tâche interrompue — clique sur ▶ pour la reprendre.",
-    "en": "Task interrupted — click ▶ to resume.",
-    "de": "Aufgabe unterbrochen — zum Fortsetzen auf ▶ klicken.",
-    "es": "Tarea interrumpida — haz clic en ▶ para reanudarla."
+  "Tâche interrompue - clique sur ▶ pour la reprendre.": {
+    "fr": "Tâche interrompue - clique sur ▶ pour la reprendre.",
+    "en": "Task interrupted - click ▶ to resume.",
+    "de": "Aufgabe unterbrochen - zum Fortsetzen auf ▶ klicken.",
+    "es": "Tarea interrumpida - haz clic en ▶ para reanudarla."
   },
   "Suppression définitive en cours…": {
     "fr": "Suppression définitive en cours…",
@@ -1536,18 +1607,6 @@
     "de": "Bild {0} überschreitet das Limit von 10 MB.",
     "es": "La imagen {0} supera el límite de 10 MB."
   },
-  "Envoi pendant une tâche": {
-    "fr": "Envoi pendant une tâche",
-    "en": "Send during a task",
-    "de": "Während einer Aufgabe senden",
-    "es": "Enviar durante una tarea"
-  },
-  "Mettre en attente": {
-    "fr": "Mettre en attente",
-    "en": "Queue message",
-    "de": "Nachricht einreihen",
-    "es": "Poner en cola"
-  },
   "Réorienter": {
     "fr": "Réorienter",
     "en": "Steer task",
@@ -1644,12 +1703,6 @@
     "de": "Warteschlangenlimit: 20 Nachrichten",
     "es": "Límite de cola: 20 mensajes"
   },
-  "Réorienter applique la consigne à la prochaine étape, après l’appel ou l’outil en cours.": {
-    "fr": "Réorienter applique la consigne à la prochaine étape, après l’appel ou l’outil en cours.",
-    "en": "Steering applies the instruction at the next step, after the current call or tool finishes.",
-    "de": "Die Umlenkung greift beim nächsten Schritt, nach dem laufenden Aufruf oder Werkzeug.",
-    "es": "La reorientación se aplica en el siguiente paso, al terminar la llamada o herramienta actual."
-  },
   "Modification annulée ; brouillon conservé.": {
     "fr": "Modification annulée ; brouillon conservé.",
     "en": "Edit cancelled; draft kept.",
@@ -1733,5 +1786,497 @@
     "en": "Up to {0}k depending on the model",
     "de": "Bis zu {0}k je nach Modell",
     "es": "Hasta {0}k según el modelo"
+  },
+  "Avant modification": {
+    "fr": "Avant modification",
+    "en": "Before modification",
+    "de": "Vor der Änderung",
+    "es": "Antes de modificar"
+  },
+  "Après vérification": {
+    "fr": "Après vérification",
+    "en": "Verification result",
+    "de": "Prüfergebnis",
+    "es": "Resultado de verificación"
+  },
+  "indisponible": {
+    "fr": "indisponible",
+    "en": "unavailable",
+    "de": "nicht verfügbar",
+    "es": "no disponible"
+  },
+  "Modifications en attente de vérification": {
+    "fr": "Modifications en attente de vérification",
+    "en": "Changes awaiting verification",
+    "de": "Änderungen warten auf Prüfung",
+    "es": "Cambios pendientes de verificación"
+  },
+  "Contrôles en cours": {
+    "fr": "Contrôles en cours",
+    "en": "Checks running",
+    "de": "Prüfungen laufen",
+    "es": "Comprobaciones en curso"
+  },
+  "Contrôles configurés réussis": {
+    "fr": "Contrôles configurés réussis",
+    "en": "Configured checks passed",
+    "de": "Konfigurierte Prüfungen bestanden",
+    "es": "Comprobaciones configuradas superadas"
+  },
+  "Validation refusée": {
+    "fr": "Validation refusée",
+    "en": "Validation rejected",
+    "de": "Validierung abgelehnt",
+    "es": "Validación rechazada"
+  },
+  "Audit : échecs observés dans les contrôles": {
+    "fr": "Audit : échecs observés dans les contrôles",
+    "en": "Audit: failing checks observed",
+    "de": "Audit: fehlgeschlagene Prüfungen beobachtet",
+    "es": "Auditoría: fallos observados en las comprobaciones"
+  },
+  "Modifications non validées restaurées": {
+    "fr": "Modifications non validées restaurées",
+    "en": "Unverified changes rolled back",
+    "de": "Ungeprüfte Änderungen zurückgesetzt",
+    "es": "Cambios no verificados revertidos"
+  },
+  "Conflit de restauration : changement extérieur préservé": {
+    "fr": "Conflit de restauration : changement extérieur préservé",
+    "en": "Rollback conflict: external change preserved",
+    "de": "Wiederherstellungskonflikt: externe Änderung erhalten",
+    "es": "Conflicto al restaurar: cambio externo conservado"
+  },
+  "Ces contrôles couvrent leur périmètre, pas l’ensemble des affirmations du modèle.": {
+    "fr": "Ces contrôles couvrent leur périmètre, pas l’ensemble des affirmations du modèle.",
+    "en": "These checks cover their scope, not every model claim.",
+    "de": "Diese Prüfungen decken ihren Umfang ab, nicht sämtliche Modellaussagen.",
+    "es": "Estas comprobaciones cubren su alcance, no todas las afirmaciones del modelo."
+  },
+  "Point d’avancement": {
+    "fr": "Point d’avancement",
+    "en": "Progress checkpoint",
+    "de": "Fortschrittsprüfung",
+    "es": "Revisión del progreso"
+  },
+  "{0} s écoulées · {1} appels restants": {
+    "fr": "{0} s écoulées · {1} appels restants",
+    "en": "{0} s elapsed · {1} calls remaining",
+    "de": "{0} s vergangen · {1} Aufrufe verbleibend",
+    "es": "{0} s transcurridos · {1} llamadas restantes"
+  },
+  "Tests décomptés : {0}": {
+    "fr": "Tests décomptés : {0}",
+    "en": "Reported tests: {0}",
+    "de": "Gemeldete Tests: {0}",
+    "es": "Pruebas contabilizadas: {0}"
+  },
+  "Ouvrir un dossier existant": {
+    "fr": "Ouvrir un dossier existant",
+    "en": "Open an existing folder",
+    "de": "Vorhandenen Ordner öffnen",
+    "es": "Abrir una carpeta existente"
+  },
+  "Créer un projet": {
+    "fr": "Créer un projet",
+    "en": "Create a project",
+    "de": "Projekt erstellen",
+    "es": "Crear un proyecto"
+  },
+  "Rattacher cette conversation à un autre projet": {
+    "fr": "Rattacher cette conversation à un autre projet",
+    "en": "Move this conversation to another project",
+    "de": "Diese Unterhaltung einem anderen Projekt zuordnen",
+    "es": "Asignar esta conversación a otro proyecto"
+  },
+  "Modifier mon contexte utilisateur": {
+    "fr": "Modifier mon contexte utilisateur",
+    "en": "Edit my user context",
+    "de": "Benutzerkontext bearbeiten",
+    "es": "Editar mi contexto de usuario"
+  },
+  "Projet actif de l’agent": {
+    "fr": "Projet actif de l’agent",
+    "en": "Active agent project",
+    "de": "Aktives Agent-Projekt",
+    "es": "Proyecto activo del agente"
+  },
+  "Dossier parent du projet": {
+    "fr": "Dossier parent du projet",
+    "en": "Parent folder for the project",
+    "de": "Übergeordneter Projektordner",
+    "es": "Carpeta principal del proyecto"
+  },
+  "Dossier du projet": {
+    "fr": "Dossier du projet",
+    "en": "Project folder",
+    "de": "Projektordner",
+    "es": "Carpeta del proyecto"
+  },
+  "Nom du projet": {
+    "fr": "Nom du projet",
+    "en": "Project name",
+    "de": "Projektname",
+    "es": "Nombre del proyecto"
+  },
+  "Choisir ou créer un projet": {
+    "fr": "Choisir ou créer un projet",
+    "en": "Select or create a project",
+    "de": "Projekt auswählen oder erstellen",
+    "es": "Seleccionar o crear un proyecto"
+  },
+  "Modifier le contexte utilisateur partagé": {
+    "fr": "Modifier le contexte utilisateur partagé",
+    "en": "Edit shared user context",
+    "de": "Gemeinsamen Benutzerkontext bearbeiten",
+    "es": "Editar el contexto de usuario compartido"
+  },
+  "Termine ou arrête la tâche avant de changer de projet.": {
+    "fr": "Termine ou arrête la tâche avant de changer de projet.",
+    "en": "Finish or stop the task before switching projects.",
+    "de": "Beende oder stoppe die Aufgabe vor dem Projektwechsel.",
+    "es": "Termina o detén la tarea antes de cambiar de proyecto."
+  },
+  "Ouvre la fenêtre Agent active pour choisir un projet.": {
+    "fr": "Ouvre la fenêtre Agent active pour choisir un projet.",
+    "en": "Open the active Agent window to select a project.",
+    "de": "Öffne das aktive Agent-Fenster, um ein Projekt auszuwählen.",
+    "es": "Abre la ventana activa del agente para seleccionar un proyecto."
+  },
+  "Modifier la mémoire du projet": {
+    "fr": "Modifier la mémoire du projet",
+    "en": "Edit project memory",
+    "de": "Projektgedächtnis bearbeiten",
+    "es": "Editar memoria del proyecto"
+  },
+  "Agréger les mémoires des projets": {
+    "fr": "Agréger les mémoires des projets",
+    "en": "Aggregate project memories",
+    "de": "Projektgedächtnisse zusammenführen",
+    "es": "Agregar memorias de proyectos"
+  },
+  "Projets à agréger en Markdown": {
+    "fr": "Projets à agréger en Markdown",
+    "en": "Projects to aggregate as Markdown",
+    "de": "Projekte für Markdown-Zusammenführung",
+    "es": "Proyectos para agregar en Markdown"
+  },
+  "Choisir un projet ou coller un chemin de dossier, puis Entrée": {
+    "fr": "Choisir un projet ou coller un chemin de dossier, puis Entrée",
+    "en": "Choose a project or paste a folder path, then press Enter",
+    "de": "Projekt auswählen oder Ordnerpfad einfügen, dann Eingabetaste drücken",
+    "es": "Elige un proyecto o pega la ruta de una carpeta y pulsa Intro"
+  },
+  "Ouvrir ce dossier": {
+    "fr": "Ouvrir ce dossier",
+    "en": "Open this folder",
+    "de": "Diesen Ordner öffnen",
+    "es": "Abrir esta carpeta"
+  },
+  "Dossier inaccessible ou non autorisé": {
+    "fr": "Dossier inaccessible ou non autorisé",
+    "en": "Folder unavailable or not allowed",
+    "de": "Ordner nicht verfügbar oder nicht erlaubt",
+    "es": "Carpeta inaccesible o no permitida"
+  },
+  "Projet actif": {
+    "fr": "Projet actif",
+    "en": "Active project",
+    "de": "Aktives Projekt",
+    "es": "Proyecto activo"
+  },
+  "Ouvrir": {
+    "fr": "Ouvrir",
+    "en": "Open",
+    "de": "Öffnen",
+    "es": "Abrir"
+  },
+  "Ouvrir le projet": {
+    "fr": "Ouvrir le projet",
+    "en": "Open project",
+    "de": "Projekt öffnen",
+    "es": "Abrir proyecto"
+  },
+  "Projet introuvable.": {
+    "fr": "Projet introuvable.",
+    "en": "Project not found.",
+    "de": "Projekt nicht gefunden.",
+    "es": "Proyecto no encontrado."
+  },
+  "Documents Markdown du projet": {
+    "fr": "Documents Markdown du projet",
+    "en": "Project Markdown documents",
+    "de": "Markdown-Dokumente des Projekts",
+    "es": "Documentos Markdown del proyecto"
+  },
+  "Certaines conversations nécessitent une vérification avant leur reclassement.": {
+    "fr": "Certaines conversations nécessitent une vérification avant leur reclassement.",
+    "en": "Some conversations need verification before they can be reassigned.",
+    "de": "Einige Unterhaltungen müssen vor der Neuzuordnung überprüft werden.",
+    "es": "Algunas conversaciones necesitan verificación antes de reasignarlas."
+  },
+  "Réponse depuis la mémoire du projet": {
+    "fr": "Réponse depuis la mémoire du projet",
+    "en": "Answer from project memory",
+    "de": "Antwort aus dem Projektgedächtnis",
+    "es": "Respuesta desde la memoria del proyecto"
+  },
+  "Mémoire locale · aucun appel API": {
+    "fr": "Mémoire locale · aucun appel API",
+    "en": "Local memory · no API call",
+    "de": "Lokaler Speicher · kein API-Aufruf",
+    "es": "Memoria local · sin llamada API"
+  },
+  "Classer cette conversation dans un projet": {
+    "fr": "Classer cette conversation dans un projet",
+    "en": "Choose a project for this conversation",
+    "de": "Ein Projekt für diese Unterhaltung auswählen",
+    "es": "Elegir un proyecto para esta conversación"
+  },
+  "Aucun projet": {
+    "fr": "Aucun projet",
+    "en": "No project",
+    "de": "Kein Projekt",
+    "es": "Sin proyecto"
+  },
+  "Choisir un dossier de projet…": {
+    "fr": "Choisir un dossier de projet…",
+    "en": "Choose a project folder…",
+    "de": "Projektordner auswählen…",
+    "es": "Elegir una carpeta de proyecto…"
+  },
+  "Personnaliser le projet": {
+    "fr": "Personnaliser le projet",
+    "en": "Customize project",
+    "de": "Projekt anpassen",
+    "es": "Personalizar proyecto"
+  },
+  "Titre du projet": {
+    "fr": "Titre du projet",
+    "en": "Project title",
+    "de": "Projekttitel",
+    "es": "Título del proyecto"
+  },
+  "Couleur du projet": {
+    "fr": "Couleur du projet",
+    "en": "Project color",
+    "de": "Projektfarbe",
+    "es": "Color del proyecto"
+  },
+  "Couleur enregistrée automatiquement.": {
+    "fr": "Couleur enregistrée automatiquement.",
+    "en": "Color saved automatically.",
+    "de": "Farbe wird automatisch gespeichert.",
+    "es": "El color se guarda automáticamente."
+  },
+  "Couleur du dossier enregistrée.": {
+    "fr": "Couleur du dossier enregistrée.",
+    "en": "Folder color saved.",
+    "de": "Ordnerfarbe gespeichert.",
+    "es": "Color de la carpeta guardado."
+  },
+  "Projet enregistré.": {
+    "fr": "Projet enregistré.",
+    "en": "Project saved.",
+    "de": "Projekt gespeichert.",
+    "es": "Proyecto guardado."
+  },
+  "Enregistrement…": {
+    "fr": "Enregistrement…",
+    "en": "Saving…",
+    "de": "Wird gespeichert…",
+    "es": "Guardando…"
+  },
+  "Enregistrement impossible : {0}": {
+    "fr": "Enregistrement impossible : {0}",
+    "en": "Could not save: {0}",
+    "de": "Speichern fehlgeschlagen: {0}",
+    "es": "No se pudo guardar: {0}"
+  },
+  "Replier le projet": {
+    "fr": "Replier le projet",
+    "en": "Collapse project",
+    "de": "Projekt einklappen",
+    "es": "Contraer proyecto"
+  },
+  "Déplier le projet": {
+    "fr": "Déplier le projet",
+    "en": "Expand project",
+    "de": "Projekt ausklappen",
+    "es": "Expandir proyecto"
+  },
+  "Enregistrer": {
+    "fr": "Enregistrer",
+    "en": "Save",
+    "de": "Speichern",
+    "es": "Guardar"
+  },
+  "Conversations hors projet": {
+    "fr": "Conversations hors projet",
+    "en": "Conversations outside projects",
+    "de": "Unterhaltungen ohne Projekt",
+    "es": "Conversaciones sin proyecto"
+  },
+  "1 conversation": {
+    "fr": "1 conversation",
+    "en": "1 conversation",
+    "de": "1 Unterhaltung",
+    "es": "1 conversación"
+  },
+  "{0} conversations": {
+    "fr": "{0} conversations",
+    "en": "{0} conversations",
+    "de": "{0} Unterhaltungen",
+    "es": "{0} conversaciones"
+  },
+  "Aucune conversation associée à ce projet.": {
+    "fr": "Aucune conversation associée à ce projet.",
+    "en": "No conversations assigned to this project.",
+    "de": "Diesem Projekt sind keine Unterhaltungen zugeordnet.",
+    "es": "No hay conversaciones asociadas a este proyecto."
+  },
+  "Classement impossible : {0}": {
+    "fr": "Classement impossible : {0}",
+    "en": "Unable to organize: {0}",
+    "de": "Ordnen nicht möglich: {0}",
+    "es": "No se pudo organizar: {0}"
+  },
+  "Enregistrement du classement…": {
+    "fr": "Enregistrement du classement…",
+    "en": "Saving organization…",
+    "de": "Anordnung wird gespeichert…",
+    "es": "Guardando organización…"
+  },
+  "Déposer ici pour retirer la conversation de son dossier.": {
+    "fr": "Déposer ici pour retirer la conversation de son dossier.",
+    "en": "Drop here to remove the conversation from its folder.",
+    "de": "Hier ablegen, um die Unterhaltung aus ihrem Ordner zu entfernen.",
+    "es": "Suelta aquí para sacar la conversación de su carpeta."
+  },
+  "Déplacer le dossier : glisser-déposer ou Alt + ↑ / ↓": {
+    "fr": "Déplacer le dossier : glisser-déposer ou Alt + ↑ / ↓",
+    "en": "Move folder: drag and drop or Alt + ↑ / ↓",
+    "de": "Ordner verschieben: Ziehen und Ablegen oder Alt + ↑ / ↓",
+    "es": "Mover carpeta: arrastrar y soltar o Alt + ↑ / ↓"
+  },
+  "Glisser la conversation vers un dossier": {
+    "fr": "Glisser la conversation vers un dossier",
+    "en": "Drag the conversation into a folder",
+    "de": "Unterhaltung in einen Ordner ziehen",
+    "es": "Arrastra la conversación a una carpeta"
+  },
+  "Ordre des dossiers enregistré.": {
+    "fr": "Ordre des dossiers enregistré.",
+    "en": "Folder order saved.",
+    "de": "Ordnerreihenfolge gespeichert.",
+    "es": "Orden de carpetas guardado."
+  },
+  "Conversation déplacée.": {
+    "fr": "Conversation déplacée.",
+    "en": "Conversation moved.",
+    "de": "Unterhaltung verschoben.",
+    "es": "Conversación movida."
+  },
+  "Le classement a échoué.": {
+    "fr": "Le classement a échoué.",
+    "en": "Could not save organization.",
+    "de": "Anordnung konnte nicht gespeichert werden.",
+    "es": "No se pudo guardar la organización."
+  },
+  "Glisser pour réordonner · Alt + ↑ / ↓": {
+    "fr": "Glisser pour réordonner · Alt + ↑ / ↓",
+    "en": "Drag to reorder · Alt + ↑ / ↓",
+    "de": "Zum Sortieren ziehen · Alt + ↑ / ↓",
+    "es": "Arrastrar para reordenar · Alt + ↑ / ↓"
+  },
+  "Déplacer la tâche : {0}": {
+    "fr": "Déplacer la tâche : {0}",
+    "en": "Move task: {0}",
+    "de": "Aufgabe verschieben: {0}",
+    "es": "Mover tarea: {0}"
+  },
+  "La liste a changé : cette tâche a déjà démarré ou été retirée.": {
+    "fr": "La liste a changé : cette tâche a déjà démarré ou été retirée.",
+    "en": "The list changed: this task has already started or been removed.",
+    "de": "Die Liste hat sich geändert: Diese Aufgabe wurde bereits gestartet oder entfernt.",
+    "es": "La lista ha cambiado: esta tarea ya ha comenzado o se ha retirado."
+  },
+  "Ordre non enregistré : {0}": {
+    "fr": "Ordre non enregistré : {0}",
+    "en": "Order not saved: {0}",
+    "de": "Reihenfolge nicht gespeichert: {0}",
+    "es": "Orden no guardado: {0}"
+  },
+  "Ordre des tâches enregistré.": {
+    "fr": "Ordre des tâches enregistré.",
+    "en": "Task order saved.",
+    "de": "Aufgabenreihenfolge gespeichert.",
+    "es": "Orden de tareas guardado."
+  },
+  "Invalid follow-up order": {
+    "fr": "Ordre des tâches invalide",
+    "en": "Invalid task order",
+    "de": "Ungültige Aufgabenreihenfolge",
+    "es": "Orden de tareas no válido"
+  },
+  "Performances locales": {
+    "fr": "Performances locales",
+    "en": "Local performance",
+    "de": "Lokale Leistung",
+    "es": "Rendimiento local"
+  },
+  "Perf. Auto": {
+    "fr": "Perf. Auto",
+    "en": "Perf. Auto",
+    "de": "Leistung Auto",
+    "es": "Rend. Auto"
+  },
+  "Perf. Max": {
+    "fr": "Perf. Max",
+    "en": "Perf. Max",
+    "de": "Leistung Max",
+    "es": "Rend. Max"
+  },
+  "Auto : allocation modérée, adaptée au matériel.": {
+    "fr": "Auto : allocation modérée, adaptée au matériel.",
+    "en": "Auto: moderate allocation adapted to hardware.",
+    "de": "Auto: moderate, an die Hardware angepasste Zuweisung.",
+    "es": "Auto: asignación moderada adaptada al hardware."
+  },
+  "Max : exploiter les ressources locales disponibles.": {
+    "fr": "Max : exploiter les ressources locales disponibles.",
+    "en": "Max: use available local resources.",
+    "de": "Max: verfügbare lokale Ressourcen nutzen.",
+    "es": "Max: utilizar los recursos locales disponibles."
+  },
+  " · {0} lecteurs · cache jusqu’à {1} Mio": {
+    "fr": " · {0} lecteurs · cache jusqu’à {1} Mio",
+    "en": " · {0} readers · cache up to {1} MiB",
+    "de": " · {0} Leser · Cache bis zu {1} MiB",
+    "es": " · {0} lectores · caché hasta {1} MiB"
+  },
+  "Performances locales : {0}": {
+    "fr": "Performances locales : {0}",
+    "en": "Local performance: {0}",
+    "de": "Lokale Leistung: {0}",
+    "es": "Rendimiento local: {0}"
+  },
+  "Impossible de changer les performances : {0}": {
+    "fr": "Impossible de changer les performances : {0}",
+    "en": "Cannot change performance: {0}",
+    "de": "Leistung kann nicht geändert werden: {0}",
+    "es": "No se puede cambiar el rendimiento: {0}"
+  },
+  "Invalid performance mode": {
+    "fr": "Mode de performance invalide",
+    "en": "Invalid performance mode",
+    "de": "Ungültiger Leistungsmodus",
+    "es": "Modo de rendimiento no válido"
+  },
+  "Préparation des images en cours…": {
+    "fr": "Préparation des images en cours…",
+    "en": "Preparing images…",
+    "de": "Bilder werden vorbereitet…",
+    "es": "Preparando imágenes…"
   }
 }

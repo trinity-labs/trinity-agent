@@ -1,5 +1,10 @@
 {
   "ovhAgent.start.title": "TRINITY Agent: Starten",
   "ovhAgent.configureKey.title": "TRINITY Agent: OVH-Schlüssel konfigurieren",
-  "ovhAgent.configureBilling.title": "TRINITY Agent: Guthaben und Abrechnung konfigurieren"
+  "ovhAgent.configureBilling.title": "TRINITY Agent: Guthaben und Abrechnung konfigurieren",
+  "ovhAgent.selectProject.title": "Projekt auswählen oder erstellen",
+  "ovhAgent.editProfile.title": "Gemeinsamen Benutzerkontext bearbeiten",
+  "ovhAgent.performanceMode.description": "Lokale Leistung. Der Chat-Wähler übernimmt Änderungen sofort; Änderungen hier gelten beim nächsten Backend-Start.",
+  "ovhAgent.performanceMode.auto": "Automatische Dimensionierung mit moderaten Grenzen.",
+  "ovhAgent.performanceMode.max": "Verfügbare CPU und RAM, erweiterte Suche und Cache passend zur Hardware. Systemgrenzen und API-Budgets bleiben aktiv."
 }

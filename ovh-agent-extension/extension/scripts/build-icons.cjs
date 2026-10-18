@@ -7,12 +7,12 @@ const names = {
   key:'key', plus:'plus-lg', close:'x-lg', reload:'arrow-repeat', image:'image',
   shield:'shield-check', stop:'stop', stopFilled:'stop-fill', send:'arrow-up', play:'play', trash:'trash2-fill',
   terminal:'terminal', list:'list-ul', read:'file-earmark-text', search:'search',
-  edit:'pencil', context:'layers', cost:'currency-dollar', model:'cpu',
-  copy:'copy', check:'check-lg', error:'exclamation-triangle', robot:'robot', wallet:'wallet2',
+  edit:'pencil', context:'layers', project:'folder-plus', folder:'folder-fill', cost:'currency-dollar', model:'cpu',
+  copy:'copy', check:'check-lg', error:'exclamation-triangle', robot:'robot', wallet:'wallet2', grip:'grip-vertical',
 };
 const bootstrapRoot = path.dirname(require.resolve('bootstrap-icons/package.json'));
 const icons = Object.fromEntries(Object.entries(names).map(([name, symbol]) => {
-  if(symbol.endsWith('-fill') && !['trash','stopFilled'].includes(name)) throw new Error('Use outline Bootstrap icons');
+  if(symbol.endsWith('-fill') && !['trash','stopFilled','folder'].includes(name)) throw new Error('Use outline Bootstrap icons');
   const raw = fs.readFileSync(path.join(bootstrapRoot,'icons',symbol+'.svg'),'utf8');
   const body = raw.slice(raw.indexOf('>')+1,raw.lastIndexOf('</svg>')).trim().replace(/>\s+</g,'><');
   return [name, [16, 16, body]];

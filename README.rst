@@ -82,6 +82,88 @@ Security tests cover stored HTML attacks, unsafe links, local symlink escapes,
 webview message validation and preservation of ordinary conversation formatting.
 These tests are targeted regression checks, not a certification or full audit.
 
+Executable verification of agent changes
+----------------------------------------
+
+When a user reports an error, expresses doubt or challenges an answer, local
+request analysis marks the turn for documentary verification. The agent is
+instructed to search official documentation first, read the relevant pages,
+then consult issues/discussions in the official repository if documentation is
+insufficient. Dates, versions and issue status must be checked; a third-party
+issue is not a maintainer confirmation. The same rule applies to steering
+messages received during a task, with fresh evidence for the new challenge.
+
+The output validator rejects a detected challenge answered without an official-
+documentation search attempt, with search snippets alone, or without citing a
+URL actually read during that review. Empty documentation searches require an
+issue-search fallback. An unavailable/empty source is not counted as evidence;
+if no page can be read, the backend adds an explicit incomplete-verification
+notice. An explicit offline instruction disables both web tools for that request.
+Search classification expresses a source preference, not a certification of
+ownership or relevance: these still require assessment. Detection is heuristic,
+with general instructions covering other phrasings. Web content is treated as
+untrusted data, and private logs/secrets must not be sent to the search engine.
+
+``edit_file`` and ``write_file`` now preserve the original working file (including
+uncommitted user edits), reject invalid Python, JavaScript, JSON, TOML and shell
+syntax before writing, and record the exact resulting file hashes. Unsupported
+formats are explicitly reported as lacking a syntax check.
+
+Before the first edit, the backend runs the applicable reference checks. Before
+accepting the final answer, it runs them again. A passing assertion by the model
+does not bypass this gate. A changed file with no applicable configured check,
+a failed check, or a stale result prevents completion. Identical invalid edit
+attempts are blocked after two failures. Read-only code audits can conclude with
+observed test failures; this is distinguished from successful checks.
+
+Configure a trusted project's checks in ``.ovh-agent-checks.json``::
+
+    {
+      "version": 1,
+      "checks": [{
+        "name": "Budget regressions",
+        "paths": ["src/budget.py"],
+        "argv": ["{python}", "tests/test_budget.py"],
+        "protect": ["tests/test_budget.py"],
+        "timeout": 120
+      }]
+    }
+
+``paths`` are project-relative glob patterns; ``argv`` is an argument array,
+without implicit shell expansion. ``{python}`` selects the backend interpreter.
+``cwd`` defaults to the project root and must remain within it. Timeouts are
+between 1 and 300 seconds. Check configuration and protected reference files are
+frozen when the project is first observed during a task. Editing these references
+does not make an existing verification pass; add a separate regression test
+instead of weakening one. A package with a usable ``test`` script defaults to
+``bun run test`` when it has a Bun lockfile, otherwise ``npm run test``. Other
+projects must configure applicable checks before guarded edits can be accepted.
+
+Checks obey the existing command approval mode, execute locally with the current
+user's permissions, and must be chosen to avoid unwanted external effects.
+The repository's configured checks use simulated providers and require no paid
+model inference. Verification does not alter API budgets, model selection, or
+token limits.
+
+Receipts record the command, working directory, exit status, elapsed time and a
+bounded output tail. The activity log and archives show these results separately
+from model text. State and original file backups live in the conversation's
+``verification/<run-id>/`` directory. Failed/interrupted tracked edits are restored
+when handled, or recovered on reopening/resuming the conversation after a crash.
+Conflicting external content or permission changes are preserved and reported.
+There is no repository-wide reset.
+
+This is a correctness gate for file tools, not an operating-system sandbox.
+Arbitrary shell/SSH mutations, services, dependencies not observed by the agent,
+and semantic claims outside the configured checks are not automatically proven
+or rolled back. A green result means only that the recorded checks passed on
+the recorded files. Tests themselves must assert the intended behavior; no
+mechanism here guarantees that every model diagnosis is correct.
+
+Offline regression suite::
+
+    /opt/ovh-agent/bin/python scripts/test-verification.py
+
 Automatic public backup
 -----------------------
 
@@ -306,15 +388,17 @@ do not coordinate separate containers/hosts that merely share a data mount.
 
 Adjustable limits (restart the backend/extension after changing environment):
 
-* ``OVH_AGENT_RAM_CACHE_MB=1024``: estimated retained cache memory per Python
-  process (1 GiB), shared across entries, with LRU eviction and at most 512
-  entries. Memory is allocated as entries are cached, not reserved at startup.
+* ``OVH_AGENT_RAM_CACHE_MB=auto`` and ``OVH_AGENT_RAM_CACHE_ENTRIES=auto``:
+  retained cache size and entry count adapt to usable memory, including cgroup
+  limits and current usage. A numeric value is an optional upper bound. Cache
+  access reevaluates its limits periodically and evicts LRU entries when they
+  shrink. Memory is allocated as entries are cached, not reserved at startup.
 * ``OVH_AGENT_INDEX_CACHE_MB=32``: maximum serialized derived index size per
   conversation on disk; larger indexes remain searchable without this snapshot.
 * ``OVH_AGENT_ARCHIVE_CACHE_MB=16``: estimated metadata cache memory per extension
   archive store, with at most 512 entries.
 
-Setting a limit to zero disables that cache. Limits account for retained cache
+In Auto mode, setting a limit to zero disables that cache. Limits account for retained cache
 data, not total process RSS or temporary allocations during indexing. Existing
 large histories are upgraded lazily; source archives are neither deleted nor
 duplicated wholesale. Commands, tool side effects and model answers are not
@@ -351,10 +435,10 @@ untrusted data; normal file-reading tools remain available for full inspection.
   worker. A slow SSHFS mount returns a partial preparation result so the model
   can proceed. Only one such worker runs at a time; late results are discarded.
 
-The file search examines at most 2000 names and reads at most 120 candidates,
-up to 65536 characters per file. These bounds deliberately make retrieval
-partial; it is a lexical aid, not an exhaustive repository index or semantic
-understanding. The activity log reports the selected-file count and preparation
+Auto sizes the candidate and per-file limits to the hardware, with at most
+2000 names visited. Max sizes all three limits to available memory instead.
+Retrieval remains partial; it is a lexical aid, not an exhaustive repository
+index or semantic understanding. The activity log reports the selected-file count and preparation
 time. No additional inference call is made to perform this preparation;
 selected excerpts do contribute to the subsequent model's input tokens.
 
@@ -449,6 +533,57 @@ prompts, persistent plans, and an actual offline Pydantic AI loop.
 
 OVH inference tuning
 --------------------
+
+The cross-provider strategy, official references, local CPU/RAM profile and
+offline retrieval measurements are documented in `INFERENCE.rst <INFERENCE.rst>`_.
+Short follow-ups retain the original task difficulty for routing and supported
+reasoning settings. Local retrieval uses BM25 with complementary excerpts and
+a reusable pool of readers; it does not add model calls.
+
+Retrieval defaults to ``auto`` for ``OVH_AGENT_PREFLIGHT_WORKERS``,
+``OVH_AGENT_PREFLIGHT_MAX_FILES`` and ``OVH_AGENT_PREFLIGHT_FILE_CHARS``, as do
+``OVH_AGENT_RAM_CACHE_MB`` and ``OVH_AGENT_RAM_CACHE_ENTRIES``. Sizing uses CPU
+affinity, cgroup v1/v2 quotas and parent limits, total memory and available memory.
+Hardware observations refresh on demand every 30 seconds. Numeric values remain
+optional upper bounds; omitted or empty values also select automatic sizing.
+The reusable reader pool adjusts concurrency without accumulating pools on slow
+mounts. Selected context remains bounded by
+``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=24000``. Inspect the current calculated
+profile with ``python ovh_resources.py`` using the backend's environment.
+
+Local Auto / Max performance modes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use **Perf. Auto / Perf. Max** beside the chat access control. The selection is
+saved in the VS Code user setting ``ovhAgent.performanceMode`` and applies to
+an existing backend without interrupting a task or starting a new model call.
+When editing the VS Code setting directly, restart the backend to apply it.
+An explicit setting overrides ``OVH_AGENT_PERFORMANCE_MODE=auto|max``; Auto
+remains the distribution default. The selected mode and computed resource
+allowances are included in backend status and retrieval diagnostics.
+
+Auto honors the five optional numeric CPU/cache/retrieval ceilings. Max ignores
+those five ceilings (including zero), removes the fixed 16-reader, 2000-name,
+65536-cache-entry and 524288-character caps, and uses the CPU affinity/quota and
+available RAM detected on the current host/container. It reserves 5% of effective
+memory, at least 64 MiB when possible; roughly 10% of the remaining usable budget
+is for retrieval working data (at least 32 MiB and 8 MiB per CPU when available),
+and the rest is available for the shared cache. No RAM is allocated merely by
+selecting Max. The cache fills on demand; worker threads grow with useful work
+and surplus idle readers retire when the effective allowance decreases.
+
+Max refreshes resource observations every five seconds on access. Cached memory
+is credited only against the matching hardware snapshot; new cache entries do
+not inflate a stale free-memory reading. File results and simultaneous parsers
+share the retrieval allowance. The estimates concern retained objects, not a
+hard limit on process RSS. OS/cgroup constraints and memory pressure still reduce
+allowances, including to zero for scanning/cache on an exhausted host.
+
+Max changes local resource allocation only. API spending budgets, model context
+and output limits, access approvals, path exclusions, verification and the
+interactive retrieval timeout still apply. More local work can find evidence
+outside Auto's scan bounds; it does not make remote model generation faster and
+can increase preparation time. Revert to Auto at any time from the same selector.
 
 All chat models share incremental streaming (text batches every 80 ms),
 completion limits bounded by the runtime catalog, and first-visible-text/total
@@ -550,3 +685,254 @@ correctness must be reviewed separately. A three-case sample is not a universal
 "uncensored" score. There is no documented OVH switch guaranteeing zero refusal.
 
 Restart the extension backend after an update to load Python changes.
+
+Affichage et maîtrise des tours d'outils
+--------------------------------------
+
+``OVH_AGENT_EMOJI_MODE`` configure la prose et les messages intermédiaires :
+Les libellés du journal d’activité restent sans emojis et utilisent les icônes SVG.
+0 supprime les emojis décoratifs, 1 autorise uniquement ✅ et ➡️ (défaut),
+2 autorise tous les emojis avec parcimonie, 3 demande un usage expressif.
+Le code, les commandes et les citations littérales restent intacts. Les modes
+2 et 3 diffèrent par la consigne de génération ; leur fréquence n'est pas un quota.
+Le backend transmet le mode à la webview, y compris avec le lanceur local.
+
+Le curseur utilise la couleur primary. Les mentions de vérification et le
+rappel de responsabilité sont à 50 % d'opacité. Les lignes des diffs portent
+leur fond vert/rouge sur toute la largeur, y compris sous le code. Les icônes
+suivent l'action (recherche, lecture, édition, commande) et les tirets cadratins
+de la prose affichée sont remplacés par des tirets simples.
+
+``verification_plan(path)`` expose les commandes de contrôle, leurs chemins
+couverts et les fichiers protégés avant modification. Une écriture sans contrôle
+applicable ou sur un contrôle de référence est refusée immédiatement, sans
+attendre la validation finale. Les nouveaux scripts ``scripts/test-budget*.py``
+sont couverts par les contrôles EUR existants ; leur réussite propre reste à
+vérifier séparément, les tests existants ne prouvent pas leur pertinence.
+
+``OVH_AGENT_TASK_CHECKPOINT_SECONDS`` vaut 300 par défaut : un point d'avancement
+invite à vérifier et conclure après ce délai, puis un autre à l'approche de la
+limite d'appels. Ce délai est une consigne, pas une interruption forcée ni une
+garantie de durée. Les limites API et les plafonds EUR ne sont pas augmentés.
+Les lectures indépendantes peuvent partager un tour ; écritures, commandes,
+planification et vérifications constituent des barrières séquentielles.
+
+Le routage automatique conserve le modèle précédent s'il reste dans le groupe
+compatible, respecte l'heuristique de capacité pour les tâches complexes et ne
+coûte pas plus de 10 % au-dessus du candidat choisi. Ce critère d'affinité ne
+constitue pas une mesure de qualité et n'affecte pas la sélection manuelle.
+
+Références examinées : runtime public Codex
+https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/parallel.rs
+(parallélisme et exclusion des actions incompatibles), documentation Pydantic AI
+https://pydantic.dev/docs/ai/core-concepts/agent/#usage-limits
+(limites d'appels). Aucun gain chiffré d'inférence OVH n'est revendiqué sans mesure.
+
+Bilans de tests fondés sur les résultats
+--------------------------------------
+
+Le backend décompte les résultats complets reconnus de unittest, node:test et
+pytest. Une ligne PASS, un nombre d'assertions ou un résumé tronqué ne fournit
+pas un nombre de tests : le décompte reste indisponible. Il s'agit des cas
+signalés par les lanceurs (qui peuvent inclure des tests ignorés), pas d'une
+mesure de couverture ni nécessairement de tests uniques entre plusieurs suites.
+
+Les contrôles configurés exécutés par ``verify_changes`` ou par ``run_command``
+avec exactement leurs arguments et répertoire configurés produisent des preuves
+structurées : commande, répertoire, sortie, durée, code de sortie et décompte.
+La commande configurée est exécutée directement, sans interprétation shell.
+Les autres commandes shell restent des sorties d'outils ; elles ne constituent
+pas des preuves de décompte dans ce bilan. Les dernières exécutions remplacent
+les anciennes pour le même contrôle. Un contrôle exécuté avant modification
+n'est pas ajouté aux résultats finaux. Une modification des fichiers suivis
+invalide la preuve ; les dépendances non observées ne sont pas couvertes.
+
+Le tableau final est généré par le backend et conservé dans la conversation.
+Les totaux explicites non justifiés et certaines conclusions absolues sont
+refusés par le validateur. Cette détection textuelle reste limitée : elle ne
+prouve pas la véracité de toute phrase du modèle. Le tableau des résultats fait
+référence ; des contrôles réussis ne prouvent pas l'absence de défauts ailleurs.
+
+
+Projets, mémoire partagée et environnement
+-----------------------------------------
+
+Le bouton projet de l’en-tête et la commande « Choisir ou créer un projet »
+permettent de sélectionner un dossier existant ou de créer un dossier avec un
+``AGENTS.md`` initial. Le choix est conservé dans l’état du workspace VS Code.
+Le dossier actif est transmis au backend, aux commandes et à la recherche de
+code. Les conversations restent regroupées par chemin canonique du projet.
+Une conversation terminée peut être rattachée à un autre projet depuis ce menu ;
+les conversations interrompues doivent d’abord être terminées. Le changement
+est bloqué pendant une tâche. Le périmètre autorisé reste ``/home/coder``.
+
+``OVH_AGENT_DATA_ROOT/MASTER.md`` contient les préférences utilisateur explicites,
+communes à tous les projets. Le menu projet ou la commande « Modifier le contexte
+utilisateur partagé » l’ouvre dans l’éditeur. Le fichier est créé seulement s’il
+est absent. Les instructions racine et projet utilisent dans cet ordre de repli
+``AGENT.md``, ``AGENTS.md``, ``MASTER.md``, ``master.md``. Les données privées ne
+font pas partie de l’export public.
+
+``remember_context`` enregistre des notes datées, sourcées et rattachées à leur
+conversation. Les portées sont ``project`` et ``user`` ; les statuts acceptés
+sont ``declared`` et ``hypothesis``. Le modèle ne peut pas s’attribuer le statut
+vérifié. Les reçus produits par les contrôles backend sont aussi indexés avec
+leur date, leur résultat et leur périmètre ; un contrôle réussi est marqué
+``verified_at_execution``, sans certifier l’état futur du projet.
+Les préférences utilisateur explicitement exprimées peuvent être
+partagées partout ; les décisions techniques et archives restent dans le projet.
+``search_memory`` recherche aussi les conversations voisines, et
+``read_project_memory`` permet de relire la source exacte dans le projet actif.
+La suppression d’une conversation supprime également ses notes partagées :
+aucune copie permanente globale de ces notes n’est créée.
+
+La recherche automatique sélectionne des extraits, sans appel LLM supplémentaire.
+Elle examine au plus 30 conversations récentes du projet et 100 conversations
+pour les notes explicites. L’attente est bornée à 1,1 seconde et un unique lecteur
+peut rester bloqué sur un montage ; la demande continue alors sans ces extraits.
+Cette injection automatique n’est pas exhaustive. L’outil ``search_project_memory``
+permet ensuite de parcourir toutes les conversations du projet par pages de 20,
+y compris les plus anciennes ; ``next_offset`` indique la page suivante.
+Les souvenirs sont
+des données historiques, pas des instructions prioritaires ni une preuve actuelle.
+``OVH_AGENT_SHARED_MEMORY_CHARS=4000`` limite les extraits partagés, zéro les désactive.
+
+L’inventaire local décrit OS, noyau, architecture, libc, UID, conteneur probable,
+écriture du dossier, exécutables et outils installés dans le projet. Il n’exécute
+pas les paquets trouvés et ne copie pas les variables d’environnement. Un chemin
+exécutable n’est pas une preuve de version ou de bon fonctionnement : vérifier
+les versions utiles pendant la tâche. ``OVH_AGENT_INVENTORY_TTL_SECONDS=300``
+contrôle son cache ; il est rafraîchi après installation ou commande introuvable.
+``inspect_environment(host=...)`` interroge explicitement une cible SSH autorisée,
+au lieu de confondre les fichiers montés avec le système qui exécute les commandes.
+
+``install_tools`` utilise des arguments structurés, sans shell : environnements
+Python dans ``.agent-tools/venv``, outils npm dans ``.agent-tools/npm`` (scripts npm
+d’installation désactivés), ou paquets système via apk/apt-get/dnf disponibles.
+Les noms et versions exactes sont autorisés ; URL, chemins et options arbitraires
+sont refusés. Les répertoires d’outils et leurs commandes absolues figurent dans
+l’inventaire ; ils sont ajoutés au PATH des commandes et vérifications du projet. Les journaux retournent code de sortie, durée et sortie effective.
+Il n’y a pas de téléchargement ni d’installation lors de la simple découverte.
+Une installation invalide les anciens reçus de vérification de la tâche : les
+contrôles doivent être rejoués avant de certifier le nouvel environnement.
+
+``OVH_AGENT_AUTO_INSTALL`` règle l’automatisation :
+
+* ``project`` (défaut) : dépendances nécessaires isolées au projet sans confirmation ;
+* ``system`` : autorise aussi les installations système dans l’IDE sans confirmation ;
+* ``off`` : passe par le mécanisme habituel d’autorisation.
+
+Le mode Accès complet conserve son comportement : il dispense de confirmation.
+Les installations distantes restent des commandes SSH explicitement ciblées,
+soumises au mode d’accès. Une installation système peut nécessiter des privilèges,
+un index de paquets actualisé et une stratégie de persistance propre à la cible.
+Ces réglages ne changent ni les budgets ni les plafonds de requêtes API.
+
+
+Mémoire Markdown par projet
+---------------------------
+
+Les notes durables et les archives restent des fichiers Markdown lisibles.
+Aucun appel LLM supplémentaire n'est nécessaire pour leur indexation ou leur
+agrégation. Le sélecteur de projet propose « Modifier la mémoire du projet »
+et « Agréger les mémoires des projets » (sélection multiple).
+
+Sous ``OVH_AGENT_DATA_ROOT`` :
+
+* ``MASTER.md`` : préférences utilisateur communes aux projets.
+* ``memory/projects/<id>/NOTES.md`` : notes manuelles conservées sans réécriture.
+* ``archive/<id>/<conversation>/memory/notes/*.md`` : souvenirs structurés,
+  avec portée, statut déclaré/hypothèse, source et date dans leur en-tête.
+* ``memory/projects/<id>/MEMORY.md`` : vue générée des notes et de six extraits
+  récents exacts (1 200 caractères chacun), régénérée après les réponses finales
+  et lors d'un export explicite.
+* ``memory/projects/<id>/INDEX.md`` : liens vers les sources indexées.
+* ``memory/AGGREGATE.md`` : export des seuls projets sélectionnés ; il n'est
+  pas injecté automatiquement dans les conversations d'autres projets.
+
+Modifier NOTES.md ou les notes sources, pas les vues générées. Les anciens
+``shared-notes.json`` sont importés une fois en Markdown et conservés pour
+récupération. Le marqueur ``.migrated`` empêche de réimporter une note supprimée.
+Les archives complètes existantes restent dans ``memory/documents/*.md``.
+Les souvenirs sont historiques et ne certifient pas l'état actuel du projet.
+
+L'index lexical utilise le cache RAM LRU borné existant et un index JSON gzip
+reconstruisible sur disque local : ``OVH_AGENT_MEMORY_INDEX_DIR`` (défaut
+``$XDG_CACHE_HOME/ovh-agent/project-memory`` ou ``~/.cache/ovh-agent/project-memory``).
+Le Compose expose ce chemin et ``OVH_AGENT_MEMORY_SCAN_SECONDS`` (5 secondes).
+Les sources peuvent rester sur le montage partagé tandis que cet index reste
+local ; aucun changement du système de fichiers ni déplacement des archives.
+Une écriture par l'agent invalide immédiatement l'index. Les modifications
+manuelles sont découvertes au prochain balayage ; un extrait dont la source a
+changé ou disparu est écarté dès sa prochaine lecture, même avant ce balayage.
+
+``OVH_AGENT_INDEX_CACHE_MB`` borne l'index dérivé (32 Mio par projet ; zéro
+supprime sa persistance disque). Le cache RAM reste borné globalement par
+``OVH_AGENT_RAM_CACHE_MB``. Les notes passent avant les transcriptions ; au
+maximum 262 144 caractères sont indexés par document
+(``OVH_AGENT_MEMORY_DOCUMENT_CHARS``) et la recherche renvoie
+cinq extraits. Une limite atteinte est signalée comme partielle. Les outils de
+relecture et de recherche paginée donnent accès aux sources complètes. Le
+lecteur partagé conserve son délai d'attente de 1,1 seconde ; une première
+indexation lente peut donc bénéficier à la demande suivante.
+
+La suppression d'une conversation ou son rattachement à un autre projet
+invalide les index concernés et retire les vues générées et l'agrégat courant.
+Les notes manuelles du projet sont préservées. Une copie exportée ailleurs par
+l'utilisateur reste indépendante. Les budgets API ne sont pas modifiés.
+
+Export local sans modèle, depuis le dossier du backend::
+
+    python3 ovh_project_memory.py --workspace /chemin/projet-a --workspace /chemin/projet-b
+
+Ajouter ``--data-root /chemin/memoire`` pour une autre installation.
+
+
+Classement des conversations et documentation du projet
+-------------------------------------------------------
+
+L'historique laisse les conversations hors projet par défaut. Le bouton de
+classement d'une conversation permet de choisir son projet ou « Aucun projet ».
+Seuls les projets enregistrés par l'utilisateur apparaissent en dossiers ;
+la découverte d'archives n'en crée pas. Les choix sont conservés séparément
+dans ``project-conversations.json``, sans déplacer les archives ni changer
+le contexte d'exécution de la conversation. Les anciens rattachements,
+identifiés par leur dossier d'origine conservé dans les métadonnées, restent
+visibles dans leur projet. Un choix explicite « Aucun projet » est prioritaire
+et conservé même pour ces anciens rattachements. Les autres conversations
+restent visibles en tête d'historique, sous « Conversations hors projet ».
+Les fichiers Markdown du dossier
+s'ajoutent automatiquement à la liste à chaque actualisation de l'historique.
+
+Chaque projet se déplie avec un chevron, sans bouton « Ouvrir ». Son icône de
+dossier est pleine ; le bouton crayon permet de modifier son titre et sa
+couleur, conservés dans ``projects.json`` même après changement de contexte.
+Sans couleur personnalisée, le dossier et son sélecteur de couleur reprennent
+la couleur primaire de l’interface. Le compteur indique le nombre de conversations
+associées au projet, indépendamment du nombre de documents Markdown.
+
+Les archives restent
+sur le stockage persistant ``archive/<identifiant-projet>/<conversation>`` ;
+elles ne sont pas écrites dans le dépôt de code. Le contexte change avec le
+projet lors de l'ouverture d'une conversation. La sélection est conservée par
+espace de travail dans ``active-projects.json``.
+
+Les fichiers ``*.md`` directement à la racine du projet sont affichés avec leur
+chemin et accessibles dans VS Code. Ils sont aussi indexés par la mémoire du
+projet, avec relecture via ``read_project_memory`` et une référence ``root-...``.
+Leur contenu reste dans les fichiers d'origine : la vue ``MEMORY.md`` en reprend
+au plus 4 000 caractères par document et conserve les liens vers les sources.
+Une documentation n'est pas une preuve que le code actuel fonctionne.
+
+``REGRESSIONS.md`` regroupe les 40 contrôles historiques les plus récents des
+sources indexées : résultat, date, conversation, code de sortie et source.
+Les affirmations des réponses de modèle ne sont pas comptées comme des contrôles.
+L'agent peut relire cette vue avec ``read_project_memory("project", "regressions")``.
+Ces résultats servent à cibler de nouvelles vérifications, pas à les remplacer.
+
+Un rattachement conserve les messages, pièces jointes, notes et journaux.
+Les références actives à des vérifications terminées sont détachées en conservant
+leur ancien identifiant et le journal historique : une nouvelle tâche doit
+vérifier le nouveau périmètre. Un journal nécessitant encore une restauration
+bloque le déplacement. Les anciens plans locaux de reclassement ne sont plus
+appliqués automatiquement à l'ouverture de la fenêtre.

@@ -1,0 +1,129 @@
+"""Regrade saved answers, archive an audit summary and optionally apply local routing evidence."""
+import argparse
+from collections import defaultdict
+from datetime import datetime, timezone
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import statistics
+import sys
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from ovh_memory import atomic_write
+spec=importlib.util.spec_from_file_location('catalog_benchmark',ROOT/'scripts/evaluate-catalog.py')
+b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
+
+
+def metrics(rows):
+    usable=[r for r in rows if r['status'] not in {'skipped','blocked'}]
+    successful=[r for r in usable if r.get('passed')]
+    times=[r['seconds'] for r in usable if 'seconds' in r]
+    return {'samples':len(usable),'passed':sum(bool(r.get('first_passed',r.get('passed'))) for r in usable),
+            'final_passed':sum(bool(r.get('passed')) for r in usable),
+            'errors':sum(r['status']=='error' for r in usable),
+            'median_seconds':round(statistics.median(times),3) if times else 0,
+            'median_tokens':statistics.median([r.get('input_tokens',0)+r.get('output_tokens',0) for r in successful]) if successful else 0,
+            'median_cost_eur':statistics.median([r.get('cost_eur',0) for r in successful]) if successful else 0}
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('reports',nargs='+',type=Path)
+    parser.add_argument('--data-root',type=Path,default=Path.home()/'.ovh-agent')
+    parser.add_argument('--workspace',type=Path,default=Path('/home/coder'))
+    parser.add_argument('--apply',action='store_true')
+    args=parser.parse_args()
+    reports=[json.loads(p.read_text()) for p in args.reports]
+    sources={r['source'] for r in reports}
+    if len(sources)!=1: raise SystemExit('Cannot combine different endpoints')
+    if args.apply and any(not r.get('completed_at') for r in reports): raise SystemExit('Wait for completed reports before applying')
+    grouped=defaultdict(list);all_rows=[]
+    archive_root=args.data_root/'archive'/hashlib.sha256(str(args.workspace.resolve()).encode()).hexdigest()[:20]
+    for report in reports:
+        cases={c['id']:(c['id'],c['domain'],c['prompt'],c['expected']) for c in report['cases']}
+        for original in report['results']:
+            row=dict(original)
+            if row.get('error_type') == 'BudgetExceeded':
+                row.update(status='blocked',passed=None)
+            if row.get('attempts') and not row['attempts'][-1]['passed'] and 'output retries' in row.get('reason',''):
+                row.update(status='failed',answer=row['attempts'][-1]['answer'],error_category='validation')
+            if 'answer' in row:
+                passed,reason=b.grade(cases[row['case']],row['answer'],row.get('calls',[]))
+                row.update(passed=bool(passed),status='passed' if passed else 'failed',grading_note=reason,original_status=original['status'])
+            row['profile']={'reasoning':report.get('reasoning','default'),'max_tokens':report['max_tokens'],'retries':report.get('retries',0),'run_id':report['run_id'],'sampling':report.get('sampling','default')}
+            row['methodology_version']=report.get('methodology_version',1)
+            row['streaming']=report.get('streaming',True)
+            row['api']=report.get('api','chat')
+            if row.get('attempts') and 'calls' in row['attempts'][0]:
+                first=row['attempts'][0]
+                row['first_passed']=bool(b.grade(cases[row['case']],first['answer'],first['calls'])[0])
+            grouped[(row['model'],row['domain'],report['run_id'])].append(row)
+            all_rows.append(row)
+        # Append a clearly identified regrade to existing conversations; preserve raw answers.
+        for mid in {r['model'] for r in report['results']}:
+            identifier='eval-'+report['run_id']+'-'+b.re.sub('[^a-zA-Z0-9_-]','-',mid)
+            folder=archive_root/identifier
+            if not (folder/'events.jsonl').exists(): continue
+            rows=[r for r in all_rows if r['model']==mid and r['profile']['run_id']==report['run_id']]
+            checks='\n'.join(f"- {r['case']}: {r['status']}" for r in rows)
+            event={'type':'response','timestamp':datetime.now(timezone.utc).isoformat(),'evaluation_regrade':True,'text':'Révision du score technique (commandes équivalentes et JSON entouré de prose acceptés). Les réponses et scores initiaux restent ci-dessus.\n\n'+checks}
+            events=[json.loads(line) for line in (folder/'events.jsonl').read_text().splitlines() if line]
+            events=[e for e in events if not e.get('evaluation_regrade')]+[event]
+            atomic_write(folder/'events.jsonl',''.join(json.dumps(e,ensure_ascii=False)+'\n' for e in events))
+    choices=defaultdict(list)
+    expected={d:{c[0] for c in b.CASES if c[1]==d} for d in {c[1] for c in b.CASES}}
+    profiles=defaultdict(list)
+    for (mid,domain,run),rows in grouped.items():
+        if any(r['methodology_version'] < 2 for r in rows): continue
+        if any(r['profile']['sampling'] != 'default' for r in rows): continue
+        if any(not r['streaming'] for r in rows): continue
+        if any(r['api'] != 'chat' for r in rows): continue
+        if not expected[domain].issubset({r['case'] for r in rows}) or any(r['status']=='blocked' for r in rows): continue
+        profile=rows[0]['profile']
+        key=(mid,domain,profile['reasoning'],profile['max_tokens'],profile['retries'])
+        profiles[key].extend(rows)
+    for (mid,domain,*_profile),rows in profiles.items():
+        score=metrics(rows)
+        if score['samples']<2: continue
+        choices[(mid,domain)].append((score,rows))
+    evidence={'schema':1,'source':next(iter(sources)),'created_at':max(r['date'] for r in reports),'scope':'Small synthetic per-domain evaluations, not a general quality certification or a Codex comparison.','reports':[str(p.resolve()) for p in args.reports],'models':{}}
+    selected_rows=defaultdict(list)
+    for (mid,domain),options in choices.items():
+        score,rows=min(options,key=lambda item:(-item[0]['passed']/item[0]['samples'],item[0]['errors']/item[0]['samples'],item[0]['median_seconds'],item[0]['median_cost_eur']))
+        model=evidence['models'].setdefault(mid,{'domains':{},'settings':{'reasoning_domains':[]}})
+        model['domains'][domain]=score
+        if domain!='vision': selected_rows[mid].extend(rows)
+        if rows[0]['profile']['reasoning']=='none' and score['passed']==score['samples'] and not score['errors']:
+            model['settings']['reasoning_effort']='none';model['settings']['reasoning_domains'].append(domain)
+    for mid,rows in selected_rows.items(): evidence['models'][mid]['domains']['general']=metrics(rows)
+    if args.apply:
+        from ovh_evaluation import load_evidence
+        target=args.data_root/'model-evaluations.json'
+        if target.exists(): atomic_write(target.with_suffix('.previous.json'),target.read_text())
+        atomic_write(target,json.dumps(evidence,ensure_ascii=False,indent=2))
+        if not load_evidence(args.data_root,evidence['source']): raise SystemExit('Evidence validation failed')
+    text=['Évaluations du catalogue OVH — synthèse','',f"{len(all_rows)} résultats enregistrés, dont {sum(r['status']=='skipped' for r in all_rows)} non applicables et {sum(r['status']=='blocked' for r in all_rows)} bloqués avant appel par le budget.",
+          'Les essais système/réseau/OS sont des cas synthétiques : aucune commande sur vos machines. Le code Python produit est testé par 6 assertions. Les tests web exigent des appels réels de recherche et lecture. Les images sont des captures synthétiques archivées.',
+          'Les scores techniques acceptent des commandes équivalentes ; les réponses brutes restent consultables. Un petit nombre de cas ne certifie pas une spécialisation. Aucun chronométrage Codex comparable n’a été effectué.','',
+          'Les premiers essais (méthode 1) restent archivés mais ne règlent pas le routeur. Le routage utilise le score au premier essai ; le score après feedback est présenté séparément.', '',
+          '| Modèle | Domaine | Premier essai | Après feedback | Erreurs | Médiane s | Tokens médians (réussites) |', '|---|---|---:|---:|---:|---:|---:|']
+    for mid,model in sorted(evidence['models'].items()):
+        for domain,value in sorted(model['domains'].items()):
+            text.append(f"| {mid} | {domain} | {value['passed']}/{value['samples']} | {value['final_passed']}/{value['samples']} | {value['errors']} | {value['median_seconds']} | {value['median_tokens']} |")
+    text += ['','Routage local : '+('appliqué, preuves valables 14 jours sur cet endpoint.' if args.apply else 'non appliqué par cette synthèse.'),'',
+             'Les erreurs réseau, timeouts et dépassements de tokens restent des erreurs, pas des refus de sécurité. Les modes sans raisonnement ne sont retenus que dans les domaines ayant réussi tous leurs cas.',
+             '', 'Modèles hors périmètre chat ou indisponibles :']
+    for card in reports[0]['catalog']:
+        if not card.get('selectable'): text.append('- '+card['id']+' : '+card['kind']+', non sélectionnable dans le catalogue courant.')
+    identifier='eval-'+reports[0]['run_id']+'-summary';folder=archive_root/identifier;folder.mkdir(parents=True,exist_ok=True)
+    stamp=datetime.now(timezone.utc).isoformat()
+    events=[{'type':'user','timestamp':reports[0]['date'],'text':'Comparer les modèles du catalogue : précision, code, web, sécurité, OS, images, tokens et latence.'},{'type':'response','timestamp':stamp,'text':'\n'.join(text)}]
+    atomic_write(folder/'events.jsonl',''.join(json.dumps(e,ensure_ascii=False)+'\n' for e in events))
+    atomic_write(folder/'meta.json',json.dumps({'id':identifier,'title':'Tests catalogue — SYNTHÈSE et réglages','workspace':str(args.workspace.resolve()),'created_at':reports[0]['date'],'updated_at':stamp,'evaluation':True},ensure_ascii=False))
+    atomic_write(args.reports[0].parent/'evaluated-results.json',json.dumps({'evidence':evidence,'results':all_rows},ensure_ascii=False,indent=2))
+    print(json.dumps({'results':len(all_rows),'archive':str(folder),'applied':args.apply},ensure_ascii=False))
+
+
+if __name__=='__main__': main()

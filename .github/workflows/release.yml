@@ -27,6 +27,14 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: python3 ../../scripts/test-auto-update.py
+      - run: python3 ../../scripts/test-export-public.py
+      - name: Verify backend changes before packaging
+        env:
+          PYDANTIC_AI_NO_BANNER: '1'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/agent-verification"
+          "$RUNNER_TEMP/agent-verification/bin/pip" install 'pydantic-ai-slim[openai]==2.56.0'
+          "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/check-backend.py
       - name: Verify Marketplace authorization on manual runs
         if: github.event_name == 'workflow_dispatch' && vars.MARKETPLACE_AUTH_MODE == 'pat'
         env:

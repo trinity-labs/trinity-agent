@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "name": "Comptabilité EUR et concurrence",
+      "paths": [
+        "ovh_budget*.py",
+        "ovh-agent.py",
+        "ovh_verification.py",
+        "scripts/test-budget*.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-budget.py"
+      ],
+      "protect": [
+        "scripts/test-budget.py"
+      ]
+    },
+    {
+      "name": "Réservations, flux et coûts des résumés",
+      "paths": [
+        "ovh_budget*.py",
+        "ovh-agent.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-budget-model.py"
+      ],
+      "protect": [
+        "scripts/test-budget-model.py"
+      ]
+    },
+    {
+      "name": "Sessions et reprise",
+      "paths": [
+        "ovh-agent.py",
+        "ovh_verification.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-session.py"
+      ],
+      "protect": [
+        "scripts/test-session.py"
+      ]
+    },
+    {
+      "name": "Transactions et validations",
+      "paths": [
+        "ovh-agent.py",
+        "ovh_verification.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-verification.py"
+      ],
+      "protect": [
+        "scripts/test-verification.py"
+      ]
+    },
+    {
+      "name": "Protocole et compaction du contexte",
+      "paths": [
+        "ovh-agent.py",
+        "ovh_context.py",
+        "ovh_memory.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-context.py"
+      ],
+      "protect": [
+        "scripts/test-context.py"
+      ]
+    },
+    {
+      "name": "Préparation locale du contexte",
+      "paths": [
+        "ovh_request.py",
+        "ovh_cache.py",
+        "ovh-agent.py",
+        "ovh_resources.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-request.py"
+      ],
+      "protect": [
+        "scripts/test-request.py"
+      ]
+    },
+    {
+      "name": "Caches",
+      "paths": [
+        "ovh_cache.py",
+        "ovh_memory.py",
+        "ovh_resources.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-cache.py"
+      ],
+      "protect": [
+        "scripts/test-cache.py"
+      ]
+    },
+    {
+      "name": "Projets, mémoire partagée et environnement",
+      "paths": [
+        "ovh_workspace.py",
+        "ovh-agent.py",
+        "ovh_memory.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-workspace.py"
+      ],
+      "protect": [
+        "scripts/test-workspace.py"
+      ]
+    },
+    {
+      "name": "Mémoire Markdown et index local",
+      "paths": [
+        "ovh_project_memory.py",
+        "ovh_workspace.py",
+        "ovh_memory.py",
+        "ovh-agent.py",
+        "ovh_resources.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-project-memory.py"
+      ],
+      "protect": [
+        "scripts/test-project-memory.py"
+      ]
+    },
+    {
+      "name": "Routage contextuel et intégration inférence",
+      "paths": [
+        "ovh-agent.py",
+        "ovh_request.py",
+        "scripts/test-inference.py",
+        "ovh_resources.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-inference.py"
+      ],
+      "protect": [
+        "scripts/test-inference.py"
+      ]
+    },
+    {
+      "name": "Adaptation CPU, RAM et conteneurs",
+      "paths": [
+        "ovh_resources.py",
+        "ovh_cache.py",
+        "ovh_request.py",
+        "scripts/test-resources.py",
+        "ovh-agent.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-resources.py"
+      ],
+      "protect": [
+        "scripts/test-resources.py"
+      ]
+    },
+    {
+      "name": "Ordre persistant des tâches et réorientation",
+      "paths": [
+        "ovh-agent.py",
+        "scripts/test-followups.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-followups.py"
+      ],
+      "protect": [
+        "scripts/test-followups.py"
+      ]
+    },
+    {
+      "name": "Évaluations du catalogue et routage mesuré",
+      "paths": [
+        "ovh_evaluation.py",
+        "ovh-agent.py",
+        "scripts/evaluate-catalog.py",
+        "scripts/summarize-evaluation.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-evaluation.py"
+      ],
+      "protect": [
+        "scripts/test-evaluation.py"
+      ]
+    }
+  ]
+}

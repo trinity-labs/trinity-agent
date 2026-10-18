@@ -53,6 +53,16 @@ A mismatched version tag fails before publication. The workflow can also be run
 manually against a version tag. Marketplace upload may still require Microsoft
 validation before the extension appears in searches.
 
+Packaging also requires the offline backend verification and EUR budget suites
+to pass, using the same pinned Pydantic AI dependency as the Docker backend.
+Public exports include tracked files and new source paths explicitly allowed by
+the deny-by-default `.gitignore`; inspect the export before committing it.
+`.env`, `ovh-agent.local.sh`, live archives and the live Compose are excluded.
+The generated Compose example retains the €2/day, €15/week and €60/month defaults.
+The verification module, project check configuration and regression scripts belong
+in the companion backend source release. The Marketplace VSIX contains the client,
+so existing deployments must update their backend as well to enforce the new checks.
+
 Example for a new version:
 
 ```sh

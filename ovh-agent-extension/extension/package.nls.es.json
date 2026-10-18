@@ -1,5 +1,10 @@
 {
   "ovhAgent.start.title": "TRINITY Agent: Iniciar",
   "ovhAgent.configureKey.title": "TRINITY Agent: Configurar la clave OVH",
-  "ovhAgent.configureBilling.title": "TRINITY Agent: Configurar saldo y facturación"
+  "ovhAgent.configureBilling.title": "TRINITY Agent: Configurar saldo y facturación",
+  "ovhAgent.selectProject.title": "Seleccionar o crear un proyecto",
+  "ovhAgent.editProfile.title": "Editar el contexto de usuario compartido",
+  "ovhAgent.performanceMode.description": "Rendimiento local. El selector del chat aplica cambios inmediatamente; los ajustes aquí se aplican al siguiente inicio del motor.",
+  "ovhAgent.performanceMode.auto": "Dimensionamiento automático con límites moderados.",
+  "ovhAgent.performanceMode.max": "CPU y RAM disponibles, búsqueda y caché ampliadas según el hardware. Se mantienen los límites del sistema y los presupuestos API."
 }

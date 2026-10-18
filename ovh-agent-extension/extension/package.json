@@ -46,6 +46,16 @@
           "light": "media/bi-wallet-light.svg",
           "dark": "media/bi-wallet-dark.svg"
         }
+      },
+      {
+        "command": "ovhAgent.selectProject",
+        "title": "%ovhAgent.selectProject.title%",
+        "category": "TRINITY Agent"
+      },
+      {
+        "command": "ovhAgent.editProfile",
+        "title": "%ovhAgent.editProfile.title%",
+        "category": "TRINITY Agent"
       }
     ],
     "viewsContainers": {
@@ -74,6 +84,20 @@
           "default": "",
           "scope": "machine",
           "description": "Absolute path to the TRINITY Agent companion launcher on the extension host. Requires the self-hosted Python backend."
+        },
+        "ovhAgent.performanceMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "max"
+          ],
+          "default": "auto",
+          "scope": "machine",
+          "description": "%ovhAgent.performanceMode.description%",
+          "enumDescriptions": [
+            "%ovhAgent.performanceMode.auto%",
+            "%ovhAgent.performanceMode.max%"
+          ]
         }
       }
     }

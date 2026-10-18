@@ -1,5 +1,10 @@
 {
   "ovhAgent.start.title": "TRINITY Agent: Start",
   "ovhAgent.configureKey.title": "TRINITY Agent: Configure OVH key",
-  "ovhAgent.configureBilling.title": "TRINITY Agent: Configure balance and billing"
+  "ovhAgent.configureBilling.title": "TRINITY Agent: Configure balance and billing",
+  "ovhAgent.selectProject.title": "Select or create a project",
+  "ovhAgent.editProfile.title": "Edit shared user context",
+  "ovhAgent.performanceMode.description": "Local performance. The chat selector applies changes immediately; settings changed here apply at the next backend launch.",
+  "ovhAgent.performanceMode.auto": "Automatic sizing with moderate limits.",
+  "ovhAgent.performanceMode.max": "Available CPU and RAM, wider search and cache sized to hardware. System limits and API budgets remain active."
 }

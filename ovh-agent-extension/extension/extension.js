@@ -4,6 +4,7 @@ const i18n = require("./media/i18n");
 const { t } = i18n;
 i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [vscode.env.language]));
 const { ArchiveStore } = require("./archive-store");
+const { ProjectStore } = require("./project-store");
 const { acquireWindowLock, releaseWindowLock } = require("./window-lock");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
@@ -77,7 +78,11 @@ function renderMarkdown(source) {
 }
 
 class OvhAgentViewProvider {
-  constructor(extensionUri, secrets) {
+  constructor(extensionUri, secrets, state) {
+    this.state = state;
+    const initial = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
+    this.initialWorkspace = initial;
+    this.workspace = initial;
     this.extensionUri = extensionUri;
     this.secrets = secrets;
     this.view = undefined;
@@ -86,7 +91,16 @@ class OvhAgentViewProvider {
     this.responseText = "";
     this.startPromise = undefined;
     this.deleting = false;
-    this.store = new ArchiveStore(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir());
+    this.store = new ArchiveStore(this.workspace);
+    try {
+      const remembered=state?.get("ovhAgent.projectRoot") ?? new ProjectStore(this.store.dataRoot).active(initial)?.root;
+      if(remembered && remembered!==initial) {
+        const archive=new ArchiveStore(remembered,this.store.dataRoot);
+        // Only a saved conversation can restore a project context, never a folder selection alone.
+        if(archive.list().some(item=>item.current)) {this.workspace=remembered;this.store=archive;}
+      }
+    } catch {}
+    this.projectArchives = new Map();
   }
 
   async resolveWebviewView(webviewView) {
@@ -103,11 +117,18 @@ class OvhAgentViewProvider {
       if (message.type === "prompt") await this.sendPrompt(message.text, message.fullAccess, message.model, message.images);
       if (message.type === "followup") await this.sendControl({
         type: "followup", action: message.action, conversation: message.conversation,
-        id: message.id, text: message.text, mode: message.mode,
+        id: message.id, text: message.text, mode: message.mode, target: message.target, position: message.position,
         full_access: Boolean(message.fullAccess), model: message.model,
       });
       if (message.type === "clear") await this.clearConversation();
       if (message.type === "cancel") await this.stopAgent();
+      if (message.type === "setPerformance") await this.setPerformance(message.mode);
+      if (message.type === "selectProject") await this.selectProject();
+      if (message.type === "openProject") await this.openProject(message.project, message.conversation);
+      if (message.type === "openProjectDocument") await this.openProjectDocument(message);
+      if (message.type === "assignProject") await this.assignProject(message);
+      if (["moveProject","moveConversation"].includes(message.type)) this.organizeArchives(message);
+      if (message.type === "updateProject") this.updateProject(message);
       if (message.type === "configureKey") await this.configureKey();
       if (message.type === "billing") await this.refreshBilling(true);
       if (message.type === "billingRefresh") await this.refreshBilling(false);
@@ -116,7 +137,7 @@ class OvhAgentViewProvider {
       if (message.type === "listArchives") this.showArchives();
       if (message.type === "listModels") await this.sendControl({ type: "list_models", refresh: Boolean(message.refresh) });
       if (message.type === "selectModel") await this.sendControl({ type: "set_model", model: String(message.model || "") });
-      if (message.type === "deleteArchiveConfirmed") await this.deleteArchive(message.id);
+      if (message.type === "deleteArchiveConfirmed") await this.deleteArchive(message.id, message.source);
       if (message.type === "resumeArchive") await this.sendControl({ type: "resume_archive", id: message.id });
       if (message.type === "loadArchive") await this.sendControl({ type: "load_archive", id: message.id });
       if (message.type === "snapshot" && !this.deleting && this.agent && message.conversation && message.conversation === this.store.current()) await this.sendControl({
@@ -174,6 +195,228 @@ class OvhAgentViewProvider {
 
   post(message) {
     if (this.view) this.view.webview.postMessage(message);
+  }
+
+  async editProfile() {
+    const file = path.join(this.store.dataRoot, "MASTER.md");
+    fs.mkdirSync(this.store.dataRoot, {recursive:true, mode:0o700});
+    if (!fs.existsSync(file)) fs.writeFileSync(file, "# Contexte utilisateur\n\nPréférences et contraintes communes à tous les projets. Ne pas enregistrer de secrets.\n", {flag:"wx",mode:0o600});
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file));
+  }
+
+  pickProject(items, projects) {
+    return new Promise(resolve => {
+      const picker = vscode.window.createQuickPick();
+      picker.title = t("Projet actif de l’agent");
+      picker.placeholder = t("Choisir un projet ou coller un chemin de dossier, puis Entrée");
+      picker.matchOnDescription = true;
+      picker.items = items;
+      const typedPath = () => {
+        let value = picker.value.trim();
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1,-1);
+        if (value.startsWith('~/')) value = path.join(require('os').homedir(), value.slice(2));
+        return path.isAbsolute(value) || /^\.\.?\//.test(value) ? path.resolve(this.workspace,value) : undefined;
+      };
+      const subscriptions = [];
+      let finished = false;
+      const finish = selection => {
+        if (finished) return;
+        finished = true;
+        for (const subscription of subscriptions) subscription.dispose();
+        picker.dispose();
+        resolve(selection);
+      };
+      subscriptions.push(picker.onDidChangeValue(() => {
+        const root = typedPath();
+        if (root) {
+          const entry = {label:t("Ouvrir ce dossier"),description:root,root,alwaysShow:true};
+          picker.items = [entry];
+          picker.activeItems = [entry];
+        } else picker.items = items;
+      }));
+      subscriptions.push(picker.onDidAccept(() => {
+        const root = typedPath();
+        if (root) {
+          try { finish({root:projects.validate(root)}); }
+          catch (error) {
+            picker.items = [{label:t("Dossier inaccessible ou non autorisé"),description:root,detail:String(error.message),alwaysShow:true,invalid:true}];
+            picker.activeItems = [];
+          }
+          return;
+        }
+        const selected = picker.selectedItems[0] || picker.activeItems[0];
+        if (selected && !selected.invalid) finish(selected);
+      }));
+      subscriptions.push(picker.onDidHide(() => finish(undefined)));
+      picker.show();
+    });
+  }
+
+  async selectProject() {
+    if (!this.windowLock) {
+      vscode.window.showInformationMessage(t("Ouvre la fenêtre Agent active pour choisir un projet."));
+      return;
+    }
+    if (this.busy || this.switchingProject || this.startPromise) {
+      vscode.window.showInformationMessage(t("Termine ou arrête la tâche avant de changer de projet."));
+      return;
+    }
+    this.switchingProject = true;
+    try {
+      const projects = new ProjectStore(this.store.dataRoot);
+      const selected = await this.pickProject([
+        {label:t("Ouvrir un dossier existant"), action:"open"},
+        {label:t("Créer un projet"), action:"create"},
+        ...(this.store.current() ? [{label:t("Classer cette conversation dans un projet"), action:"assign"}] : []),
+        {label:t("Modifier mon contexte utilisateur"), action:"profile"},
+        {label:t("Modifier la mémoire du projet"), action:"memory"},
+        {label:t("Agréger les mémoires des projets"), action:"aggregate"},
+        ...projects.list().map(p=>({label:p.name, description:p.root, root:p.root})),
+        ...(vscode.workspace.workspaceFolders || []).map(p=>({label:p.name || path.basename(p.uri.fsPath),description:p.uri.fsPath,root:p.uri.fsPath})),
+      ], projects);
+      if (!selected) return;
+      if (selected.action === "assign") {await this.assignProject({source:this.store.session,conversation:this.store.current()});return;}
+      if (selected.action === "profile") { await this.editProfile(); return; }
+      if (selected.action === "memory") {
+        const folder=path.join(this.store.dataRoot,"memory/projects",this.store.session);
+        fs.mkdirSync(folder,{recursive:true,mode:0o700});
+        const file=path.join(folder,"NOTES.md");
+        if(!fs.existsSync(file))fs.writeFileSync(file,"# Notes durables du projet\n\nDécisions et faits sourcés. Ne pas enregistrer de secrets.\n",{flag:"wx",mode:0o600});
+        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file));
+        return;
+      }
+      if (selected.action === "aggregate") {
+        const entries=new Map(projects.catalog().map(p=>[p.id,{label:p.name,description:p.root,id:p.id,picked:p.id===this.store.session}]));
+        entries.set(this.store.session,{label:path.basename(this.workspace),description:this.workspace,id:this.store.session,picked:true});
+        const archive=path.join(this.store.dataRoot,"archive");
+        if(fs.existsSync(archive))for(const dir of fs.readdirSync(archive,{withFileTypes:true})) {
+          if(dir.isDirectory() && /^[a-f0-9]{20}$/.test(dir.name) && !entries.has(dir.name)) {
+            let name=dir.name;
+            try {name=JSON.parse(fs.readFileSync(path.join(this.store.dataRoot,"memory/projects",dir.name,"project.json"),"utf8")).workspace || name;} catch {}
+            entries.set(dir.name,{label:name,description:dir.name,id:dir.name});
+          }
+        }
+        const picked=await vscode.window.showQuickPick([...entries.values()],{canPickMany:true,title:t("Projets à agréger en Markdown")});
+        if(picked?.length)await this.sendControl({type:"memory_export",projects:picked.map(p=>p.id)});
+        return;
+      }
+      let entry;
+      if (selected.root) entry = projects.register(selected.root);
+      else {
+        const picked = await vscode.window.showOpenDialog({canSelectFiles:false,canSelectFolders:true,canSelectMany:false,title:selected.action === "create" ? t("Dossier parent du projet") : t("Dossier du projet")});
+        if (!picked?.length) return;
+        if (selected.action === "create") {
+          const name = await vscode.window.showInputBox({title:t("Nom du projet")});
+          if (!name) return;
+          entry = projects.create(picked[0].fsPath, name.trim());
+        } else entry = projects.register(picked[0].fsPath);
+      }
+      if (selected.action === "attach") {
+        await this.stopAgent(false);
+        entry = projects.attach(this.workspace, this.store.current(), entry.root);
+      }
+      // Adding a folder organizes history without changing the current conversation's context.
+      this.showArchives();
+    } catch (error) {
+      vscode.window.showErrorMessage(String(error.message));
+    } finally {
+      this.switchingProject = false;
+    }
+  }
+
+  async activateProject(entry, conversation) {
+    await this.stopAgent(false);
+    this.busy = false;
+    const dataRoot=this.store.dataRoot;
+    new ProjectStore(dataRoot).activate(this.initialWorkspace,entry.root,{register:!conversation});
+    this.workspace=entry.root;
+    this.store=new ArchiveStore(entry.root,dataRoot);
+    await this.state?.update("ovhAgent.projectRoot",entry.root);
+    // Keep the webview and expanded history folders alive while switching backends.
+    await this.ensureAgent();
+    this.showArchives();
+    if(conversation)await this.sendControl({type:"load_archive",id:conversation});
+  }
+
+  async openProject(id, conversation) {
+    if(!this.windowLock) {this.post({type:"archive_open_failed"});return;}
+    if(this.busy || this.switchingProject || this.startPromise || this.deleting) {
+      this.post({type:"archive_open_failed"});
+      vscode.window.showInformationMessage(t("Termine ou arrête la tâche avant de changer de projet."));return;
+    }
+    this.switchingProject=true;
+    try {
+      const projects=new ProjectStore(this.store.dataRoot);
+      const entry=projects.catalog().find(p=>p.id===id);
+      if(!entry)throw new Error(t("Projet introuvable."));
+      if(conversation && !new ArchiveStore(entry.root,this.store.dataRoot).list().some(item=>item.id===conversation))throw new Error(t("Conversation introuvable."));
+      if(conversation)await this.activateProject(entry,conversation);
+      else {projects.register(entry.root);this.showArchives();}
+    } catch(error) {this.post({type:"archive_open_failed",text:String(error.message)});vscode.window.showErrorMessage(String(error.message));}
+    finally {this.switchingProject=false;}
+  }
+
+  async openProjectDocument(message) {
+    try {
+      const projects=new ProjectStore(this.store.dataRoot);
+      const entry=projects.list().find(p=>p.id===message.project) || projects.catalog().find(p=>p.id===message.project) || (message.project===this.store.session ? {id:this.store.session,root:this.workspace} : undefined);
+      if(!entry)throw new Error(t("Projet introuvable."));
+      const file=projects.document(entry,message.name,message.scope);
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file));
+    } catch(error) {vscode.window.showErrorMessage(String(error.message));}
+  }
+
+  async assignProject(message) {
+    if(!this.windowLock)return;
+    try {
+      const projects=new ProjectStore(this.store.dataRoot);
+      const source=projects.catalog().find(p=>p.id===message.source) || (message.source===this.store.session?projects.identity(this.workspace):undefined);
+      const conversation=source&&new ArchiveStore(source.root,this.store.dataRoot).list().find(item=>item.id===message.conversation);
+      if(!conversation)throw new Error(t("Conversation introuvable."));
+      const current=projects.assignedProject(source,conversation);
+      const selected=await vscode.window.showQuickPick([
+        {label:t("Aucun projet"),id:null},
+        ...projects.list().map(p=>({label:p.name,description:p.root,id:p.id,picked:p.id===current})),
+        {label:t("Choisir un dossier de projet…"),action:"register"},
+      ],{title:t("Classer cette conversation dans un projet")});
+      if(!selected)return;
+      let target=selected.id;
+      if(selected.action==="register") {
+        const picked=await vscode.window.showOpenDialog({canSelectFiles:false,canSelectFolders:true,canSelectMany:false,title:t("Dossier du projet")});
+        if(!picked?.length)return;
+        target=projects.register(picked[0].fsPath).id;
+      }
+      projects.assign(message.source,message.conversation,target);
+      this.showArchives();
+    } catch(error) {vscode.window.showErrorMessage(String(error.message));}
+  }
+
+  updateProject(message) {
+    try {
+      const project=new ProjectStore(this.store.dataRoot).update(message.project,message);
+      this.post({type:'project_updated',project,previousId:message.project,requestId:message.requestId});
+    } catch(error) {
+      this.post({type:'project_update_failed',project:message.project,requestId:message.requestId,text:String(error.message)});
+    }
+    this.showArchives();
+  }
+
+  organizeArchives(message) {
+    if(!this.windowLock || !validMessage(message))return;
+    try {
+      const projects=new ProjectStore(this.store.dataRoot);
+      if(message.type==='moveProject')projects.reorder(message.source,message.target,message.position);
+      else if(message.type==='moveConversation') {
+        const source=projects.catalog().find(entry=>entry.id===message.source)
+          || (message.source===this.store.session?projects.identity(this.workspace):undefined);
+        if(!source || !new ArchiveStore(source.root,this.store.dataRoot).list().some(item=>item.id===message.conversation))throw new Error(t('Conversation introuvable.'));
+        projects.assign(message.source,message.conversation,message.target);
+      } else return;
+      this.post({type:'archives_organized'});
+    } catch(error) {
+      this.post({type:'archive_organization_failed',text:t('Classement impossible : {0}',error.message)});
+    }
+    this.showArchives();
   }
 
   async configureKey() {
@@ -272,7 +515,7 @@ class OvhAgentViewProvider {
           if (configureIfMissing) await this.configureBilling();
           return;
         }
-        const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
+        const workspace = this.workspace;
         const result = await new Promise((resolve, reject) => {
           execFile(agentPath(), ["--billing-status"], {
             cwd: workspace, timeout: 30000, maxBuffer: 1024 * 1024,
@@ -291,17 +534,51 @@ class OvhAgentViewProvider {
   }
 
   showArchives() {
-    try { this.post({ type: "archives", items: this.store.list(), archive_root: this.store.root }); }
-    catch (error) { this.post({ type: "archive_delete_failed", text: t("Historique indisponible : {0}", error.message) }); }
+    try {
+      const registry=new ProjectStore(this.store.dataRoot);
+      const entries=registry.catalog();
+      if(!entries.some(p=>p.id===this.store.session))entries.unshift({id:this.store.session,name:path.basename(this.workspace),root:this.workspace});
+      const assignments=registry.assignments(),items=[];
+      const projects=registry.list().map(entry=>({...entry,active:entry.id===this.store.session,documents:registry.documents(entry),items:[]}));
+      const groups=new Map(projects.map(entry=>[entry.id,entry]));
+      for(const entry of entries) {
+        const active=entry.id===this.store.session;
+        let archive=this.store;
+        if(!active) {
+          archive=this.projectArchives.get(entry.id);
+          if(!archive) {
+            archive=new ArchiveStore(entry.root,this.store.dataRoot);
+            if(this.projectArchives.size>=8)this.projectArchives.delete(this.projectArchives.keys().next().value);
+            this.projectArchives.set(entry.id,archive);
+          }
+        }
+        for(const item of archive.list()) {
+          const group=groups.get(registry.assignedProject(entry,item,assignments));
+          const row={...item,archive_project:entry.id,archive_active:active};
+          (group?group.items:items).push(row);
+        }
+      }
+      const newest=(a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+      items.sort(newest);for(const project of projects)project.items.sort(newest);
+      this.post({type:"archives",items,projects,archive_root:this.store.root});
+    } catch(error) {this.post({type:"archive_delete_failed",text:t("Historique indisponible : {0}",error.message)});}
   }
 
-  async deleteArchive(id) {
+  async deleteArchive(id, source = this.store.session) {
     if (this.deleting) return;
     this.deleting = true;
-    this.post({ type: "archive_delete_pending", id });
+    this.post({ type: "archive_delete_pending", id, source });
     try {
       if (this.startPromise) await this.startPromise;
-      if (this.store.current() === id && this.agent) {
+      const active = source === this.store.session;
+      let archive = this.store;
+      if (!active) {
+        const entry = new ProjectStore(this.store.dataRoot).catalog().find(entry => entry.id === source);
+        if (!entry) throw new Error(t("Projet introuvable."));
+        archive = new ArchiveStore(entry.root, this.store.dataRoot);
+        if (archive.session !== source) throw new Error(t("Projet introuvable."));
+      }
+      if (active && archive.current() === id && this.agent) {
         const agent = this.agent;
         await new Promise((resolve, reject) => {
           if (agent.exitCode !== null || agent.signalCode !== null) return resolve();
@@ -311,13 +588,36 @@ class OvhAgentViewProvider {
         });
         this.agent = undefined;
       }
-      const wasCurrent = this.store.remove(String(id || ""));
-      this.post({ type: "archive_deleted", id, was_current: wasCurrent });
+      const wasCurrent = archive.remove(String(id || "")) && active;
+      this.post({ type: "archive_deleted", id, source, active, was_current: wasCurrent });
       this.showArchives();
     } catch (error) {
-      this.post({ type: "archive_delete_failed", id, text: t("Suppression impossible : {0}", i18n.message(error.message)) });
+      this.post({ type: "archive_delete_failed", id, source, text: t("Suppression impossible : {0}", i18n.message(error.message)) });
       vscode.window.showErrorMessage(t("Suppression impossible : {0}", i18n.message(error.message)));
     } finally { this.deleting = false; }
+  }
+
+  performanceMode() {
+    if (this.performanceOverride) return this.performanceOverride;
+    const config = vscode.workspace.getConfiguration?.('ovhAgent');
+    const settings = config?.inspect?.('performanceMode');
+    const mode = settings
+      ? settings.workspaceFolderValue ?? settings.workspaceValue ?? settings.globalValue ?? process.env.OVH_AGENT_PERFORMANCE_MODE
+      : config?.get?.('performanceMode') ?? process.env.OVH_AGENT_PERFORMANCE_MODE;
+    return mode === 'max' ? 'max' : 'auto';
+  }
+
+  async setPerformance(mode) {
+    if (!['auto', 'max'].includes(mode)) return;
+    try {
+      await vscode.workspace.getConfiguration('ovhAgent').update('performanceMode', mode, vscode.ConfigurationTarget.Global);
+      this.performanceOverride = mode;
+      if (this.agent && !this.agent.killed && this.agent.stdin.writable) {
+        this.agent.stdin.write(JSON.stringify({type: 'set_performance', mode}) + '\n');
+      } else this.post({type: 'performance_status', mode});
+    } catch (error) {
+      this.post({type: 'performance_error', mode: this.performanceMode(), text: String(error.message)});
+    }
   }
 
   async ensureAgent() {
@@ -355,7 +655,7 @@ class OvhAgentViewProvider {
       }
       apiKey = readPersistentKey();
     }
-    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
+    const workspace = this.workspace;
     const billing = await this.billingCredentials();
     if (!this.windowLock || this.windowClosing) return false;
     this.stdoutBuffer = "";
@@ -364,6 +664,7 @@ class OvhAgentViewProvider {
       env: {
         ...process.env,
         OVH_AGENT_WORKSPACE: workspace,
+        OVH_AGENT_PERFORMANCE_MODE: this.performanceMode(),
         OVH_AI_API_KEY: apiKey,
         OVHCLOUD_API_KEY: apiKey,
         ...(billing ? {
@@ -410,8 +711,14 @@ class OvhAgentViewProvider {
       if (!line.trim()) continue;
       try {
         const message = JSON.parse(line);
+        if(message.type === "archives") {this.showArchives();continue;}
+        if (message.type === "memory_exported") {
+          const expected=path.join(this.store.dataRoot,"memory/AGGREGATE.md");
+          if(path.resolve(message.file || "")===path.resolve(expected))vscode.workspace.openTextDocument(expected).then(doc=>vscode.window.showTextDocument(doc)).catch(error=>vscode.window.showErrorMessage(String(error.message)));
+        }
         if (message.type === "session_busy" && this.agent) this.agent.sessionBusy = true;
-        if (message.type === "status") this.responseText = "";
+        if (message.type === "status") { this.responseText = ""; this.busy = true; }
+        if (["response", "error", "idle"].includes(message.type)) this.busy = false;
         if (message.type === "delta") {
           this.responseText += String(message.text || "");
           message.html = renderMarkdown(this.responseText);
@@ -421,6 +728,7 @@ class OvhAgentViewProvider {
           message.html = renderMarkdown(this.responseText);
         }
         if (message.type === "error") message.html = renderMarkdown(`**Erreur :** ${message.text}`);
+        if (message.type === "cleared") message.workspace = this.workspace;
         if (message.type === "archive_loaded") {
           message.messages = (message.messages || []).map((item) => ({
             ...item,
@@ -438,10 +746,12 @@ class OvhAgentViewProvider {
   }
 
   async sendPrompt(text, fullAccess, model, images) {
+    if (this.switchingProject) return;
     const prompt = String(text || "").trim();
     const attachedImages = Array.isArray(images) ? images.slice(0, 5) : [];
     if ((!prompt && !attachedImages.length) || !(await this.ensureAgent())) return;
     this.responseText = "";
+    this.busy = true;
     this.agent.stdin.write(`${JSON.stringify({
       type: "prompt",
       text: prompt,
@@ -458,11 +768,19 @@ class OvhAgentViewProvider {
 
   async sendControl(payload) {
     if (!(await this.ensureAgent())) return;
+    if (payload.type === "resume_archive" || (payload.type === "followup" && ["add", "steer", "continue"].includes(payload.action))) this.busy = true;
     this.agent.stdin.write(`${JSON.stringify(payload)}\n`);
   }
 
   async clearConversation() {
     await this.stopAgent(false);
+    this.busy = false;
+    const dataRoot=this.store.dataRoot;
+    // A new conversation belongs to the IDE workspace, independent of the last archive opened.
+    this.workspace=this.initialWorkspace;
+    this.store=new ArchiveStore(this.workspace,dataRoot);
+    new ProjectStore(dataRoot).activate(this.initialWorkspace,this.workspace,{register:false});
+    await this.state?.update("ovhAgent.projectRoot",this.workspace);
     if (!(await this.ensureAgent())) {
       this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, "initialization failed") });
       return;
@@ -480,7 +798,7 @@ class OvhAgentViewProvider {
       } catch {}
       return;
     }
-    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
+    const workspace = this.workspace;
     const target = localLink(value, workspace);
     if (!target) return;
     try {
@@ -505,6 +823,7 @@ class OvhAgentViewProvider {
           agent.kill("SIGTERM");
         });
       }
+      this.busy = false;
       if (notify) this.post({ type: "idle" });
     })().finally(() => { this.stopPromise = undefined; });
     return this.stopPromise;
@@ -529,7 +848,7 @@ class OvhAgentViewProvider {
     const localeOverride = escapeBrand(process.env.OVH_AGENT_LANG || "auto");
     const showMountPoint = !["false", "0", "no", "non", "off"].includes(
       String(process.env.OVH_AGENT_SHOW_MOUNT_POINT ?? "true").trim().toLowerCase());
-    const archiveBanner = showMountPoint ? `<div id="archive-banner" class="archive-head"><div><strong class="archive-title">${uiIcon("archive", "archive-title-icon")}Conversations</strong><div class="archive-mount"><span class="archive-mount-label">Mount Point : </span><span id="archive-path">Chargement du chemin d’archivage…</span></div></div><button id="close-history" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div>` : "";
+    const archiveBanner = showMountPoint ? `<div id="archive-banner" class="archive-head"><div class="archive-heading"><span class="archive-heading-icon" aria-hidden="true">${uiIcon("archive", "archive-title-icon")}</span><div class="archive-heading-text"><strong class="archive-title">Conversations</strong><div class="archive-mount"><span class="archive-mount-label">Mount Point : </span><span id="archive-path">Chargement du chemin d’archivage…</span></div></div></div><button id="close-history" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div>` : "";
     const purifyUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "purify.min.js"));
     const iconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "icons.min.js"));
     const safeHtmlUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "safe-html.js"));
@@ -543,12 +862,14 @@ class OvhAgentViewProvider {
   <link rel="stylesheet" href="${styleUri}?build=${nonce}">
   <style nonce="${nonce}">:root { --ovh-primary: ${primaryColor}; }</style>
   <title>${brandName}</title>
-</head><body data-language="${localeOverride}" data-brand-name="${brandName}" data-brand-badge="${brandBadge}">
-  <header><div class="header-leading"><span id="history-brand" class="history-brand" aria-hidden="true">${uiIcon("nodes")}</span><button id="history" hidden class="icon back-history" title="Retour à l’historique" aria-label="Retour à l’historique">${uiIcon("back")}</button><div class="brand"><strong>${brandName}</strong><button id="model-picker" title="Choisir le modèle"><span id="selected-model">Auto équilibré</span>${uiIcon("chevron")}</button></div></div><div class="header-actions"><button id="billing" class="icon billing" title="Configurer le suivi du solde OVHcloud" aria-label="Solde OVHcloud">${uiIcon("database")}<span class="billing-dot"></span></button><button id="configure" class="icon" title="Configurer la clé OVH" aria-label="Configurer la clé">${uiIcon("key")}</button><button id="clear" class="icon" title="Nouvelle conversation" aria-label="Nouvelle conversation">${uiIcon("plus")}</button></div></header>
+</head><body data-emoji-mode="${/^[0-3]$/.test(process.env.OVH_AGENT_EMOJI_MODE || "") ? process.env.OVH_AGENT_EMOJI_MODE : "1"}" data-language="${localeOverride}" data-brand-name="${brandName}" data-brand-badge="${brandBadge}" data-primary-color="${primaryColor}" data-performance-mode="${this.performanceMode()}">
+  <header><div class="header-leading"><span id="history-brand" class="history-brand" aria-hidden="true">${uiIcon("nodes")}</span><button id="history" hidden class="icon back-history" title="Retour à l’historique" aria-label="Retour à l’historique">${uiIcon("back")}</button><div class="brand"><strong>${brandName}</strong><button id="model-picker" title="Choisir le modèle"><span id="selected-model">Auto équilibré</span>${uiIcon("chevron")}</button></div></div><div class="header-actions"><button id="project-picker" class="icon" title="Choisir ou créer un projet" aria-label="Choisir ou créer un projet">${uiIcon("project")}</button><button id="billing" class="icon billing" title="Configurer le suivi du solde OVHcloud" aria-label="Solde OVHcloud">${uiIcon("database")}<span class="billing-dot"></span></button><button id="configure" class="icon" title="Configurer la clé OVH" aria-label="Configurer la clé">${uiIcon("key")}</button><button id="clear" class="icon" title="Nouvelle conversation" aria-label="Nouvelle conversation">${uiIcon("plus")}</button></div></header>
+  <div class="workspace-content">
   <aside id="archive-panel">${archiveBanner}<p id="archive-notice" role="status"></p><div id="archive-list"><p class="archive-empty">Chargement…</p></div><p class="agent-disclaimer"></p></aside><dialog id="delete-dialog"><h3>${uiIcon("trash", "delete-title-icon")}Supprimer définitivement ?</h3><p id="delete-title"></p><p>Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.</p><div class="delete-dialog-actions"><button id="delete-cancel" type="button">Annuler</button><button id="delete-confirm" type="button">Supprimer définitivement</button></div></dialog>
   <aside id="model-panel" hidden><div class="model-head"><div><strong>Modèles OVHcloud</strong><span>Catalogue et tarifs en direct</span><span id="model-availability" aria-live="polite"></span></div><button id="close-models" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div><div class="model-tools"><input id="model-search" type="search" placeholder="Rechercher un modèle…"><button id="refresh-models" class="icon" title="Actualiser les tarifs">${uiIcon("reload")}</button></div><div id="model-list"><p class="model-empty">Chargement du catalogue…</p></div><div class="model-foot">Tarifs OVHcloud HT. Seuls les modèles sélectionnables sont affichés. Les modèles non conversationnels ou indisponibles sont exclus. Le mode Auto ne compte pas comme un modèle.</div></aside>
   <main id="messages"><section class="welcome"><h2>${brandName}</h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section></main>
-  <footer><div id="followups" class="followups" aria-live="polite" hidden></div><div class="composer-meta"><div id="status" aria-live="polite"></div><button type="button" id="live-balance" aria-live="polite" title="Configurer ou actualiser le solde OVHcloud">Solde : chargement…</button></div><div id="composer" class="composer"><div id="attachments" class="attachments" hidden></div><textarea id="prompt" rows="1" placeholder="Demander à ${brandName}…"></textarea><div class="composer-bar"><div class="composer-left"><button id="attach" class="round attach" title="Joindre une image" aria-label="Joindre une image">${uiIcon("image")}</button><input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden><button id="access" class="access full" title="Basculer le niveau d’accès">${uiIcon("shield")}<span>Accès complet</span></button></div><div class="send-column"><div class="send-actions"><select id="followup-mode" title="Réorienter applique la consigne à la prochaine étape, après l’appel ou l’outil en cours." aria-label="Envoi pendant une tâche" hidden><option value="queue">Mettre en attente</option><option value="steer">Réorienter</option></select><button id="stop" class="round stop" title="Arrêter" aria-label="Arrêter">${uiIcon("stop")}</button><button id="send" class="round send" title="Envoyer" aria-label="Envoyer">${uiIcon("send")}</button></div></div></div></div><p class="agent-disclaimer"></p></footer>
+  <footer><div id="followups" class="followups" aria-live="polite" hidden></div><div class="composer-meta"><div id="status" aria-live="polite"></div><button type="button" id="live-balance" aria-live="polite" title="Configurer ou actualiser le solde OVHcloud">Solde : chargement…</button></div><div id="composer" class="composer"><div id="attachments" class="attachments" hidden></div><textarea id="prompt" rows="1" placeholder="Demander à ${brandName}…"></textarea><div class="composer-bar"><div class="composer-left"><button id="attach" class="round attach" title="Joindre une image" aria-label="Joindre une image">${uiIcon("image")}</button><input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden><button id="access" class="access full" title="Basculer le niveau d’accès">${uiIcon("shield")}<span>Accès complet</span></button><select id="performance-mode" aria-label="Performances locales"><option value="auto">Perf. Auto</option><option value="max">Perf. Max</option></select></div><div class="send-column"><div class="send-actions"><button id="stop" class="round stop" title="Arrêter" aria-label="Arrêter">${uiIcon("stop")}</button><button id="send" class="round send" title="Envoyer" aria-label="Envoyer">${uiIcon("send")}</button></div></div></div></div><p class="agent-disclaimer"></p></footer>
+  </div>
   <script nonce="${nonce}">window.OVH_TRANSLATIONS = ${translationData};</script>
   <script nonce="${nonce}" src="${i18nUri}?build=${nonce}"></script>
   <script nonce="${nonce}" src="${purifyUri}?build=${nonce}"></script>
@@ -570,7 +891,7 @@ async function activate(context) {
   for (const [key, name] of Object.entries(migrated)) {
     if (readServerSecret(name)) await context.secrets.delete(key);
   }
-  const provider = new OvhAgentViewProvider(context.extensionUri, context.secrets);
+  const provider = new OvhAgentViewProvider(context.extensionUri, context.secrets, context.workspaceState);
   const registration = vscode.window.registerWebviewViewProvider(
     "ovhAgent.launch",
     provider,
@@ -580,6 +901,11 @@ async function activate(context) {
     await vscode.commands.executeCommand("workbench.view.extension.ovhAgent");
   });
   const configure = vscode.commands.registerCommand("ovhAgent.configureKey", () => provider.configureKey());
+  const selectProject = vscode.commands.registerCommand("ovhAgent.selectProject", async () => {
+    await vscode.commands.executeCommand("workbench.view.extension.ovhAgent");
+    await provider.selectProject();
+  });
+  const editProfile = vscode.commands.registerCommand("ovhAgent.editProfile", () => provider.editProfile());
   const configureBilling = vscode.commands.registerCommand("ovhAgent.configureBilling", () => provider.configureBilling());
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   status.name = BRAND_NAME;
@@ -587,7 +913,7 @@ async function activate(context) {
   status.tooltip = `Ouvrir le chat ${BRAND_NAME}`;
   status.command = "ovhAgent.start";
   status.show();
-  context.subscriptions.push(registration, start, configure, configureBilling, status, provider);
+  context.subscriptions.push(registration, start, configure, configureBilling, selectProject, editProfile, status, provider);
 }
 
 function deactivate() {}

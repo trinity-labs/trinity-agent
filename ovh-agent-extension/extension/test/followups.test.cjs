@@ -29,7 +29,8 @@ test('composer queues/steers without duplicate runs, edits safely and renders te
     for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js']) w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
     const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
     emit({type:'request_prepared',sources:[{path:'chat.css'},{path:'chat.css'},{path:'<img src=x onerror=alert(1)>.js'}],preparation_ms:23,partial:true});
-    assert.match(doc.getElementById('messages').textContent,/Contexte préparé.*2 fichiers ciblés.*23 ms.*recherche partielle/s);
+    assert.match(doc.getElementById('messages').textContent,/Contexte préparé.*2 fichiers ciblés.*recherche partielle/s);
+    assert.equal(doc.querySelector('.activity-duration').textContent,'23 ms');
     assert.equal(doc.getElementById('messages').querySelector('img'),null);
     emit({type:'budget_status',currency:'EUR',blocked:false,periods:{daily:{limit:2,spent:0,reserved:0,remaining:2,reset_at:'2026-10-17T00:00:00Z'}}});
     assert.equal(doc.getElementById('agent-budget'), null);
@@ -42,9 +43,10 @@ test('composer queues/steers without duplicate runs, edits safely and renders te
     assert.match(activityText,/legacy-usd.*2,34\s*\$US/);
     assert.match(activityText,/native-route.*0,45\s*€.*3,21\s*€/);
     assert.match(activityText,/legacy-route.*0,67\s*\$US.*4,56\s*\$US/);
-    const prompt=doc.getElementById('prompt'), send=doc.getElementById('send'), mode=doc.getElementById('followup-mode');
+    const prompt=doc.getElementById('prompt'), send=doc.getElementById('send');
+    assert.equal(doc.getElementById('followup-mode'),null);
     emit({type:'status',conversation:'test',text:'Working'});
-    assert(!send.disabled);assert(!mode.hidden);
+    assert(!send.disabled);assert.equal(send.title,'Envoyer');
     prompt.value='Next task';send.click();
     let command=sent.at(-1);
     assert.equal(command.type,'followup');assert.equal(command.action,'add');assert.equal(command.mode,'queue');
@@ -52,14 +54,16 @@ test('composer queues/steers without duplicate runs, edits safely and renders te
     send.click();assert.equal(sent.at(-1),command);
     emit({type:'followup_ack',id:command.id,action:'add'});
     assert.equal(prompt.value,'');assert(!send.disabled);
-    mode.value='steer';prompt.value='New direction';send.click();command=sent.at(-1);
-    assert.equal(command.mode,'steer');
+    prompt.value='New direction';send.click();command=sent.at(-1);
+    assert.equal(command.mode,'queue');
     prompt.value='Do not lose this newer draft';
     emit({type:'followup_ack',id:command.id,action:'add'});
     assert.equal(prompt.value,'Do not lose this newer draft');
     emit({type:'followups',conversation:'test',items:[{id:'queued',text:'<img onerror=alert(1)>',mode:'queue'}]});
     const box=doc.getElementById('followups');
     assert.equal(box.querySelector('img'),null);assert(box.textContent.includes('<img'));
+    box.querySelector('[title="Réorienter"]').click();
+    assert.equal(sent.at(-1).action,'steer');assert.equal(sent.at(-1).id,'queued');
     prompt.value='';box.querySelector('[title="Modifier"]').click();
     assert.equal(prompt.value,'<img onerror=alert(1)>');
     prompt.value='Edited';send.click();command=sent.at(-1);
@@ -69,7 +73,7 @@ test('composer queues/steers without duplicate runs, edits safely and renders te
     box.querySelector('[title="Retirer"]').click();assert.equal(sent.at(-1).action,'remove');
     doc.getElementById('stop').click();assert.equal(sent.at(-1).type,'cancel');
     emit({type:'idle'});
-    assert.equal(mode.hidden,true);
+    assert.equal(doc.getElementById('stop').hidden,false);
     assert(box.textContent.includes('Exécuter la file d’attente'));
   } finally {dom.window.close();}
 });

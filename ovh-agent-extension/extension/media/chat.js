@@ -5,7 +5,9 @@ const { t } = OvhI18n;
 document.documentElement.lang = uiLanguage;
 OvhI18n.translateStatic(document.body);
 const vscode = acquireVsCodeApi();
+let emojiMode = /^[0-3]$/.test(document.body.dataset.emojiMode || "") ? Number(document.body.dataset.emojiMode) : 1;
 const brandName = document.body.dataset.brandName || document.title || "TRINITY Agent";
+const primaryColor = /^#[a-f0-9]{6}$/i.test(document.body.dataset.primaryColor || '') ? document.body.dataset.primaryColor : '#3e3aab';
 for (const notice of document.querySelectorAll(".agent-disclaimer")) {
   notice.textContent = t("{0} est un outil d’assistance. Vous restez responsable des actions exécutées. L’IA peut se tromper : vérifiez ses réponses et les commandes.", brandName);
 }
@@ -15,21 +17,155 @@ const messages = document.getElementById("messages");
 const prompt = document.getElementById("prompt");
 const send = document.getElementById("send");
 const stop = document.getElementById("stop");
-const followupMode = document.getElementById("followup-mode");
+const performancePicker = document.getElementById('performance-mode');
+function showPerformance(mode, resources = {}) {
+  if (!performancePicker) return;
+  performancePicker.value = mode === 'max' ? 'max' : 'auto';
+  performancePicker.disabled = false;
+  performancePicker.title = t(mode === 'max' ? 'Max : exploiter les ressources locales disponibles.' : 'Auto : allocation modérée, adaptée au matériel.');
+  if (Number.isFinite(resources.workers) && Number.isFinite(resources.cache_mb)) {
+    performancePicker.title += t(' · {0} lecteurs · cache jusqu’à {1} Mio', resources.workers, resources.cache_mb);
+  }
+}
+showPerformance(document.body.dataset.performanceMode);
+performancePicker?.addEventListener('change', () => {
+  performancePicker.disabled = true;
+  vscode.postMessage({type: 'setPerformance', mode: performancePicker.value});
+});
 const followupsBox = document.getElementById("followups");
 let followups = [];
 let pendingFollowup = null;
 let editingFollowup = null;
+const followupDragType = "application/x-trinity-followup";
+let followupDrag = null;
+let pendingFollowupOrder = null;
+let followupFocus = null;
+let followupScrollFrame = null;
+let followupPointerY = null;
 function followupCommand(action, extra = {}) {
   if (!activeArchiveId) return;
   vscode.postMessage({type: "followup", conversation: activeArchiveId, action, ...extra});
 }
+function clearFollowupDropTargets() {
+  followupsBox.querySelectorAll('.followup-drop-before,.followup-drop-after').forEach(row =>
+    row.classList.remove('followup-drop-before', 'followup-drop-after'));
+}
+function endFollowupDrag() {
+  followupDrag = null;
+  followupPointerY = null;
+  if (followupScrollFrame !== null) window.cancelAnimationFrame(followupScrollFrame);
+  followupScrollFrame = null;
+  renderFollowups();
+}
+function resetFollowupInteraction() {
+  pendingFollowupOrder = null;
+  followupFocus = null;
+  followupsBox.removeAttribute('aria-busy');
+  endFollowupDrag();
+}
+function scrollFollowupDrag() {
+  if (!followupDrag) return;
+  const bounds = followupsBox.getBoundingClientRect();
+  if (followupPointerY !== null && followupPointerY >= bounds.top && followupPointerY <= bounds.bottom) {
+    if (followupPointerY < bounds.top + 24) followupsBox.scrollTop -= 8;
+    else if (followupPointerY > bounds.bottom - 24) followupsBox.scrollTop += 8;
+  }
+  followupScrollFrame = window.requestAnimationFrame(scrollFollowupDrag);
+}
+function reorderFollowup(id, target, position) {
+  if (pendingFollowupOrder || !activeArchiveId || id === target) return;
+  if (![id, target].every(value => followups.some(item => item.id === value))) {
+    setStatus(t("La liste a changé : cette tâche a déjà démarré ou été retirée."), "warning");
+    return;
+  }
+  const ordered = followups.filter(item => item.id !== id);
+  ordered.splice(ordered.findIndex(item => item.id === target) + (position === 'after' ? 1 : 0), 0, followups.find(item => item.id === id));
+  if (ordered.every((item, index) => item.id === followups[index].id)) return;
+  pendingFollowupOrder = {id, conversation: activeArchiveId};
+  followupFocus = id;
+  followupsBox.setAttribute('aria-busy', 'true');
+  followupCommand('reorder', {id, target, position});
+}
+function followupDropTarget(event) {
+  if (!followupDrag || followupDrag.conversation !== activeArchiveId || !Array.from(event.dataTransfer?.types || []).includes(followupDragType)) return null;
+  const row = event.target.closest('.followup-row');
+  if (!row || !followupsBox.contains(row) || row.dataset.followupId === followupDrag.id) return null;
+  const bounds = row.getBoundingClientRect();
+  return {row, target: row.dataset.followupId, position: event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'};
+}
+followupsBox.addEventListener('dragstart', event => {
+  const row = event.target.closest('.followup-row');
+  if (!row || !activeArchiveId || pendingFollowupOrder || !event.dataTransfer || event.target.closest('button:not(.followup-drag-handle)')) {
+    event.preventDefault(); return;
+  }
+  followupDrag = {id: row.dataset.followupId, conversation: activeArchiveId};
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData(followupDragType, JSON.stringify(followupDrag));
+  row.classList.add('followup-drag-source');
+  followupScrollFrame = window.requestAnimationFrame(scrollFollowupDrag);
+});
+followupsBox.addEventListener('dragover', event => {
+  clearFollowupDropTargets();
+  if (followupDrag) followupPointerY = event.clientY;
+  const destination = followupDropTarget(event);
+  if (!destination) { if (followupDrag && event.dataTransfer) event.dataTransfer.dropEffect = 'none'; return; }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  destination.row.classList.add('followup-drop-' + destination.position);
+});
+followupsBox.addEventListener('dragleave', event => {
+  if (!followupsBox.contains(event.relatedTarget)) {
+    followupPointerY = null;
+    clearFollowupDropTargets();
+  }
+});
+followupsBox.addEventListener('drop', event => {
+  const destination = followupDropTarget(event), source = followupDrag;
+  if (destination) {
+    event.preventDefault();
+    reorderFollowup(source.id, destination.target, destination.position);
+  }
+  if (source) endFollowupDrag();
+});
+window.addEventListener('dragend', () => { if (followupDrag) endFollowupDrag(); });
+window.addEventListener('blur', () => { if (followupDrag) endFollowupDrag(); });
+window.addEventListener('keydown', event => { if (event.key === 'Escape' && followupDrag) endFollowupDrag(); });
+followupsBox.addEventListener('keydown', event => {
+  if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || !event.target.closest('.followup-drag-handle')) return;
+  event.preventDefault();
+  const id = event.target.closest('.followup-row').dataset.followupId;
+  const up = event.key === 'ArrowUp', index = followups.findIndex(item => item.id === id);
+  const target = followups[index + (up ? -1 : 1)];
+  if (target) reorderFollowup(id, target.id, up ? 'before' : 'after');
+});
 function renderFollowups() {
+  if (followupDrag) {
+    if (followupDrag.conversation === activeArchiveId && followups.length) return;
+    endFollowupDrag(); return;
+  }
+  if (pendingFollowupOrder && pendingFollowupOrder.conversation !== activeArchiveId) {
+    pendingFollowupOrder = null;
+    followupFocus = null;
+    followupsBox.removeAttribute('aria-busy');
+  }
+  const scrollTop = followupsBox.scrollTop;
+  const focused = document.activeElement?.closest('.followup-drag-handle')?.closest('.followup-row')?.dataset.followupId;
   followupsBox.replaceChildren();
   followupsBox.hidden = !followups.length;
   for (const item of followups) {
     const row = document.createElement("div");
     row.className = "followup-row";
+    row.dataset.followupId = item.id;
+    row.draggable = true;
+    const grip = document.createElement('button');
+    grip.type = 'button';
+    grip.className = 'followup-drag-handle';
+    grip.draggable = true;
+    grip.title = t('Glisser pour réordonner · Alt + ↑ / ↓');
+    grip.setAttribute('aria-label', t('Déplacer la tâche : {0}', item.text));
+    grip.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
+    grip.innerHTML = uiIcon('grip');
+    row.append(grip);
     const label = document.createElement("span");
     label.textContent = `${t(item.mode === "steer" ? "Réorientation en attente" : "En attente")} · ${item.text}`;
     label.title = item.text;
@@ -43,7 +179,7 @@ function renderFollowups() {
       button.innerHTML = uiIcon(icon);
       button.onclick = () => {
         if (action === "edit") {
-          if (prompt.value.trim() || pendingImages.length) { setStatus(t("Vide le brouillon avant de modifier un message.")); return; }
+          if (prompt.value.trim() || pendingImages.length) { setStatus(t("Vide le brouillon avant de modifier un message."), "warning"); return; }
           editingFollowup = item.id;
           prompt.value = item.text;
           resizePrompt();
@@ -62,6 +198,14 @@ function renderFollowups() {
     resume.onclick = () => followupCommand("continue");
     followupsBox.append(resume);
   }
+  followupsBox.scrollTop = scrollTop;
+  const focusId = pendingFollowupOrder ? focused : followupFocus || focused;
+  const handle = [...followupsBox.querySelectorAll('.followup-row')].find(row => row.dataset.followupId === focusId)?.querySelector('.followup-drag-handle');
+  if (handle) {
+    handle.focus({preventScroll: true});
+    if (followupFocus && !pendingFollowupOrder) handle.scrollIntoView({block: 'nearest'});
+  }
+  if (!pendingFollowupOrder) followupFocus = null;
 }
 
 const clear = document.getElementById("clear");
@@ -101,6 +245,7 @@ let historyIndex = promptHistory.length;
 let historyDraft = "";
 let busy = false;
 let activeArchiveId = "";
+let loadingArchive = null;
 const resumableArchives = new Set();
 const sendArrow = send.innerHTML;
 function updateSendButton() {
@@ -109,7 +254,7 @@ function updateSendButton() {
     ? uiIcon("play")
     : sendArrow;
   send.title = editingFollowup ? t("Enregistrer le message") : resumable ? t("Reprendre la tâche interrompue")
-    : busy ? t(followupMode.value === "steer" ? "Réorienter" : "Mettre en attente") : t("Envoyer");
+    : t("Envoyer");
   send.setAttribute("aria-label", send.title);
 }
 function resumeArchive(id) {
@@ -128,7 +273,7 @@ let backendReady = false;
 let creatingConversation = false;
 let selectedArchiveForDeletion = null;
 let snapshotTimer;
-let archiveNoticeTimer;
+const noticeTimers = new WeakMap();
 let pendingImages = [];
 const activityRows = new Map();
 const approvalCards = new Map();
@@ -137,12 +282,14 @@ const maxImages = 5;
 const maxClientImageBytes = 4 * 1024 * 1024;
 
 function persist() {
+  if (loadingArchive) return;
   vscode.setState({ html: messages.innerHTML, fullAccess, model: selectedModel, lastRoutedModel, promptHistory });
   if (!backendReady || creatingConversation || !activeArchiveId) return;
   window.clearTimeout(snapshotTimer);
   const snapshotConversation = activeArchiveId;
   snapshotTimer = window.setTimeout(() => {
     if (creatingConversation || snapshotConversation !== activeArchiveId) return;
+    cleanActivityLabels(messages);
     vscode.postMessage({
       type: "snapshot",
       conversation: snapshotConversation,
@@ -189,8 +336,8 @@ function priceLabel(model) {
   const input = Number(model.input_per_million || 0);
   const output = Number(model.output_per_million || 0);
   if (input || output) {
-    const inputText = input ? formatModelCost(input, currency) : "—";
-    const outputText = output ? formatModelCost(output, currency) : "—";
+    const inputText = input ? formatModelCost(input, currency) : "-";
+    const outputText = output ? formatModelCost(output, currency) : "-";
     return t("{0} entrée · {1} sortie / 1M tokens", inputText, outputText);
   }
   return t("Tarif non communiqué par l’API");
@@ -289,7 +436,7 @@ function stamp(block, timestamp = new Date().toISOString()) {
   let time = block.querySelector(":scope > .message-time");
   if (!time) { time = document.createElement("time"); time.className = "message-time"; block.appendChild(time); }
   const date = timestamp ? new Date(timestamp) : null;
-  if (!date || !Number.isFinite(date.getTime())) { time.textContent = "—"; return; }
+  if (!date || !Number.isFinite(date.getTime())) { time.textContent = "-"; return; }
   time.dateTime = date.toISOString();
   time.textContent = new Intl.DateTimeFormat(uiLanguage, { dateStyle: "short", timeStyle: "short" }).format(date);
   time.title = date.toLocaleString(uiLanguage);
@@ -297,14 +444,14 @@ function stamp(block, timestamp = new Date().toISOString()) {
 
 function restoreTimestamps(root, timeline = []) {
   const queue = type => timeline.filter(item => item.type === type).map(item => item.timestamp);
-  const users = queue("user"), replies = queue("response"), changes = queue("file_change"), tools = queue("tool_start"), approvals = queue("approval");
+  const users = queue("user"), replies = queue("response"), changes = queue("file_change"), approvals = queue("approval");
   for (const block of root.querySelectorAll(":scope > .message")) {
     const recorded = block.classList.contains("user") ? users.shift()
       : block.classList.contains("archived-file-change") ? changes.shift() : replies.shift();
     const existing = block.querySelector(":scope > .message-time");
     stamp(block, existing?.dateTime || recorded || null);
   }
-  for (const [selector, dates] of [[".activity-row > div", tools], [".approval-card", approvals], [".file-change > summary", changes]]) {
+  for (const [selector, dates] of [[".approval-card", approvals], [".file-change > summary", changes]]) {
     for (const block of root.querySelectorAll(selector)) {
       const recorded = dates.shift();
       const existing = block.querySelector(":scope > .message-time");
@@ -314,21 +461,34 @@ function restoreTimestamps(root, timeline = []) {
 }
 
 function formatElapsed(startedAt) {
-  const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+  const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
   if (seconds < 60) return `${seconds} s`;
   return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
 }
 
+function paintNotice(element, text, severity = 'info') {
+  window.clearTimeout(noticeTimers.get(element));
+  noticeTimers.delete(element);
+  const kind = ['success','warning','error','info'].includes(severity) ? severity : 'info';
+  element.style.opacity = '';
+  element.textContent = text;
+  if (text) {
+    element.dataset.status = kind;
+    noticeTimers.set(element, window.setTimeout(() => paintNotice(element, ''), 7000));
+  } else {
+    delete element.dataset.status;
+    element.classList.remove('error-message');
+  }
+}
 function setStatus(text, failed = false) {
-  status.style.opacity = text === t("Conversation supprimée définitivement") ? "0.33" : "";
-  status.textContent = text;
-  status.classList.toggle("error-message", failed);
+  const severity = failed === true ? 'error' : typeof failed === 'string' ? failed : 'info';
+  paintNotice(status, presentationText(text), severity);
+  status.classList.toggle('error-message', severity === 'error');
 }
 
 function setBusy(value, text = "", failed = false) {
   busy = value;
   send.disabled = !!pendingFollowup;
-  followupMode.hidden = !value;
   renderFollowups();
   updateSendButton();
   stop.hidden = false;
@@ -525,6 +685,20 @@ function renderArchiveMessages(items) {
     if (item.type === "file_change") addArchivedFileChange(item);
     if (item.type === "response") addArchivedAssistant(item.html || "", false, item.timestamp || null);
     if (item.type === "error") addArchivedAssistant(item.html || "", true, item.timestamp || null);
+    if (item.type === "verification_status" && item.status !== "running") {
+      const article = document.createElement("article");
+      article.className = "message assistant archived-verification";
+      showVerification(item, article);
+      messages.appendChild(article);
+    }
+    if (item.type === "verification_check") {
+      const article = document.createElement("article");
+      article.className = "message assistant archived-verification";
+      const detail = document.createElement("pre");
+      detail.textContent = verificationCheckText(item);
+      article.appendChild(detail);
+      messages.appendChild(article);
+    }
   }
   if (!messages.children.length) {
     messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
@@ -540,8 +714,9 @@ function applySnapshot(data) {
   activityRows.clear();
   approvalCards.clear();
   messages.innerHTML = safeHtml(data.html);
-  upgradeSnapshotIcons(messages);
+  upgradeSnapshotPresentation(messages);
   restoreTimestamps(messages, data.timeline || []);
+  restoreActivityTimings(messages, data.timeline || []);
   OvhI18n.translateSnapshot(messages);
   messages.querySelectorAll("details.activity").forEach(activity => { activity.open = false; });
   for (const article of messages.querySelectorAll(".message.failure")) article.remove();
@@ -563,22 +738,292 @@ function applySnapshot(data) {
   scrollToBottom();
 }
 
-function renderArchives(items) {
-  archiveList.innerHTML = "";
+const archiveDragType='application/x-trinity-conversation-organizer';
+let archiveDrag=null, deferredArchives=null, pendingOrganization=null, organizationFocus=null;
+let archiveScrollFrame=null, archivePointerY=null;
+const pendingProjectUpdates=new Map();
+let projectUpdateSequence=0;
+
+function updateProject(project, patch) {
+  const message={type:'updateProject',project,...patch,requestId:`project-${++projectUpdateSequence}`};
+  pendingProjectUpdates.set(project,message);
+  if(patch.root!==undefined) {
+    const group=[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===project);
+    group?.querySelectorAll('.project-editor input,.project-editor button').forEach(control=>{control.disabled=true;});
+  }
+  archiveOrganizationNotice(t('Enregistrement…'));
+  vscode.postMessage(message);
+}
+function flushDeferredArchives() {
+  if(deferredArchives) {const latest=deferredArchives;deferredArchives=null;renderArchives(latest.items,latest.projects);}
+}
+function closeProjectEditor(group) {
+  group.querySelector('.project-editor').hidden=true;
+  group.querySelector('input[type=text]').value=group.dataset.projectName;
+  group.querySelector('.project-path-input').value=group.dataset.projectRoot;
+  group.querySelector('.project-color-hex').value=group.dataset.projectColor.toUpperCase();
+  if(!pendingProjectUpdates.has(group.dataset.projectId)) {
+    group.querySelector('input[type=color]').value=group.dataset.projectColor;
+    group.style.setProperty('--project-color',group.dataset.projectColor);
+  }
+  flushDeferredArchives();
+  [...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===group.dataset.projectId)?.querySelector('.project-edit').focus();
+}
+function projectUpdateResult(data) {
+  const success=data.type==='project_updated',id=success?(data.previousId || data.project.id):data.project;
+  const group=[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===id);
+  if(success) {
+    if(group) {group.dataset.projectName=data.project.name;group.dataset.projectColor=data.project.color || primaryColor;group.dataset.projectRoot=data.project.root || group.dataset.projectRoot;}
+    const deferred=deferredArchives?.projects?.find(item=>item.id===id);
+    if(deferred)Object.assign(deferred,data.project);
+  }
+  const pending=pendingProjectUpdates.get(id);
+  if(!pending || pending.requestId!==data.requestId)return;
+  pendingProjectUpdates.delete(id);
+  group?.querySelectorAll('.project-editor input,.project-editor button').forEach(control=>{control.disabled=false;});
+  if(success && group) {
+    group.dataset.projectId=data.project.id;
+    group.querySelector('.project-folder-name').textContent=data.project.name;
+    group.querySelector('.project-folder-path').textContent=group.dataset.projectRoot;
+    // A color acknowledgement must not discard a title draft or close the picker.
+    if(pending.name!==undefined && group.querySelector('input[type=text]').value.trim()===pending.name && group.querySelector('input[type=color]').value===pending.color && (pending.root===undefined || group.querySelector('.project-path-input').value.trim()===pending.root))closeProjectEditor(group);
+  }
+  archiveOrganizationNotice(success?t(pending.name===undefined?'Couleur du dossier enregistrée.':'Projet enregistré.'):t('Enregistrement impossible : {0}',data.text || t('Erreur inconnue')),success?'success':'error');
+}
+
+function archiveOrganizationNotice(text, severity = 'info') {
+  const notice=document.getElementById('archive-notice');
+  paintNotice(notice,text,severity);
+}
+function clearArchiveDropTargets() {
+  archiveList.querySelectorAll('.archive-drop-target,.project-drop-before,.project-drop-after').forEach(element=>
+    element.classList.remove('archive-drop-target','project-drop-before','project-drop-after'));
+}
+function endArchiveDrag() {
+  archiveDrag=null;archivePointerY=null;
+  if(archiveScrollFrame!==null)window.cancelAnimationFrame(archiveScrollFrame);
+  archiveScrollFrame=null;
+  archiveList.classList.remove('dragging-conversation','dragging-project');
+  archiveList.querySelectorAll('.archive-drag-source').forEach(element=>element.classList.remove('archive-drag-source'));
+  clearArchiveDropTargets();
+  flushDeferredArchives();
+}
+function scrollArchiveDrag() {
+  if(!archiveDrag)return;
+  if(archivePointerY!==null) {
+    const bounds=archiveList.getBoundingClientRect();
+    const edge=40;
+    if(archivePointerY>=bounds.top && archivePointerY<=bounds.bottom) {
+      const movement=archivePointerY<bounds.top+edge?-12:archivePointerY>bounds.bottom-edge?12:0;
+      if(movement)archiveList.scrollTop+=movement;
+    }
+  }
+  archiveScrollFrame=window.requestAnimationFrame(scrollArchiveDrag);
+}
+function beginArchiveDrag(event, payload, element) {
+  if(pendingOrganization || !event.dataTransfer) {event.preventDefault();return;}
+  event.stopPropagation();
+  archiveDrag=payload;
+  event.dataTransfer.effectAllowed='move';
+  event.dataTransfer.setData(archiveDragType,JSON.stringify(payload));
+  archiveList.classList.add(payload.kind==='project'?'dragging-project':'dragging-conversation');
+  element.classList.add('archive-drag-source');
+  archiveScrollFrame=window.requestAnimationFrame(scrollArchiveDrag);
+}
+function archiveDropDestination(event) {
+  if(!archiveDrag || !Array.from(event.dataTransfer?.types||[]).includes(archiveDragType))return null;
+  const group=event.target.closest('.archive-project');
+  if(archiveDrag.kind==='project') {
+    if(!group || group.dataset.projectId===archiveDrag.source)return null;
+    const bounds=group.querySelector('summary').getBoundingClientRect();
+    return {element:group,target:group.dataset.projectId,position:event.clientY<bounds.top+bounds.height/2?'before':'after'};
+  }
+  const element=group || event.target.closest('.archive-ungrouped');
+  if(!element)return null;
+  const target=group?.dataset.projectId || null;
+  return target===archiveDrag.project?null:{element,target};
+}
+function organizeArchives(command) {
+  if(pendingOrganization)return;
+  pendingOrganization=command;
+  archiveList.setAttribute('aria-busy','true');
+  archiveOrganizationNotice(t('Enregistrement du classement…'));
+  vscode.postMessage(command);
+}
+archiveList.addEventListener('dragover',event=>{
+  if(!archiveDrag)return;
+  event.preventDefault();
+  archivePointerY=event.clientY;
+  clearArchiveDropTargets();
+  const destination=archiveDropDestination(event);
+  if(event.dataTransfer)event.dataTransfer.dropEffect=destination?'move':'none';
+  if(destination)destination.element.classList.add(archiveDrag.kind==='project'?'project-drop-'+destination.position:'archive-drop-target');
+});
+archiveList.addEventListener('dragleave',event=>{
+  if(!archiveList.contains(event.relatedTarget)) {clearArchiveDropTargets();archivePointerY=null;}
+});
+archiveList.addEventListener('drop',event=>{
+  if(!archiveDrag)return;
+  event.preventDefault();event.stopPropagation();
+  const destination=archiveDropDestination(event);
+  if(destination)organizeArchives(archiveDrag.kind==='project'
+    ?{type:'moveProject',source:archiveDrag.source,target:destination.target,position:destination.position}
+    :{type:'moveConversation',source:archiveDrag.source,conversation:archiveDrag.conversation,target:destination.target});
+  endArchiveDrag();
+});
+window.addEventListener('dragend',endArchiveDrag);
+window.addEventListener('blur',()=>{if(archiveDrag)endArchiveDrag();});
+window.addEventListener('keydown',event=>{if(event.key==='Escape' && archiveDrag)endArchiveDrag();});
+
+function restoreOrganizationFocus() {
+  if(!organizationFocus)return;
+  const command=organizationFocus;organizationFocus=null;
+  const element=command.type==='moveProject'
+    ?[...archiveList.querySelectorAll('.archive-project')].find(group=>group.dataset.projectId===command.source)?.querySelector('.project-drag-handle')
+    :[...archiveList.querySelectorAll('.archive-item')].find(row=>row.dataset.archiveId===command.conversation && row.dataset.archiveProject===command.source)?.querySelector('.archive-open');
+  element?.focus({preventScroll:true});
+  element?.scrollIntoView({block:'nearest'});
+}
+
+function renderArchives(items, projects) {
+  // Keep native color pickers, title drafts and dragged elements alive during refreshes.
+  if(archiveDrag || archiveList.querySelector('.project-editor:not([hidden])')) {deferredArchives={items,projects};return;}
+  const expanded=new Map([...archiveList.querySelectorAll('.archive-project')].map(group=>[group.dataset.projectId,group.open]));
+  const expandedDocuments=new Map([...archiveList.querySelectorAll('.archive-project')].map(group=>[group.dataset.projectId,group.querySelector('.project-documents')?.open]));
+  archiveList.innerHTML="";
+  const ungrouped=document.createElement('section');ungrouped.className='archive-ungrouped';
+  ungrouped.setAttribute('aria-label',t('Conversations hors projet'));
+  if(!projects?.length) {archiveList.append(ungrouped);renderArchiveRows(items,ungrouped);restoreOrganizationFocus();return;}
+  const title=document.createElement('h2');title.className='archive-section-title';title.textContent=t('Conversations hors projet');ungrouped.append(title);
+  if(items?.length) {
+    renderArchiveRows(items,ungrouped);
+  } else {
+    ungrouped.classList.add('archive-ungrouped-empty');
+    const hint=document.createElement('p');hint.className='archive-drop-hint';hint.textContent=t('Déposer ici pour retirer la conversation de son dossier.');ungrouped.append(hint);
+  }
+  for(const project of projects) {
+    const group=document.createElement('details');
+    group.className='archive-project';group.dataset.projectId=project.id;
+    group.open=expanded.get(project.id) ?? false;
+    const color=/^#[a-f0-9]{6}$/i.test(project.color||'')?project.color:primaryColor;
+    group.dataset.projectName=project.name;group.dataset.projectColor=color;group.dataset.projectRoot=project.root;
+    const displayedColor=pendingProjectUpdates.get(project.id)?.color || color;
+    group.style.setProperty('--project-color',displayedColor);
+    const summary=document.createElement('summary');
+    summary.draggable=false;
+    const handle=document.createElement('button');handle.type='button';handle.className='icon archive-drag-handle project-drag-handle';handle.draggable=true;handle.innerHTML=uiIcon('grip');
+    handle.title=t('Déplacer le dossier : glisser-déposer ou Alt + ↑ / ↓');handle.setAttribute('aria-label',handle.title+' : '+project.name);handle.setAttribute('aria-keyshortcuts','Alt+ArrowUp Alt+ArrowDown');
+    handle.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
+    handle.addEventListener('keydown',event=>{
+      if(!event.altKey || !['ArrowUp','ArrowDown'].includes(event.key))return;
+      event.preventDefault();event.stopPropagation();
+      const groups=[...archiveList.querySelectorAll('.archive-project')],index=groups.indexOf(group),up=event.key==='ArrowUp';
+      const target=groups[index+(up?-1:1)];
+      if(target)organizeArchives({type:'moveProject',source:project.id,target:target.dataset.projectId,position:up?'before':'after'});
+    });
+    summary.addEventListener('dragstart',event=>{
+      if(!event.target.closest('.project-drag-handle')) {event.preventDefault();return;}
+      beginArchiveDrag(event,{kind:'project',source:project.id},group);
+    });
+    const caret=document.createElement('button');caret.type='button';caret.className='icon project-caret';caret.innerHTML=uiIcon('chevron');
+    const updateCaret=()=>{caret.setAttribute('aria-expanded',String(group.open));caret.title=t(group.open?'Replier le projet':'Déplier le projet');caret.setAttribute('aria-label',caret.title+' : '+project.name);};
+    caret.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();group.open=!group.open;updateCaret();});
+    group.addEventListener('toggle',updateCaret);updateCaret();
+    const icon=document.createElement('span');icon.className='project-folder-icon';icon.innerHTML=uiIcon('folder');
+    const name=document.createElement('span');name.className='project-folder-name';name.textContent=project.name;name.title=project.root;
+    const total=project.items?.length || 0;
+    const count=document.createElement('span');count.className='project-folder-count';count.textContent=total===1?t('1 conversation'):t('{0} conversations',total);
+    summary.append(handle,icon,name,count);
+    const edit=document.createElement('button');edit.type='button';edit.className='icon project-edit';edit.innerHTML=uiIcon('edit');edit.title=t('Personnaliser le projet');edit.setAttribute('aria-label',edit.title+' : '+project.name);
+    summary.append(edit,caret);
+    const contents=document.createElement('div');contents.className='project-conversations';
+    const editor=document.createElement('form');editor.className='project-editor';editor.hidden=true;
+    const titleLabel=document.createElement('label');titleLabel.textContent=t('Titre du projet');
+    const titleInput=document.createElement('input');titleInput.type='text';titleInput.value=project.name;titleInput.maxLength=80;titleInput.required=true;titleLabel.append(titleInput);
+    const colorLabel=document.createElement('label');colorLabel.textContent=t('Couleur du projet');
+    const colorControls=document.createElement('span');colorControls.className='project-color-controls';
+    const hexInput=document.createElement('input');hexInput.type='text';hexInput.className='project-color-hex';
+    hexInput.value=displayedColor.toUpperCase();hexInput.placeholder='#RRGGBB';hexInput.maxLength=7;
+    hexInput.pattern='#?[0-9a-fA-F]{6}';hexInput.required=true;hexInput.spellcheck=false;
+    hexInput.setAttribute('aria-label',t('Couleur du projet')+' (HEX)');
+    const colorInput=document.createElement('input');colorInput.type='color';colorInput.value=displayedColor;colorInput.title=t('Couleur enregistrée automatiquement.');
+    colorInput.setAttribute('aria-label',t('Couleur du projet'));
+    colorControls.append(hexInput,colorInput);colorLabel.append(colorControls);
+    const hexColor=()=>/^#?[0-9a-f]{6}$/i.test(hexInput.value)?'#'+hexInput.value.replace(/^#/,'').toLowerCase():null;
+    hexInput.addEventListener('input',()=>{
+      const color=hexColor();if(!color)return;
+      colorInput.value=color;group.style.setProperty('--project-color',color);
+    });
+    hexInput.addEventListener('change',()=>{
+      const color=hexColor();if(!color){hexInput.reportValidity();return;}
+      hexInput.value=color.toUpperCase();colorInput.value=color;
+      group.style.setProperty('--project-color',color);updateProject(project.id,{color});
+    });
+    const previewColor=()=>{
+      hexInput.value=colorInput.value.toUpperCase();
+      group.style.setProperty('--project-color',colorInput.value);
+    };
+    colorInput.addEventListener('input',previewColor);
+    colorInput.addEventListener('change',()=>{
+      previewColor();updateProject(project.id,{color:colorInput.value});
+    });
+    const pathLabel=document.createElement('label');pathLabel.className='project-path-label';pathLabel.textContent=t('Chemin du projet');
+    const pathInput=document.createElement('input');pathInput.type='text';pathInput.className='project-path-input';pathInput.value=project.root;pathInput.required=true;pathInput.maxLength=4096;pathInput.spellcheck=false;pathLabel.append(pathInput);
+    const save=document.createElement('button');save.type='submit';save.textContent=t('Enregistrer');
+    const cancel=document.createElement('button');cancel.type='button';cancel.textContent=t('Fermer');cancel.onclick=()=>closeProjectEditor(group);
+    editor.append(titleLabel,colorLabel,pathLabel,save,cancel);
+    edit.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();group.open=true;updateCaret();if(!editor.hidden)closeProjectEditor(group);else {editor.hidden=false;titleInput.focus();}});
+    editor.addEventListener('submit',event=>{event.preventDefault();if(!titleInput.value.trim() || !pathInput.value.trim() || !hexInput.reportValidity())return;updateProject(project.id,{name:titleInput.value.trim(),color:colorInput.value,...(pathInput.value.trim()!==project.root?{root:pathInput.value.trim()}:{})});});
+    contents.append(editor);
+    const root=document.createElement('p');root.className='project-folder-path';root.textContent=project.root;contents.append(root);
+    if(project.documents?.length) {
+      const documents=document.createElement('details');documents.className='project-documents';documents.open=expandedDocuments.get(project.id) ?? false;
+      const label=document.createElement('summary');label.className='project-documents-label';
+      label.innerHTML=uiIcon('chevron','summary-chevron');
+      label.append(document.createTextNode(t('Documents Markdown du projet')+' · '+project.documents.length));documents.append(label);
+      for(const item of project.documents) {
+        const button=document.createElement('button');button.type='button';button.className='project-document';
+        const name=document.createElement('strong');name.textContent=item.name;
+        const location=document.createElement('span');location.textContent=item.path;
+        button.append(name,location);button.title=item.path;
+        button.addEventListener('click',()=>vscode.postMessage({type:'openProjectDocument',project:project.id,name:item.name,scope:item.scope}));
+        documents.append(button);
+      }
+      contents.append(documents);
+    }
+    renderArchiveRows(project.items,contents,project);
+    group.append(summary,contents);archiveList.append(group);
+  }
+  archiveList.append(ungrouped);
+  restoreOrganizationFocus();
+}
+
+function renderArchiveRows(items, container, project) {
   if (!items?.length) {
     const empty = document.createElement("p");
     empty.className = "archive-empty";
-    empty.textContent = t("Aucune conversation archivée.");
-    archiveList.appendChild(empty);
+    empty.textContent = t(project ? "Aucune conversation associée à ce projet." : "Aucune conversation archivée.");
+    container.appendChild(empty);
     return;
   }
   for (const item of items) {
+    const active=item.archive_active ?? (!project || project.active);
+    const source=item.archive_project || project?.id;
     const row = document.createElement("div");
-    row.className = `archive-item${item.current ? " current" : ""}`;
+    row.className = `archive-item${item.current && active ? " current" : ""}`;
     row.dataset.archiveId = item.id;
+    if(source)row.dataset.archiveProject=source;
+    row.dataset.archiveActive=String(active);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "archive-open";
+    if(source) {
+      row.draggable=false;button.draggable=false;
+      row.addEventListener('dragstart',event=>{
+        if(!event.target.closest('.conversation-drag-handle')) {event.preventDefault();return;}
+        beginArchiveDrag(event,{kind:'conversation',source,conversation:item.id,project:project?.id || null},row);
+      });
+    }
     const rawTitle = item.title === "Nouvelle conversation" ? t("Nouvelle conversation") : (item.title || t("Nouvelle conversation"));
     const displayTitle = String(rawTitle).replace(/\p{L}/u, letter => letter.toLocaleUpperCase(uiLanguage));
     const title = document.createElement("strong");
@@ -591,6 +1036,13 @@ function renderArchives(items) {
     meta.textContent = [dateText, item.model].filter(Boolean).join(" · ");
     button.append(title, meta);
     const openArchive = () => {
+      if(busy || loadingArchive) {setStatus(t("Termine ou arrête la tâche avant de changer de projet."), "warning");return;}
+      loadingArchive = item.id;
+      window.clearTimeout(snapshotTimer);
+      if(!active && source) {
+        setStatus(t("Chargement de la conversation…"));
+        vscode.postMessage({type:"openProject",project:source,conversation:item.id});return;
+      }
       activeArchiveId = item.id;
       updateSendButton();
       setArchiveVisible(false);
@@ -598,13 +1050,6 @@ function renderArchives(items) {
       vscode.postMessage({ type: "loadArchive", id: item.id });
     };
     button.addEventListener("click", openArchive);
-    const view = document.createElement("button");
-    view.type = "button";
-    view.className = "icon archive-action archive-view";
-    view.title = t("Consulter la conversation archivée");
-    view.setAttribute("aria-label", `${view.title} : ${displayTitle}`);
-    view.innerHTML = uiIcon("archive");
-    view.addEventListener("click", openArchive);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "icon archive-action archive-delete";
@@ -612,14 +1057,28 @@ function renderArchives(items) {
     remove.setAttribute("aria-label", t("Supprimer définitivement : {0}", displayTitle));
     remove.innerHTML = uiIcon("trash");
     remove.addEventListener("click", () => {
-      if (busy) { setStatus(t("Attends la fin de la réponse avant de supprimer une conversation.")); return; }
-      selectedArchiveForDeletion = item.id;
+      if (busy) { setStatus(t("Attends la fin de la réponse avant de supprimer une conversation."), "warning"); return; }
+      selectedArchiveForDeletion = {id:item.id,source};
       document.getElementById("delete-title").textContent = displayTitle;
       document.getElementById("delete-dialog").showModal();
       document.getElementById("delete-cancel").focus();
     });
-    row.append(button, view);
-    if (item.resumable) {
+    if(source) {
+      const handle=document.createElement('button');
+      handle.type='button';handle.className='icon archive-drag-handle conversation-drag-handle';
+      handle.draggable=true;handle.innerHTML=uiIcon('grip');
+      handle.title=t('Glisser la conversation vers un dossier');
+      handle.setAttribute('aria-label',handle.title+' : '+displayTitle);
+      handle.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
+      row.append(handle);
+    }
+    row.append(button);
+    if(source) {
+      const classify=document.createElement('button');classify.type='button';classify.className='icon archive-action archive-classify';classify.innerHTML=uiIcon('project');
+      classify.title=t('Classer cette conversation dans un projet');classify.setAttribute('aria-label',classify.title+' : '+displayTitle);
+      classify.addEventListener('click',()=>vscode.postMessage({type:'assignProject',source,conversation:item.id}));row.append(classify);
+    }
+    if (item.resumable && active) {
       const resume = document.createElement("button");
       resume.type = "button";
       resume.className = "icon archive-action archive-resume";
@@ -627,13 +1086,13 @@ function renderArchives(items) {
       resume.innerHTML = uiIcon("reload");
       resume.title = t("Reprendre la tâche interrompue après vérification de son état");
       resume.addEventListener("click", () => {
-        if (busy) { setStatus(t("Arrête la tâche en cours avant de reprendre une autre conversation.")); return; }
+        if (busy) { setStatus(t("Arrête la tâche en cours avant de reprendre une autre conversation."), "warning"); return; }
         resumeArchive(item.id);
       });
       row.appendChild(resume);
     }
     row.appendChild(remove);
-    archiveList.appendChild(row);
+    container.appendChild(row);
   }
 }
 
@@ -657,7 +1116,9 @@ function createAssistantRun() {
   const summaryText = document.createElement("span");
   summaryText.className = "activity-summary-text";
   summaryText.textContent = t("Réflexion en cours…");
-  summary.append(spinner, summaryText);
+  const elapsedText = document.createElement("span");
+  elapsedText.className = "activity-elapsed";
+  summary.append(spinner, summaryText, elapsedText);
   summary.insertAdjacentHTML("beforeend", uiIcon("chevron", "summary-chevron"));
   const list = document.createElement("div");
   list.className = "activity-list";
@@ -666,7 +1127,7 @@ function createAssistantRun() {
   const content = document.createElement("div");
   content.className = "content markdown streaming";
   content.innerHTML = "";
-  article.append(label, activity, content);
+  article.append(label, content, activity);
   stamp(article);
   messages.appendChild(article);
 
@@ -675,12 +1136,15 @@ function createAssistantRun() {
     activity,
     list,
     summaryText,
+    indicator: spinner,
+    elapsedText,
     content,
     startedAt: Date.now(),
     actions: 0,
     timer: undefined,
   };
-  run.timer = window.setInterval(() => updateRunSummary(run), 1000);
+  updateRunSummary(run);
+  run.timer = window.setInterval(() => {updateRunSummary(run);updateActivityTimers(run);}, 1000);
   currentRun = run;
   persist();
   scrollToBottom();
@@ -691,20 +1155,31 @@ function ensureRun() {
   return currentRun || createAssistantRun();
 }
 
-function updateRunSummary(run, finished = false) {
+function updateRunSummary(run, state = "") {
   const count = run.actions;
   const actionLabel = t("{0} action{1}", count, count === 1 ? "" : "s");
-  run.summaryText.textContent = finished
-    ? t("Terminé en {0} · {1}", formatElapsed(run.startedAt), actionLabel)
+  const elapsed = formatElapsed(run.startedAt);
+  run.elapsedText.textContent = elapsed;
+  run.elapsedText.title = t("Temps écoulé : {0}", elapsed);
+  run.elapsedText.setAttribute("aria-label", run.elapsedText.title);
+  run.summaryText.textContent = state
+    ? t(state === "done" ? "Terminé · {0}" : state === "error" ? "Échec · {0}" : "Interrompu · {0}", actionLabel)
     : (run.currentAction || t("Réflexion en cours…"));
-  run.summaryText.title = `${run.summaryText.textContent} · ${formatElapsed(run.startedAt)} · ${actionLabel}`;
+  run.summaryText.textContent = activityLabel(run.summaryText.textContent);
+  run.indicator.innerHTML = uiIcon(state === "done" ? "check" : state === "error" ? "error" : iconForTool(run.currentTool || "model"));
+  run.summaryText.title = `${run.summaryText.textContent} · ${elapsed}${state ? "" : ` · ${actionLabel}`}`;
 }
 
 function finishRun(state = "done") {
   if (!currentRun) return;
   const run = currentRun;
   window.clearInterval(run.timer);
-  updateRunSummary(run, true);
+  for (const item of activityRows.values()) {
+    if (item.row.closest('.message')!==run.article || !item.row.classList.contains('running')) continue;
+    setActivityDuration(item.row, Date.now()-item.startedAt, {partial:true});
+    item.row.classList.replace('running','stopped');
+  }
+  updateRunSummary(run, state);
   run.article.classList.remove("working");
   run.article.classList.add(state);
   run.content.classList.remove("streaming");
@@ -792,7 +1267,45 @@ function highlightCodeBlock(code, streaming) {
   if (language || !streaming) code.dataset.highlighted = "yes";
 }
 
+const responseEmojiSegments = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const responseEmojiPattern = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u20e3/u;
+
+function presentationText(text, mode = emojiMode) {
+  let filtered = "";
+  for (const { segment } of responseEmojiSegments.segment(String(text).replace(/\u2014/g, "-"))) {
+    const base = segment.replace(/[\ufe0e\ufe0f]/g, "");
+    if (!responseEmojiPattern.test(segment) || /^[©®™]$/.test(segment)) filtered += segment;
+    else if (mode >= 2) filtered += segment;
+    else if (mode === 1 && base === "➡") filtered += "➡️";
+    else if (mode === 1 && base === "✅") filtered += "✅";
+  }
+  return filtered;
+}
+
+function activityLabel(text) {
+  // UI action labels use SVG icons; emoji policy applies to assistant prose only.
+  return presentationText(text, 0).trim();
+}
+
+function cleanActivityLabels(root) {
+  for (const label of root.querySelectorAll(".activity-summary-text, .activity-row strong, .verification-status")) {
+    const cleaned = activityLabel(label.textContent);
+    if (label.textContent !== cleaned) label.textContent = cleaned;
+  }
+}
+
+function filterResponseEmojis(container) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    // Literal source and evidence must stay exact, including punctuation.
+    if (node.parentElement?.closest("pre,code,blockquote,a")) continue;
+    node.textContent = presentationText(node.textContent);
+  }
+}
+
 function enhanceMarkdown(container) {
+  filterResponseEmojis(container);
   for (const table of container.querySelectorAll("table")) {
     if (table.parentElement?.classList.contains("table-scroll")) continue;
     const wrapper = document.createElement("div");
@@ -827,22 +1340,35 @@ function setMarkdown(html) {
 
 function iconForTool(tool) {
   const name = { list: "list", read: "read", search: "search", edit: "edit", write: "edit",
-    command: "terminal", route: "reload", context: "context", cost: "cost", model: "model" }[tool];
+    web: "search", search_web: "search", read_webpage: "read", edit_file: "edit", write_file: "edit",
+    run_command: "terminal", run_host_command: "terminal", verify: "check",
+    command: "terminal", route: "reload", context: "context", cost: "model", model: "model" }[tool];
   return typeof name === "string" ? name : "terminal";
 }
 
-// Old saved conversations retain their content while adopting the current icon set.
-function upgradeSnapshotIcons(root) {
+// Saved conversations retain their content while adopting the current layout/icons.
+function upgradeSnapshotPresentation(root) {
+  cleanActivityLabels(root);
+  for (const article of root.querySelectorAll(".message.assistant")) {
+    const content = article.querySelector(":scope > .content");
+    const activity = article.querySelector(":scope > .activity");
+    if (content && activity) content.after(activity);
+  }
   for (const indicator of root.querySelectorAll(".run-indicator, .run-spinner")) {
     indicator.classList.remove("run-spinner");
     indicator.classList.add("run-indicator");
-    indicator.innerHTML = uiIcon("terminal");
+    const article = indicator.closest(".message.assistant");
+    const actions = indicator.closest(".activity")?.querySelectorAll(".activity-icon .icon-terminal, .activity-icon .icon-read, .activity-icon .icon-edit, .activity-icon .icon-search, .activity-icon .icon-list");
+    const lastAction = actions?.[actions.length - 1];
+    indicator.innerHTML = article?.classList.contains("done") ? uiIcon("check")
+      : article?.classList.contains("error") ? uiIcon("error") : lastAction?.outerHTML || uiIcon("model");
   }
   for (const icon of root.querySelectorAll(".file-change-icon")) {
     if (!icon.querySelector(".agent-icon")) icon.innerHTML = uiIcon(icon.textContent.trim() === "+" ? "plus" : "edit");
   }
-  const old = { "≡":"list", "⌕":"search", "✎":"edit", ">_":"terminal", "↻":"reload", "≋":"context", "$":"cost", "◆":"model", "✓":"check", "!":"error" };
+  const old = { "≡":"list", "⌕":"search", "✎":"edit", ">_":"terminal", "↻":"reload", "≋":"context", "$":"model", "◆":"model", "✓":"check", "!":"error" };
   for (const icon of root.querySelectorAll(".activity-icon")) {
+    if (icon.querySelector(".icon-cost")) icon.innerHTML = uiIcon("model");
     if (!icon.querySelector(".agent-icon")) {
       const name = old[icon.textContent.trim()];
       icon.innerHTML = uiIcon(typeof name === "string" ? name : "terminal");
@@ -853,50 +1379,167 @@ function upgradeSnapshotIcons(root) {
   }
 }
 
-function addActivity(data) {
+function validDuration(value) { return Number.isFinite(value) && value>=0; }
+function actionDuration(data) {
+  return validDuration(data?.duration_ms)?data.duration_ms:validDuration(data?.preparation_ms)?data.preparation_ms:null;
+}
+function setActivityDuration(row, milliseconds, {estimated=false,partial=false}={}) {
+  const title=row.querySelector('strong');
+  if(!title)return;
+  let heading=title.closest('.activity-heading');
+  if(!heading) {heading=document.createElement('div');heading.className='activity-heading';title.before(heading);heading.append(title);}
+  let elapsed=heading.querySelector('.activity-duration');
+  if(!elapsed) {elapsed=document.createElement('span');elapsed.className='activity-duration';heading.append(elapsed);}
+  if(!validDuration(milliseconds)) {
+    delete row.dataset.durationMs;delete row.dataset.durationEstimated;delete row.dataset.durationPartial;
+    elapsed.textContent=t('Durée non enregistrée');elapsed.title=elapsed.textContent;return;
+  }
+  const ms=Math.max(0,Math.round(milliseconds));
+  row.dataset.durationMs=String(ms);row.dataset.durationEstimated=String(estimated);row.dataset.durationPartial=String(partial);
+  const duration=ms<1000?(ms?`${ms} ms`:'< 1 ms'):ms<60000?`${new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:2}).format(ms/1000)} s`:`${Math.floor(ms/60000)} min ${Math.floor(ms/1000)%60} s`;
+  elapsed.textContent=(partial?'≥ ':estimated?'≈ ':'')+duration;
+  elapsed.title=t('Durée : {0}',elapsed.textContent);
+}
+function updateActivityTimers(run) {
+  for(const item of activityRows.values()) {
+    if(item.row.closest('.message')===run.article && item.row.classList.contains('running'))setActivityDuration(item.row,Math.max(0,Date.now()-item.startedAt));
+  }
+}
+function restoreActivityTimings(root, timeline=[]) {
+  const labels=new Map([
+    ['Contexte préparé','request_prepared'],['Réponse depuis la mémoire du projet','request_prepared'],
+    ['Modèle exécuté','model_active'],['Routage économique','model_routed'],['Plan de la tâche','plan_updated'],
+    ['Réorientation appliquée','steer_applied'],['Point d’avancement','task_checkpoint'],
+    ['Budget de contexte','context_compacted'],['Contexte compacté','context_compacted'],
+    ['Utilisation du modèle','usage'],['Coût de la compaction','usage'],['Mémoire locale · aucun appel API','usage'],
+  ].map(([label,type])=>[activityLabel(t(label)),type]));
+  const used=new Set();
+  for(const row of root.querySelectorAll('.activity-row')) {
+    const title=activityLabel(OvhI18n.message(row.querySelector('strong')?.textContent || ''));
+    const type=row.dataset.eventType || labels.get(title);
+    const stampValue=row.querySelector('.message-time')?.dateTime;
+    let event=row.dataset.activityId && timeline.find(item=>!used.has(item) && item.id===row.dataset.activityId && item.type==='tool_start');
+    if(!event)event=timeline.find(item=>!used.has(item) && (type?item.type===type:item.type==='tool_start' && activityLabel(OvhI18n.message(item.title || ''))===title)
+      && (!row.dataset.eventType || !stampValue || Date.parse(item.timestamp)===Date.parse(stampValue)));
+    if(event)used.add(event);
+    let end=event;
+    if(event?.type==='tool_start')end=timeline.find(item=>item.type==='tool_end' && item.id===event.id);
+    if(event?.type==='model_active') {
+      end=undefined;
+      for(const item of timeline.slice(timeline.indexOf(event)+1)) {
+        if((item.type==='user' && !item.steering) || item.type==='model_active')break;
+        if((item.type==='usage' && !item.purpose && item.model===event.model) || ['response','error'].includes(item.type)) {end=item;break;}
+      }
+    }
+    let duration=actionDuration(end),estimated=false,partial=false;
+    if(duration===null && row.dataset.durationMs!==undefined && validDuration(Number(row.dataset.durationMs))) {
+      duration=Number(row.dataset.durationMs);estimated=row.dataset.durationEstimated==='true';partial=row.dataset.durationPartial==='true' || row.classList.contains('running');
+    }
+    if(duration===null && event && end && end!==event) {
+      const start=Date.parse(event.timestamp),finish=Date.parse(end.timestamp);
+      if(Number.isFinite(start) && Number.isFinite(finish) && finish>=start) {duration=finish-start;estimated=true;}
+    }
+    setActivityDuration(row,duration,{estimated,partial});
+    // Older archives have second-resolution timestamps: zero means less than a second, not a measured zero.
+    if(estimated && duration===0 && event?.timestamp && !/\.\d+/.test(event.timestamp)) {
+      const elapsed=row.querySelector('.activity-duration');elapsed.textContent='< 1 s';elapsed.title=t('Durée : {0}',elapsed.textContent);
+    }
+    if(row.classList.contains('running'))row.classList.replace('running','stopped');
+    const body=row.querySelector(':scope > div');
+    if(body)stamp(body,stampValue || event?.timestamp || null);
+  }
+}
+
+function addActivity(data, updateCurrentAction = true) {
+  data={...data,id:data.id || `${data.type || data.tool}-${Date.now()}-${Math.random().toString(36).slice(2)}`};
   const run = ensureRun();
   run.actions += 1;
-  run.activeId = data.id;
-  run.currentAction = [data.title || t("Action en cours"), data.detail || ""].filter(Boolean).join(" · ").replace(/\s+/g, " ");
+  if (updateCurrentAction) {
+    run.activeId = data.id;
+    run.currentTool = data.tool;
+    run.currentAction = [data.title || t("Action en cours"), data.detail || ""].filter(Boolean).join(" · ").replace(/\s+/g, " ");
+  }
   updateRunSummary(run);
   const row = document.createElement("div");
   row.className = "activity-row running";
+  row.dataset.activityId=data.id;
+  if(data.type)row.dataset.eventType=data.type;
   const icon = document.createElement("span");
   icon.className = "activity-icon";
   icon.innerHTML = uiIcon(iconForTool(data.tool));
   const body = document.createElement("div");
   const title = document.createElement("strong");
-  title.textContent = data.title || t("Action");
+  title.textContent = activityLabel(data.title || t("Action"));
   const detail = document.createElement("code");
   detail.textContent = data.detail || "";
   body.append(title, detail);
   stamp(body, data.timestamp);
   row.append(icon, body);
   run.list.appendChild(row);
-  activityRows.set(data.id, { row, icon, detail });
+  activityRows.set(data.id, { row, icon, detail, startedAt:Date.now(), timestamp:data.timestamp });
+  setActivityDuration(row,0);
   persist();
   scrollToBottom();
+  return data.id;
 }
 
 function finishActivity(data) {
   const item = activityRows.get(data.id);
   if (!item) return;
-  item.row.classList.remove("running");
+  const wasRunning=item.row.classList.contains('running');
+  item.row.classList.remove("running","stopped","success","failure");
   item.row.classList.add(data.success ? "success" : "failure");
-  item.icon.innerHTML = uiIcon(data.success ? "check" : "error");
+  if (!data.success) item.icon.innerHTML = uiIcon("error");
   if (currentRun?.activeId === data.id) {
     // Keep the last displayed action until the next activity arrives.
     currentRun.activeId = null;
     updateRunSummary(currentRun);
   }
   item.detail.textContent = data.detail || "";
+  let duration=actionDuration(data);
+  if(duration===null && !data.completedOnly)duration=!wasRunning && validDuration(Number(item.row.dataset.durationMs))?Number(item.row.dataset.durationMs):Math.max(0,Date.now()-item.startedAt);
+  setActivityDuration(item.row,duration);
   persist();
 }
 
-function addCompletedActivity(tool, title, detail) {
+function addCompletedActivity(tool, title, detail, data={}) {
   const id = `${tool}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  addActivity({ id, tool, title, detail });
-  finishActivity({ id, success: true, detail });
+  // Context/billing telemetry belongs in the journal, not in the current task label.
+  addActivity({ ...data, id, tool, title, detail }, false);
+  finishActivity({ ...data, id, success: true, detail, completedOnly:true });
+}
+
+function verificationCheckText(data) {
+  const phase = t(data.phase === "before" ? "Avant modification" : "Après vérification");
+  const exit = data.exit_code == null ? t("indisponible") : String(data.exit_code);
+  const count = Number.isInteger(data.reported_tests) && data.reported_tests >= 0 ? String(data.reported_tests) : t("indisponible");
+  const countLabel = t("Tests décomptés : {0}", count);
+  return `${phase} · ${data.check || ""}\n${(data.argv || []).join(" ")}\nexit=${exit} · ${data.duration_ms || 0} ms\n${countLabel}\n${String(data.output || "").slice(-4000)}`;
+}
+
+function showVerification(data, article = ensureRun().article) {
+  if (data.status === "not_required") return;
+  let badge = article.querySelector(":scope > .verification-status");
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.className = "verification-status";
+    article.appendChild(badge);
+  }
+  const labels = {
+    pending: "Modifications en attente de vérification",
+    running: "Contrôles en cours",
+    passed: "Contrôles configurés réussis",
+    failed: "Validation refusée",
+    observed_failure: "Audit : échecs observés dans les contrôles",
+    rolled_back: "Modifications non validées restaurées",
+    conflict: "Conflit de restauration : changement extérieur préservé",
+  };
+  badge.textContent = t(labels[data.status] || "Validation refusée");
+  badge.className = `verification-status verification-${Object.hasOwn(labels, data.status) ? data.status : "failed"}`;
+  const details = [...(data.problems || []), ...(data.conflicts || [])];
+  if (data.status === "passed") details.push(t("Ces contrôles couvrent leur périmètre, pas l’ensemble des affirmations du modèle."));
+  badge.title = details.join("\n");
+  persist();
 }
 
 function formatModelCost(value, currency = "EUR") {
@@ -1102,7 +1745,19 @@ function ensureVisionModel() {
   setStatus(t("Un modèle Vision sera utilisé pour cette image ; ton modèle sélectionné est conservé."));
 }
 
-async function addImageFiles(files) {
+let imagePreparationQueue = Promise.resolve();
+let pendingImagePreparations = 0;
+
+function addImageFiles(files) {
+  // Serialize paste/drop/file-picker events: concurrent decodes must share the limit.
+  const selected = Array.from(files || []);
+  pendingImagePreparations += 1;
+  const work = imagePreparationQueue.then(() => prepareImageFiles(selected));
+  imagePreparationQueue = work.catch(() => {});
+  return work.finally(() => { pendingImagePreparations -= 1; });
+}
+
+async function prepareImageFiles(files) {
   const candidates = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
   if (!candidates.length) return;
   const available = maxImages - pendingImages.length;
@@ -1126,16 +1781,22 @@ async function addImageFiles(files) {
 }
 
 function submit() {
+  if (pendingImagePreparations) {
+    setStatus(t("Préparation des images en cours…"));
+    return;
+  }
+  if (loadingArchive) return;
   const text = prompt.value.trim();
   if ((!text && !pendingImages.length) || pendingFollowup) return;
   if (busy || editingFollowup) {
     if (!activeArchiveId) { setStatus(t("Connexion en cours…")); return; }
-    if (pendingImages.length) { setStatus(t("Les messages en attente acceptent du texte uniquement.")); return; }
-    if (text.length > 16000) { setStatus(t("Message limité à 16 000 caractères.")); return; }
+    if (pendingImages.length) { setStatus(t("Les messages en attente acceptent du texte uniquement."), "warning"); return; }
+    if (text.length > 16000) { setStatus(t("Message limité à 16 000 caractères."), "warning"); return; }
     const id = editingFollowup || crypto.randomUUID();
-    pendingFollowup = {id, text};
+    const action = editingFollowup ? "edit" : "add";
+    pendingFollowup = {id, text, action};
     send.disabled = true;
-    followupCommand(editingFollowup ? "edit" : "add", {id, text, mode: followupMode.value, fullAccess, model: selectedModel});
+    followupCommand(action, {id, text, mode: "queue", fullAccess, model: selectedModel});
     return;
   }
   ensureVisionModel();
@@ -1158,8 +1819,9 @@ function submit() {
 
 if (saved?.html) {
   messages.innerHTML = safeHtml(saved.html);
-  upgradeSnapshotIcons(messages);
+  upgradeSnapshotPresentation(messages);
   restoreTimestamps(messages);
+  restoreActivityTimings(messages);
   OvhI18n.translateSnapshot(messages);
   for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
@@ -1174,16 +1836,19 @@ send.addEventListener("click", () => {
   if (!busy && !editingFollowup && !prompt.value.trim() && resumableArchives.has(activeArchiveId)) resumeArchive(activeArchiveId);
   else submit();
 });
-followupMode.addEventListener("change", updateSendButton);
 attach.addEventListener("click", () => imageInput.click());
 imageInput.addEventListener("change", async () => {
   await addImageFiles(imageInput.files);
   imageInput.value = "";
 });
-stop.addEventListener("click", () => vscode.postMessage({ type: "cancel" }));
+stop.addEventListener("click", () => {
+  resetFollowupInteraction();
+  vscode.postMessage({ type: "cancel" });
+});
 clear.addEventListener("click", () => {
   if (creatingConversation) return;
   creatingConversation = true;
+  loadingArchive = null;
   window.clearTimeout(snapshotTimer);
   clear.disabled = true;
   activeArchiveId = "";
@@ -1206,6 +1871,7 @@ clear.addEventListener("click", () => {
   setStatus(t("Nouvelle conversation"));
   prompt.focus();
 });
+document.getElementById("project-picker")?.addEventListener("click", () => vscode.postMessage({type:"selectProject"}));
 configure.addEventListener("click", () => vscode.postMessage({ type: "configureKey" }));
 billing.addEventListener("click", () => {
   setStatus(t("Actualisation du solde OVHcloud…"));
@@ -1279,9 +1945,21 @@ prompt.addEventListener("input", () => {
   resizePrompt();
 });
 prompt.addEventListener("paste", async (event) => {
-  const imageFiles = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith("image/"));
+  const clipboard = event.clipboardData;
+  let imageFiles = Array.from(clipboard?.files || []).filter((file) => file.type.startsWith("image/"));
+  // Chromium/VS Code can expose screenshots as DataTransferItems only.
+  if (!imageFiles.length) {
+    imageFiles = Array.from(clipboard?.items || [])
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile()).filter(Boolean);
+  }
   if (!imageFiles.length) return;
   event.preventDefault();
+  const text = clipboard?.getData?.("text/plain") || "";
+  if (text) {
+    prompt.setRangeText(text, prompt.selectionStart, prompt.selectionEnd, "end");
+    prompt.dispatchEvent(new Event("input", { bubbles: true }));
+  }
   await addImageFiles(imageFiles);
 });
 composer.addEventListener("dragover", (event) => {
@@ -1304,6 +1982,13 @@ messages.addEventListener("click", (event) => {
 });
 
 window.addEventListener("message", ({ data }) => {
+  if (data.type === "archive_open_failed" || (loadingArchive && data.type === "error")) {
+    loadingArchive = null;
+    setArchiveVisible(true);
+    setStatus(data.text || t("Termine ou arrête la tâche avant de changer de projet."), "warning");
+    return;
+  }
+  if (loadingArchive && ["archive_loaded", "snapshot_loaded"].includes(data.type) && data.id !== loadingArchive) return;
   if (creatingConversation) {
     if (data.type === "ready") { backendReady = true; return; }
     if (data.type === "cleared") {
@@ -1319,7 +2004,10 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "tool_end") data = {...data, detail: OvhI18n.message(data.detail)};
   if (data.type === "model_routed") data = {...data, reason: OvhI18n.message(data.reason)};
   if (data.type === "ready") {
-    activeArchiveId = data.conversation || activeArchiveId;
+    if (data.resources) showPerformance(data.resources.mode, data.resources);
+    if (Number.isInteger(data.emoji_mode) && data.emoji_mode >= 0 && data.emoji_mode <= 3) emojiMode = data.emoji_mode;
+    for (const content of messages.querySelectorAll(".assistant .markdown")) filterResponseEmojis(content);
+    if (!loadingArchive) activeArchiveId = data.conversation || activeArchiveId;
     updateSendButton();
     const archivePath = document.getElementById("archive-path");
     if (archivePath) {
@@ -1340,7 +2028,20 @@ window.addEventListener("message", ({ data }) => {
     updateSendButton();
     renderFollowups();
   }
-  if (data.type === "followup_ack" && pendingFollowup?.id === data.id) {
+  if (["followup_ack", "followup_error"].includes(data.type) && data.conversation && data.conversation !== activeArchiveId) return;
+  if (["followup_ack", "followup_error"].includes(data.type) && data.action === "reorder") {
+    if (pendingFollowupOrder && pendingFollowupOrder.id === data.id) {
+      pendingFollowupOrder = null;
+      followupsBox.removeAttribute('aria-busy');
+      renderFollowups();
+      if (data.type === 'followup_error') {
+        setStatus(t("Ordre non enregistré : {0}", OvhI18n.message(data.text)), true);
+        followupCommand('list');
+      } else setStatus(t("Ordre des tâches enregistré."), "success");
+    }
+    return;
+  }
+  if (data.type === "followup_ack" && pendingFollowup && pendingFollowup.id === data.id && data.action === pendingFollowup.action) {
     if (prompt.value.trim() === pendingFollowup.text) prompt.value = "";
     pendingFollowup = null;
     editingFollowup = null;
@@ -1349,8 +2050,10 @@ window.addEventListener("message", ({ data }) => {
     updateSendButton();
   }
   if (data.type === "followup_error") {
-    pendingFollowup = null;
-    send.disabled = false;
+    if (pendingFollowup && pendingFollowup.id === data.id && (!data.action || data.action === pendingFollowup.action)) {
+      pendingFollowup = null;
+      send.disabled = false;
+    }
     setStatus(t("Message non envoyé : {0}", OvhI18n.message(data.text)), true);
   }
   if (data.type === "followup_started") {
@@ -1361,24 +2064,34 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "steer_applied") {
     addUserMessage(data.text, [], data.timestamp);
     if (currentRun?.article) messages.append(currentRun.article);
-    addCompletedActivity("context", t("Réorientation appliquée"), data.text);
+    addCompletedActivity("context", t("Réorientation appliquée"), data.text, data);
   }
   if (data.type === "status") {
-    activeArchiveId = data.conversation || activeArchiveId;
+    if (!loadingArchive) activeArchiveId = data.conversation || activeArchiveId;
     followupCommand("list");
     ensureRun();
     setBusy(true, data.text);
   }
   if (data.type === "session_busy") {
+    if (performancePicker) performancePicker.disabled = false;
+    resetFollowupInteraction();
     if (currentRun) finishRun("stopped");
     setBusy(false, OvhI18n.message(data.text), true);
   }
   if (data.type === "tool_start") addActivity(data);
   if (data.type === "tool_end") finishActivity(data);
+  if (data.type === "task_checkpoint") addCompletedActivity("context", t("Point d’avancement"), t("{0} s écoulées · {1} appels restants", data.elapsed_seconds, data.remaining_requests), data);
+  if (data.type === "verification_status") showVerification(data);
+  if (data.type === "verification_check") {
+    const detail = verificationCheckText(data);
+    addActivity({...data, tool: "command", title: data.check, detail}, false);
+    finishActivity({...data, success: data.passed === true, detail, completedOnly:true});
+  }
   if (data.type === "file_change") addFileChange(data);
   if (data.type === "model_active") {
     const mode = data.automatic ? t("sélection automatique") : t("choix manuel verrouillé");
-    addCompletedActivity("model", t("Modèle exécuté"), `${data.model} · ${mode}`);
+    const id=addActivity({...data, tool:"model", title:t("Modèle exécuté"), detail:`${data.model} · ${mode}`},false);
+    currentRun.modelActivityId=id;
   }
   if (data.type === "model_routed") {
     lastRoutedModel = data.model || "";
@@ -1392,20 +2105,24 @@ window.addEventListener("message", ({ data }) => {
     const account = data.billing?.available
       ? t(data.billing.balance_estimated ? " · solde estimé {0} · prévision {1}" : " · crédits {0} · prévision {1}", formatMoney(data.billing.balance_estimated ? data.billing.credit_remaining ?? data.billing.credit_remaining_display : data.billing.credit_available, data.billing.credit_currency || data.billing.currency), formatMoney(data.billing.forecast_usage, data.billing.currency))
       : "";
-    addCompletedActivity("route", t("Routage économique"), `${data.model} · ${data.reason || t("modèle compatible")}${cost}${pool}${history}${account}`);
+    addCompletedActivity("route", t("Routage économique"), `${data.model} · ${data.reason || t("modèle compatible")}${cost}${pool}${history}${account}`, data);
   }
   if (data.type === "plan_updated") {
     const steps = Array.isArray(data.steps) ? data.steps : [];
     const current = Number(data.current_step) || 0;
     addCompletedActivity("context", t("Plan de la tâche"), steps.map((step, i) =>
-      `${i < current ? "✓" : i === current ? "→" : "○"} ${i + 1}. ${step}`).join("\n"));
+      `${i < current ? "✓" : i === current ? "→" : "○"} ${i + 1}. ${step}`).join("\n"), data);
+    if (typeof steps[current] === "string" && !currentRun.activeId) {
+      currentRun.currentAction = steps[current].replace(/\s+/g, " ");
+      updateRunSummary(currentRun);
+    }
   }
   if (data.type === "request_prepared") {
     const sources = Array.isArray(data.sources) ? data.sources : [];
     const files = new Set(sources.map(source => source.path)).size;
-    const detail = t("{0} fichiers ciblés · préparation locale : {1} ms", files, data.preparation_ms || 0);
-    addCompletedActivity("context", t("Contexte préparé"), detail +
-      (data.partial ? t(" · recherche partielle, complétée au besoin par les outils") : ""));
+    const detail = t("{0} fichiers ciblés", files);
+    addCompletedActivity("context", t(data.local_answer ? "Réponse depuis la mémoire du projet" : "Contexte préparé"), detail +
+      (data.partial ? t(" · recherche partielle, complétée au besoin par les outils") : ""), data);
   }
   if (data.type === "context_compacted") {
     const usage = Number.isFinite(data.estimated_tokens)
@@ -1413,12 +2130,17 @@ window.addEventListener("message", ({ data }) => {
     const mode = data.summary_mode === "semantic" ? t(" · résumé généré")
       : data.summary_mode === "extractive" ? t(" · extraits archivés") : "";
     const saved = data.saved_percent ? t(" · {0}% de contexte libéré", data.saved_percent) : "";
-    addCompletedActivity("context", data.compacted ? t("Contexte compacté") : t("Budget de contexte"), usage + mode + saved);
+    addCompletedActivity("context", data.compacted ? t("Contexte compacté") : t("Budget de contexte"), usage + mode + saved, data);
   }
   if (data.type === "usage") {
+    if(currentRun?.modelActivityId && !data.purpose && !data.local_answer) {
+      const item=activityRows.get(currentRun.modelActivityId);
+      if(item)finishActivity({...data,id:currentRun.modelActivityId,success:true,detail:item.detail.textContent});
+      currentRun.modelActivityId=null;
+    }
     const timing = Number.isFinite(data.first_text_ms)
       ? t(" · premier texte : {0} s", (data.first_text_ms / 1000).toFixed(2)) : "";
-    addCompletedActivity("cost", data.purpose === "compaction" ? t("Coût de la compaction") : t("Utilisation du modèle"), t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens, formatModelCost(data.cost_eur ?? data.cost_usd, data.cost_eur != null ? "EUR" : "USD")) + timing);
+    addCompletedActivity("cost", data.local_answer ? t("Mémoire locale · aucun appel API") : data.purpose === "compaction" ? t("Coût de la compaction") : t("Utilisation du modèle"), t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens, formatModelCost(data.cost_eur ?? data.cost_usd, data.cost_eur != null ? "EUR" : "USD")) + timing, data);
   }
   if (data.type === "approval") addApproval(data);
   if (data.type === "approval_result") resolveApproval(data);
@@ -1426,10 +2148,13 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "response") {
     resumableArchives.delete(activeArchiveId);
     setMarkdown(data.html);
+    if (data.verification) showVerification(data.verification);
     finishRun("done");
     setBusy(false, "");
   }
   if (data.type === "error") {
+    if (performancePicker) performancePicker.disabled = false;
+    resetFollowupInteraction();
     const detail = String(data.text || t("Erreur inconnue"));
     const run = ensureRun();
     const errorMessage = document.createElement("p");
@@ -1441,12 +2166,21 @@ window.addEventListener("message", ({ data }) => {
     setBusy(false, t("La requête a échoué : {0}", detail), true);
   }
   if (data.type === "idle") {
+    if (performancePicker) performancePicker.disabled = false;
     vscode.postMessage({ type: "listArchives" });
     if (currentRun) finishRun("stopped");
     setBusy(false, "");
   }
   if (data.type === "cleared") { activeArchiveId = data.conversation || ""; setBusy(false, t("Nouvelle conversation")); }
   if (data.type === "configured") setBusy(false, t("Clé OVH enregistrée de façon sécurisée"));
+  if (data.type === 'performance_status') {
+    showPerformance(data.mode, data);
+    setStatus(t('Performances locales : {0}', data.mode === 'max' ? 'Max' : 'Auto'));
+  }
+  if (data.type === 'performance_error') {
+    showPerformance(data.mode);
+    setStatus(t('Impossible de changer les performances : {0}', OvhI18n.message(data.text)), true);
+  }
   if (data.type === "billing_configured") setBusy(false, t("Accès lecture seule à la facturation enregistré"));
   if (data.type === "billing_status") applyBillingStatus(data, !data.silent && !busy);
   if (data.type === "access_mode") {
@@ -1456,56 +2190,60 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "task_interrupted") {
     activeArchiveId = data.id || activeArchiveId;
     resumableArchives.add(activeArchiveId);
-    setBusy(false, t("Tâche interrompue — clique sur ▶ pour la reprendre."));
+    setBusy(false, t("Tâche interrompue - clique sur ▶ pour la reprendre."));
     vscode.postMessage({type: "listArchives"});
   }
   if (data.type === "archive_delete_pending") {
-    window.clearTimeout(archiveNoticeTimer);
-    document.getElementById("archive-notice").style.opacity = "";
-    document.getElementById("archive-notice").textContent = t("Suppression définitive en cours…");
-    const row = Array.from(archiveList.children).find(item => item.dataset.archiveId === data.id);
+    paintNotice(document.getElementById("archive-notice"),t("Suppression définitive en cours…"),"warning");
+    const row = Array.from(archiveList.querySelectorAll('.archive-item')).find(item => item.dataset.archiveId === data.id && (data.source ? item.dataset.archiveProject === data.source : item.dataset.archiveActive !== 'false'));
     if (row) { row.classList.add("deleting"); row.querySelectorAll("button").forEach(button => { button.disabled = true; }); }
-    setStatus(t("Suppression définitive en cours…"));
+    setStatus(t("Suppression définitive en cours…"), "warning");
   }
   if (data.type === "archive_delete_failed") {
-    window.clearTimeout(archiveNoticeTimer);
-    document.getElementById("archive-notice").style.opacity = "";
-    document.getElementById("archive-notice").textContent = data.text || t("La suppression a échoué.");
-    const row = Array.from(archiveList.children).find(item => item.dataset.archiveId === data.id);
+    paintNotice(document.getElementById("archive-notice"),data.text || t("La suppression a échoué."),"error");
+    const row = Array.from(archiveList.querySelectorAll('.archive-item')).find(item => item.dataset.archiveId === data.id && (data.source ? item.dataset.archiveProject === data.source : item.dataset.archiveActive !== 'false'));
     if (row) { row.classList.remove("deleting"); row.querySelectorAll("button").forEach(button => { button.disabled = false; }); }
-    setStatus(data.text || t("La suppression a échoué."));
+    setStatus(data.text || t("La suppression a échoué."), true);
   }
   if (data.type === "archive_deleted") {
-    resumableArchives.delete(data.id);
-    if (activeArchiveId === data.id) activeArchiveId = "";
+    if (data.active !== false) {
+      resumableArchives.delete(data.id);
+      if (activeArchiveId === data.id) activeArchiveId = "";
+    }
     updateSendButton();
     const notice = document.getElementById("archive-notice");
-    window.clearTimeout(archiveNoticeTimer);
-    notice.textContent = t("Conversation supprimée définitivement.");
-    notice.style.opacity = "0.33";
-    archiveNoticeTimer = window.setTimeout(() => {
-      notice.textContent = "";
-      notice.style.opacity = "";
-      if (status.textContent === t("Conversation supprimée définitivement")) setStatus("");
-    }, 5000);
-    window.clearTimeout(snapshotTimer);
-    const row = Array.from(archiveList.children).find(item => item.dataset.archiveId === data.id);
+    paintNotice(notice,t("Conversation supprimée définitivement."),"success");
+    if (data.active !== false) window.clearTimeout(snapshotTimer);
+    const row = Array.from(archiveList.querySelectorAll('.archive-item')).find(item => item.dataset.archiveId === data.id && (data.source ? item.dataset.archiveProject === data.source : item.dataset.archiveActive !== 'false'));
     if (row) row.remove();
     if (data.was_current) {
       backendReady = false;
       renderArchiveMessages([]);
       persist();
     }
-    setStatus(t("Conversation supprimée définitivement"));
+    setStatus(t("Conversation supprimée définitivement"), "success");
   }
+  if (data.type === 'archives_organized' || data.type === 'archive_organization_failed') {
+    const command=pendingOrganization;
+    pendingOrganization=null;organizationFocus=command;
+    archiveList.removeAttribute('aria-busy');
+    const success=data.type==='archives_organized';
+    if(success && command?.type==='moveConversation' && command.target) {
+      const group=[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===command.target);
+      if(group)group.open=true;
+    }
+    archiveOrganizationNotice(success?t(command?.type==='moveProject'?'Ordre des dossiers enregistré.':'Conversation déplacée.'):(data.text || t('Le classement a échoué.')),success?'success':'error');
+  }
+  if (data.type === 'project_updated' || data.type === 'project_update_failed') projectUpdateResult(data);
   if (data.type === "archives") {
     resumableArchives.clear();
-    for (const item of data.items || []) {
+    for (const item of [...(data.items || []), ...(data.projects || []).flatMap(project=>(project.items || []).map(item=>({...item,archive_active:item.archive_active ?? project.active})))]) {
+      if(item.archive_active===false)continue;
       if (item.resumable) resumableArchives.add(item.id);
       if (!activeArchiveId && item.current) activeArchiveId = item.id;
     }
     updateSendButton();
-    renderArchives(data.items);
+    renderArchives(data.items, data.projects);
     const archivePath = document.getElementById("archive-path");
     if (data.archive_root && archivePath) {
       archivePath.textContent = data.archive_root;
@@ -1526,6 +2264,9 @@ window.addEventListener("message", ({ data }) => {
     updateModelButton();
   }
   if (data.type === "archive_loaded") {
+    loadingArchive = null;
+    setArchiveVisible(false);
+    modelPanel.hidden = true;
     activeArchiveId = data.id || activeArchiveId;
     followups = [];
     followupCommand("list");
@@ -1533,6 +2274,9 @@ window.addEventListener("message", ({ data }) => {
     setBusy(false, data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
   }
   if (data.type === "snapshot_loaded") {
+    loadingArchive = null;
+    setArchiveVisible(false);
+    modelPanel.hidden = true;
     activeArchiveId = data.id || activeArchiveId;
     if (data.resumable) resumableArchives.add(activeArchiveId);
     followups = [];
@@ -1636,8 +2380,8 @@ document.getElementById("delete-cancel").addEventListener("click", () => {
 });
 document.getElementById("delete-dialog").addEventListener("cancel", () => { selectedArchiveForDeletion = null; });
 document.getElementById("delete-confirm").addEventListener("click", () => {
-  const id = selectedArchiveForDeletion;
+  const selection = selectedArchiveForDeletion;
   selectedArchiveForDeletion = null;
   document.getElementById("delete-dialog").close();
-  if (id) vscode.postMessage({type: "deleteArchiveConfirmed", id});
+  if (selection) vscode.postMessage({type: "deleteArchiveConfirmed", ...selection});
 });

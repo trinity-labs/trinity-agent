@@ -49,9 +49,12 @@ class ConversationMemory:
         atomic_write(self.index / f'{digest}.json', json.dumps(chunks, ensure_ascii=False))
         atomic_write(document, text)
         with (self.root / 'JOURNAL.md').open('a', encoding='utf-8') as stream:
-            stream.write(f'- [{digest}](documents/{digest}.md) — {len(text)} caractères\n')
+            stream.write(f'- [{digest}](documents/{digest}.md) - {len(text)} caractères\n')
         (self.root / 'JOURNAL.md').chmod(0o600)
         self.write_overview()
+        from ovh_project_memory import ProjectMemory
+        project=ProjectMemory.for_conversation(self.folder)
+        if project: project.changed()
         return digest
 
     def write_overview(self):

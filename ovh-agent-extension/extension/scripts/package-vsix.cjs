@@ -11,7 +11,7 @@ if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketpl
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
 try {
   // Explicit allowlist: never copy local backups, credentials, archives or custom branding.
-  const files = ['extension.js','archive-store.js','window-lock.js','security.js','package.json','package-lock.json','README.md','CHANGELOG.md',
+  const files = ['extension.js','project-store.js','archive-store.js','window-lock.js','security.js','package.json','package-lock.json','README.md','CHANGELOG.md',
     'package.nls.json','package.nls.fr.json','package.nls.en.json','package.nls.de.json','package.nls.es.json',
     'media/chat.js','media/chat.css','media/i18n.js','media/translations.json','media/safe-html.js','media/purify.min.js','media/icons.min.js',
     'media/highlight.min.js','media/monokai.min.css','media/HighlightJS.LICENSE',
@@ -28,7 +28,7 @@ try {
   if (publisher === 'trinity') {
     const crypto = require('node:crypto');
     const backend = {};
-    for (const name of ['ovh-agent.py', 'ovh_memory.py', 'ovh_context.py', 'ovh_cache.py', 'ovh_request.py', 'ovh_budget.py', 'ovh_budget_model.py', 'ovh-agent.sh']) {
+    for (const name of ['ovh-agent.py', 'ovh_memory.py', 'ovh_workspace.py', 'ovh_project_memory.py', 'ovh_context.py', 'ovh_cache.py', 'ovh_resources.py', 'ovh_request.py', 'ovh_budget.py', 'ovh_budget_model.py', 'ovh_evaluation.py', 'ovh_verification.py', 'ovh-agent.sh']) {
       backend[name] = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(root, '../..', name))).digest('hex');
     }
     fs.writeFileSync(path.join(stage, 'local-update.json'), JSON.stringify({backend}));

@@ -6,15 +6,18 @@ import re
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ProcessHistory
-from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, SystemPromptPart, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 from ovh_memory import atomic_write
+from ovh_request import analyze_request, SourceReview, REVIEW_INSTRUCTIONS
+VERIFICATION_GUARD = None
 
 names = {'read_followups', 'write_followups', 'publish_followups', 'handle_followup', 'apply_steering'}
 syntax = ast.parse((root / 'ovh-agent.py').read_text())
@@ -82,10 +85,69 @@ with tempfile.TemporaryDirectory() as temporary:
     scope['FOLLOWUP_CLAIMED'] = 'claimed'
     command('edit', id='claimed', text='Too late')
     assert scope['read_followups']()[0]['text'] == 'Already dispatching'
+    # Reorder uses the latest persisted list and never wakes a stopped queue.
+    scope['FOLLOWUP_CLAIMED'] = None
+    scope['FOLLOWUP_RUNNING'] = True
+    command('remove', id='claimed')
+    while not requests.empty():
+        requests.get_nowait()
+    for identity, mode in [('q1','queue'), ('s1','steer'), ('q2','queue'), ('s2','steer'), ('q3','queue')]:
+        command('add', id=identity, text=identity, mode=mode, model='selected-model', full_access=True)
+    original = {item['id']:item for item in scope['read_followups']()}
+    scope['FOLLOWUP_RUNNING'] = False
+    command('reorder', id='q3', target='q1', position='before')
+    command('reorder', id='s1', target='s2', position='after')
+    items = scope['read_followups']()
+    assert [item['id'] for item in items] == ['q3','q1','q2','s2','s1']
+    assert {item['id']:item for item in items} == original  # Text, mode, model and access unchanged.
+    assert json.loads((folder / 'followups.json').read_text()) == items
+    assert requests.empty()
+    # Reload the functions with a fresh process scope: order comes from disk.
+    restarted = dict(scope)
+    exec(compile(module, str(root / 'ovh-agent.py'), 'exec'), restarted)
+    assert restarted['read_followups']() == items
+    # Stale IDs, started source/anchor, malformed requests and wrong conversation cannot resurrect tasks.
+    for fields in [dict(id='gone',target='q1',position='before'), dict(id='q1',target='gone',position='after'),
+                   dict(id='q1',target='q1',position='after'), dict(id='q1',target='q2',position='middle'),
+                   dict(id='q1',target='../x',position='before'), dict(id=[],target='q1',position='after'),
+                   dict(id='q1',target='q2',position=[])]:
+        command('reorder', **fields)
+        assert events[-1]['type'] == 'followup_error' and events[-1]['action'] == 'reorder'
+        assert scope['read_followups']() == items
+    scope['handle_followup']({'action':'reorder','conversation':'other','id':'q1','target':'q2','position':'after'}, requests)
+    assert events[-1]['conversation'] == 'other' and scope['read_followups']() == items
+    for claimed in ['q1','q2']:
+        scope['FOLLOWUP_CLAIMED'] = claimed
+        command('reorder', id='q1',target='q2',position='after')
+        assert events[-1]['type'] == 'followup_error' and scope['read_followups']() == items
+    scope['FOLLOWUP_CLAIMED'] = None
+    def failed_write(*args):
+        raise OSError('Storage temporarily unavailable')
+    scope['atomic_write'] = failed_write
+    command('reorder', id='q1', target='q2', position='after')
+    assert events[-1]['type'] == 'followup_error' and scope['read_followups']() == items
+    scope['atomic_write'] = atomic_write
+    scope['FOLLOWUP_RUNNING'] = True
+    # Verify both steering application and the actual dispatcher selection use the saved order.
+    applied = scope['apply_steering']([])
+    assert [p.content for m in applied for p in m.parts if isinstance(p,UserPromptPart)] == ['s2','s1']
+    dispatcher = next(node for node in ast.walk(syntax) if isinstance(node,ast.If)
+                      and ast.unparse(node.test) == "request_type == 'next_followup'")
+    # Execute the real dispatch branch in a one-iteration loop (it contains continue).
+    dispatch_module = ast.Module(body=[ast.For(target=ast.Name(id='_',ctx=ast.Store()),
+        iter=ast.Tuple(elts=[ast.Constant(None)],ctx=ast.Load()), body=[dispatcher], orelse=[])],type_ignores=[])
+    dispatch_code = compile(ast.fix_missing_locations(dispatch_module),str(root/'ovh-agent.py'),'exec')
+    dispatched=[]
+    while scope['read_followups']():
+        scope.update(request_type='next_followup',request={'conversation':'conversation'},followup_id=None)
+        exec(dispatch_code,scope)
+        dispatched.append(scope['request']['id'])
+        scope['write_followups']([item for item in scope['read_followups']() if item['id'] != scope['followup_id']])
+    assert dispatched == ['q3','q1','q2'] and requests.empty()
     # No following a queue-file symlink.
     (folder / 'followups.json').unlink()
     (folder / 'followups.json').symlink_to(archive / 'outside')
     command('list')
     assert events[-1]['type'] == 'followup_error'
     assert not (archive / 'outside').exists()
-print('PASS: actual agent/tool loop, steering history, late continuation, queue persistence/edit/remove, validation and symlink protection')
+print('PASS: actual agent/tool loop, reordered steering and dispatcher, restart persistence, stopped queue, stale/claimed tasks, validation and symlink protection')

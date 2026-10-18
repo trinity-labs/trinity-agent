@@ -68,3 +68,9 @@ test('local links cannot escape the workspace through traversal, prefixes or sym
     for(const target of ['../private.txt','escape.txt','command:run','javascript:alert(1)','file://'+outside]) assert.equal(localLink(target,root),null);
   } finally {fs.rmSync(temp,{recursive:true,force:true});}
 });
+
+test('project path edits accept bounded absolute paths and reject malformed payloads',()=>{
+ const base={type:'updateProject',project:'a'.repeat(20)};
+ assert(validMessage({...base,root:'/home/coder/new folder'}));
+ for(const root of ['',null,123,'relative','/home/coder/\npath','/'+ 'a'.repeat(4096)])assert.equal(validMessage({...base,root}),false);
+});

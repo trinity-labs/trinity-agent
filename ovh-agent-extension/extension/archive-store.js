@@ -2,6 +2,7 @@ const { t } = require("./media/i18n");
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const {invalidateProjectMemory} = require('./project-store');
 class ArchiveStore {
   constructor(workspace, dataRoot = process.env.OVH_AGENT_DATA_ROOT || path.join(require('os').homedir(), '.ovh-agent')) {
     this.session = crypto.createHash('sha256').update(fs.realpathSync(workspace)).digest('hex').slice(0,20);
@@ -75,6 +76,7 @@ class ArchiveStore {
     const messages=path.join(target,'messages.json');
     if (fs.existsSync(legacy)&&fs.existsSync(messages)&&fs.readFileSync(legacy).equals(fs.readFileSync(messages))) fs.unlinkSync(legacy);
     fs.rmSync(target,{recursive:true,force:false});
+    invalidateProjectMemory(this.dataRoot,this.session);
     this.cache.clear(); this.cacheBytes = 0;
     if (fs.existsSync(target)) throw new Error(t("Le dossier existe encore après suppression."));
     if (wasCurrent) fs.unlinkSync(path.join(this.root,'current'));

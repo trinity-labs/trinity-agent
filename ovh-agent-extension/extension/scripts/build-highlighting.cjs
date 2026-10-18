@@ -1,0 +1,10 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const source = path.dirname(require.resolve('@highlightjs/cdn-assets/package.json'));
+const media = path.resolve(__dirname, '../media');
+const scripts = ['highlight.min.js', 'languages/dockerfile.min.js', 'languages/powershell.min.js', 'languages/nginx.min.js'];
+fs.writeFileSync(path.join(media, 'highlight.min.js'), scripts.map(file => fs.readFileSync(path.join(source, file), 'utf8')).join('\n;\n'));
+fs.copyFileSync(path.join(source, 'styles/monokai.min.css'), path.join(media, 'monokai.min.css'));
+fs.copyFileSync(path.join(source, 'LICENSE'), path.join(media, 'HighlightJS.LICENSE'));
+console.log('Local Highlight.js bundle and Monokai theme rebuilt.');

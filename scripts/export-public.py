@@ -10,7 +10,12 @@ source = Path(__file__).resolve().parents[1]
 target = Path(os.environ.get('TRINITY_AGENT_PUBLIC_ROOT', str(source.parent / 'trinity-agent')))
 if target.resolve() == source.resolve():
     raise SystemExit('Export destination must differ from the running IDE')
-paths = subprocess.check_output(['git', '-C', str(source), 'ls-files', '-z']).decode().split('\0')
+# .gitignore denies everything except explicitly reviewed source paths. Include
+# newly added allowlisted modules too: exporting their importers without them
+# produces a broken backend. Private/ignored files remain excluded.
+paths = sorted(set(subprocess.check_output([
+    'git', '-C', str(source), 'ls-files', '--cached', '--others', '--exclude-standard', '-z',
+]).decode().split('\0')))
 secrets = set()
 for directory in [Path('/etc/trinity/docker-trinity'), Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity')]:
     if directory.is_dir():

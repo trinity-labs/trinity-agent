@@ -58,10 +58,20 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   stroke-linejoin: round;
 }
 .header-actions { display: flex; gap: 3px; }
+/* Panels share the content area below the complete, naturally sized header. */
+.workspace-content {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
 #archive-panel, #model-panel {
   position: absolute;
   z-index: 8;
-  inset: 54px 0 0;
+  inset: 0;
   overflow-y: auto;
   background: var(--vscode-sideBar-background);
 }
@@ -169,6 +179,7 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .model-empty { padding: 18px 10px; color: var(--vscode-descriptionForeground); text-align: center; }
 #model-availability { white-space: normal; }
 .agent-disclaimer {
+  opacity: .5;
   margin: 8px 12px 12px;
   color: var(--vscode-descriptionForeground);
   font-size: 10px;
@@ -222,6 +233,7 @@ footer .agent-disclaimer { margin: 6px 0 0; font-size: 8px; line-height: 1.25; }
 }
 main {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 14px 13px 24px;
   scroll-behavior: smooth;
@@ -314,7 +326,7 @@ main {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
   gap: 4px;
-  padding: 7px 1px;
+  padding: 12px 4px;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 65%, transparent);
 }
 .activity-row:last-child { border-bottom: 0; }
@@ -329,8 +341,13 @@ main {
 .activity-row.failure .activity-icon { color: var(--vscode-errorForeground); }
 .activity-row strong, .activity-row code { display: block; }
 .activity-row strong { font-size: 11px; font-weight: 600; }
-.activity-row code {
-  margin-top: 1px;
+.activity-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.activity-duration { font-size: 10px; opacity: .5; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.activity .activity-row code {
+  margin-top: 5px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: rgba(128, 128, 128, .025);
   color: var(--vscode-descriptionForeground);
   font: 10px/1.4 var(--vscode-editor-font-family);
   white-space: pre-wrap;
@@ -417,8 +434,8 @@ main {
   user-select: none;
 }
 .diff-prefix { color: var(--vscode-descriptionForeground); text-align: center; user-select: none; }
-.diff-line.added { background: var(--vscode-diffEditor-insertedLineBackground, rgba(46,160,67,.16)); }
-.diff-line.removed { background: var(--vscode-diffEditor-removedLineBackground, rgba(248,81,73,.16)); }
+.diff-line.added { background: rgba(46, 185, 80, .22); }
+.diff-line.removed { background: rgba(248, 70, 65, .23); }
 .diff-line.added .diff-prefix { color: var(--vscode-gitDecoration-addedResourceForeground, #2ea043); }
 .diff-line.removed .diff-prefix { color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149); }
 .diff-line.hunk {
@@ -477,7 +494,7 @@ main {
   height: 14px;
   margin-left: 2px;
   vertical-align: -2px;
-  background: var(--vscode-foreground);
+  background: var(--ovh-primary);
   animation: blink .9s step-end infinite;
 }
 .markdown > :first-child { margin-top: 0; }
@@ -574,6 +591,7 @@ main {
 .markdown tbody > tr:nth-child(even) { background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent); }
 .thinking { color: var(--vscode-descriptionForeground); font-style: italic; }
 footer {
+  flex-shrink: 0;
   padding: 7px 10px 11px;
   border-top: 1px solid var(--vscode-panel-border);
   background: var(--vscode-sideBar-background);
@@ -784,14 +802,15 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
   opacity: 1;
   background: transparent;
 }
-.archive-view:hover, .archive-view:focus-visible { color: var(--vscode-testing-iconPassed, #43a047); }
 .archive-delete { margin-right: 7px; }
-.archive-delete:hover, .archive-delete:focus-visible { color: #d65c5c; }
 .archive-open:focus-visible, .archive-action:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
 .archive-head > div { min-width: 0; flex: 1; }
-.archive-head .archive-title { display: flex; align-items: center; gap: 6px; }
-.archive-title-icon { position: relative; top: 0.1rem; display: block; width: 15px; height: 15px; flex: 0 0 15px; align-self: center; fill: currentColor; stroke: none; opacity: .15; }
+.archive-heading { display: flex; align-items: center; gap: 8px; }
+.archive-head .archive-heading-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; }
+.archive-heading-text { min-width: 0; flex: 1; }
+.archive-head .archive-title { display: block; }
+.archive-title-icon { display: block; width: 15px; height: 15px; fill: currentColor; stroke: none; opacity: .15; }
 .archive-mount { display: flex; align-items: baseline; min-width: 0; gap: 4px; }
 .archive-mount-label { flex-shrink: 0; white-space: pre; }
 #archive-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
@@ -833,20 +852,22 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 .activity { border: 0; border-radius: 0; background: transparent; }
 .activity > summary { min-height: 26px; padding: 3px 0; gap: 8px; font-size: 12px; color: var(--vscode-descriptionForeground); }
 .activity-summary-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: .72; }
+.activity-elapsed { flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; opacity: .72; }
 .activity > summary > .summary-chevron { flex-shrink: 0; opacity: 0; }
 .activity > summary:hover > .summary-chevron, .activity > summary:focus-visible > .summary-chevron, .activity[open] > summary > .summary-chevron { opacity: .65; }
 .run-indicator { display: inline-flex; width: 17px; height: 17px; flex: 0 0 17px; opacity: .75; }
 .run-indicator svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.activity[open] .activity-list { margin-top: 5px; padding: 4px 0 6px 25px; }
+.activity[open] .activity-list { margin-top: 5px; padding: 8px 8px 10px 25px; }
 .message.working > .label { display: none; }
 
 /* Branded header controls and a more visible send interaction. */
-.header-actions .icon, .back-history {
+.header-actions .icon, .back-history, .project-edit, .project-caret {
   border-radius: 4px;
   transition: color 120ms ease, background-color 120ms ease;
 }
-.header-actions .icon { color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent); }
-.header-actions .icon:hover, .header-actions .icon:focus-visible {
+.header-actions .icon, .project-edit, .project-caret { color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent); }
+.header-actions .icon:hover, .header-actions .icon:focus-visible,
+.project-edit:hover, .project-edit:focus-visible, .project-caret:hover, .project-caret:focus-visible {
   color: var(--ovh-primary-text);
 }
 .back-history:hover, .back-history:focus-visible {
@@ -864,7 +885,7 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
   background: color-mix(in srgb, var(--ovh-primary) 60%, #000);
 }
 @media (prefers-reduced-motion: reduce) {
-  .header-actions .icon, .back-history, #send, .delete-dialog-actions button { transition: none; }
+  .header-actions .icon, .back-history, .project-edit, .project-caret, #send, .delete-dialog-actions button { transition: none; }
 }
 
 #live-balance .balance-amount { color: var(--ovh-primary-text); font-weight: 500; }
@@ -893,6 +914,19 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 
 #configure .icon-key { transform: rotate(135deg) scaleY(-1); transform-origin: center; }
 .history-brand { opacity: .25; }
+/* The dark header needs a lighter brand accent, especially for its logo. */
+body.vscode-dark header, body.vscode-high-contrast header {
+  --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
+  background: color-mix(in srgb, var(--ovh-primary) 14%, var(--vscode-sideBar-background));
+  border-bottom-color: color-mix(in srgb, var(--ovh-primary-text) 35%, transparent);
+}
+body.vscode-dark header .brand strong, body.vscode-high-contrast header .brand strong,
+body.vscode-dark header .back-history, body.vscode-high-contrast header .back-history,
+body.vscode-dark header .history-brand, body.vscode-high-contrast header .history-brand {
+  color: var(--ovh-primary-text);
+}
+body.vscode-dark header .history-brand, body.vscode-high-contrast header .history-brand { opacity: .75; }
+
 
 #close-history svg.agent-icon { width: 8.5px; height: 8.5px; }
 
@@ -903,10 +937,201 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 .file-change > summary > .message-time { margin: 0 0 0 auto; white-space: nowrap; }
 
 /* Follow-ups share the configured brand and stay outside the transcript. */
-#followup-mode { max-width: 160px; border: 1px solid var(--ovh-primary); border-radius: 4px; padding: 5px; background: transparent; color: var(--ovh-primary); font: inherit; font-size: 11px; }
 .followups { max-height: 160px; overflow-y: auto; margin-bottom: 8px; }
-.followup-row { display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 4px; background: color-mix(in srgb, var(--ovh-primary) 8%, transparent); }
+.followup-row { position: relative; cursor: grab; display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 4px; background: color-mix(in srgb, var(--ovh-primary) 8%, transparent); }
 .followup-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .followups button { color: var(--ovh-primary); border: 0; border-radius: 4px; padding: 6px; background: transparent; cursor: pointer; }
 .followups button:hover { background: color-mix(in srgb, var(--ovh-primary) 18%, transparent); }
 .followups .agent-icon { width: 14px; height: 14px; }
+.verification-status {
+  opacity: .5;
+  margin: 8px 0;
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+}
+.verification-failed,
+.verification-observed_failure,
+.verification-conflict {
+  color: var(--vscode-errorForeground);
+}
+.archived-verification pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Diff source must not inherit inline Markdown code backgrounds. */
+.markdown .diff-line > code { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 0 12px 0 0; font: inherit; }
+
+/* Only explicitly selected conversations appear in project folders. */
+.archive-project { margin-bottom: 10px; --project-color: var(--ovh-primary); }
+.archive-item .icon, .archive-item .icon:hover, .archive-item .icon:focus-visible {
+  color: var(--project-color, var(--ovh-primary));
+  outline-color: var(--project-color, var(--ovh-primary));
+}
+#archive-list > .archive-project:has(+ .archive-ungrouped) {
+  border-bottom: 1px solid var(--vscode-panel-border);
+  margin-left: -7px; margin-right: -7px; padding: 0 7px 7px;
+}
+.archive-section-title { margin: 8px 10px; font-size: 12px; font-weight: 600; color: var(--vscode-descriptionForeground); opacity: .35; }
+.archive-project + .archive-ungrouped:not(.archive-ungrouped-empty) { margin-top: 16px; }
+.archive-project > summary { display: flex; align-items: center; gap: 8px; padding: 10px; cursor: pointer; list-style: none; border-radius: 6px; }
+.archive-project > summary::-webkit-details-marker { display: none; }
+.archive-project > summary:hover { background: var(--ovh-primary-pastel); }
+.project-folder-icon { display: inline-flex; color: var(--project-color); }
+.project-folder-icon .agent-icon { width: 18px; height: 18px; }
+.project-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.project-folder-count { font-size: 10px; opacity: .5; }
+.project-caret .agent-icon { transform: rotate(-90deg); transition: transform .15s; }
+.archive-project[open] > summary .project-caret .agent-icon { transform: rotate(0); }
+.project-caret, .project-edit { flex-shrink: 0; width: 22px; height: 22px; padding: 4px; box-sizing: border-box; }
+.project-caret svg.agent-icon, .project-edit svg.agent-icon { width: 11px; height: 11px; opacity: .45; }
+.project-caret:hover svg.agent-icon, .project-edit:hover svg.agent-icon,
+.project-caret:focus-visible svg.agent-icon, .project-edit:focus-visible svg.agent-icon { opacity: .65; }
+.project-conversations {
+  --ovh-primary-pastel: color-mix(in srgb, var(--project-color) 7%, var(--vscode-sideBar-background));
+  margin-left: 18px; padding-left: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--project-color) 25%, transparent);
+}
+.project-editor { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; margin: 4px 10px 12px; }
+.project-editor[hidden] { display: none; }
+.project-editor label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+.project-editor label:first-child { flex: 1; min-width: 100px; }
+.project-editor input[type=text] { width: 100%; box-sizing: border-box; }
+.project-editor input, .project-editor button { min-height: 28px; border: 1px solid var(--vscode-input-border, #8885); border-radius: 4px; background: var(--vscode-input-background, #222); color: var(--vscode-input-foreground, inherit); padding: 4px 6px; }
+.project-editor input[type=color] { width: 42px; padding: 2px; cursor: pointer; }
+.project-editor button { cursor: pointer; }
+
+.project-folder-path { margin: 2px 10px 8px; font-size: 10px; opacity: .5; overflow-wrap: anywhere; }
+
+/* Native drag-and-drop keeps the same layout, with explicit insertion targets. */
+.archive-drag-handle { flex: 0 0 18px; width: 18px; min-width: 18px; padding: 0; cursor: grab; }
+.archive-drag-handle .agent-icon { width: 14px; height: 18px; opacity: .15; }
+.archive-item > .conversation-drag-handle { margin-left: 10px; }
+.archive-drag-handle:active { cursor: grabbing; }
+.archive-drag-source { opacity: .45; }
+.archive-ungrouped { border-radius: 6px; }
+.archive-ungrouped-empty { display: none; }
+.dragging-conversation .archive-ungrouped-empty { display: block; border: 1px dashed var(--ovh-primary); margin: 8px 0 14px; padding: 8px 0; }
+.archive-drop-hint { margin: 8px 10px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.archive-project.archive-drop-target > summary, .archive-ungrouped.archive-drop-target {
+  background: var(--ovh-primary-selected);
+  outline: 2px solid var(--project-color, var(--ovh-primary));
+  outline-offset: -2px;
+}
+.archive-project > summary { position: relative; }
+.project-drop-before > summary::before, .project-drop-after > summary::after {
+  content: ""; position: absolute; left: 8px; right: 8px; height: 3px;
+  border-radius: 2px; background: var(--ovh-primary); pointer-events: none;
+}
+.project-drop-before > summary::before { top: -2px; }
+.project-drop-after > summary::after { bottom: -2px; }
+#archive-list[aria-busy="true"] [draggable="true"] { cursor: progress; }
+.project-documents { margin: 0 10px 8px; font-size: 11px; }
+.project-documents[open] { padding: 10px 14px; background: rgb(128 128 128 / 6%); border-radius: 5px; }
+.project-documents-label { display: flex; align-items: center; gap: 6px; opacity: .65; padding: 4px 0; margin: 0; cursor: pointer; list-style: none; }
+.project-documents-label::-webkit-details-marker { display: none; }
+.project-documents:not([open]) > summary > .summary-chevron { transform: rotate(-90deg); }
+.project-documents > summary > .summary-chevron { margin-left: 0; width: 9px; height: 9px; }
+.project-document { display: block; width: 100%; padding: 6px 8px; text-align: left; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
+.project-document:hover, .project-document:focus-visible { background: var(--ovh-primary-pastel); }
+.project-document strong, .project-document span { display: block; }
+.project-document span { font-size: 10px; opacity: .5; overflow-wrap: anywhere; }
+
+.followups .followup-drag-handle { cursor: grab; flex-shrink: 0; }
+.followups .followup-drag-handle .agent-icon { opacity: .15; }
+.followup-row.followup-drag-source { opacity: .45; cursor: grabbing; }
+.followup-drop-before::before, .followup-drop-after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--ovh-primary); pointer-events: none; }
+.followup-drop-before::before { top: 0; }
+.followup-drop-after::after { bottom: 0; }
+.followups[aria-busy="true"] .followup-drag-handle { cursor: progress; }
+
+#performance-mode { border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ovh-primary); font: inherit; font-size: 11px; padding: 4px; cursor: pointer; max-width: 100px; }
+#performance-mode:hover, #performance-mode:focus-visible { border-color: var(--ovh-primary); }
+#performance-mode:disabled { opacity: .5; cursor: progress; }
+.composer-left { flex-wrap: wrap; }
+
+/* Keep composer accents legible against dark input backgrounds. */
+body.vscode-dark .composer, body.vscode-high-contrast .composer {
+  --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
+  border-color: color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
+}
+body.vscode-dark .composer:focus-within, body.vscode-high-contrast .composer:focus-within {
+  border-color: var(--ovh-primary-text);
+}
+body.vscode-dark #performance-mode, body.vscode-high-contrast #performance-mode {
+  color: var(--ovh-primary-text);
+  outline-color: var(--ovh-primary-text);
+}
+body.vscode-dark #performance-mode:hover, body.vscode-dark #performance-mode:focus-visible,
+body.vscode-high-contrast #performance-mode:hover, body.vscode-high-contrast #performance-mode:focus-visible {
+  border-color: var(--ovh-primary-text);
+  background: color-mix(in srgb, var(--ovh-primary-text) 10%, transparent);
+}
+body.vscode-dark #send, body.vscode-high-contrast #send {
+  background: var(--ovh-primary-text);
+  color: #181818;
+}
+body.vscode-dark #send:hover:not(:disabled), body.vscode-high-contrast #send:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ovh-primary-text) 85%, #fff);
+}
+body.vscode-dark #send:active:not(:disabled), body.vscode-high-contrast #send:active:not(:disabled) {
+  background: color-mix(in srgb, var(--ovh-primary-text) 85%, #000);
+}
+
+/* Drag handles stay neutral in dark themes, independent of folder accents. */
+body.vscode-dark .conversation-drag-handle,
+body.vscode-dark .conversation-drag-handle:hover,
+body.vscode-dark .conversation-drag-handle:focus-visible,
+body.vscode-high-contrast .conversation-drag-handle,
+body.vscode-high-contrast .conversation-drag-handle:hover,
+body.vscode-high-contrast .conversation-drag-handle:focus-visible {
+  color: var(--vscode-foreground);
+  outline-color: var(--vscode-foreground);
+}
+
+/* Display accents are lighter in dark themes; saved project colors stay intact. */
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item {
+  --ovh-icon-accent: color-mix(in srgb, var(--project-color, var(--ovh-primary)) 40%, #fff);
+}
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action,
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover,
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:focus-visible {
+  color: var(--ovh-icon-accent);
+  outline-color: var(--ovh-icon-accent);
+  opacity: .85;
+}
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover,
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:focus-visible {
+  opacity: 1;
+}
+body:is(.vscode-dark, .vscode-high-contrast) .followups button:not(.followup-drag-handle) {
+  color: color-mix(in srgb, var(--ovh-primary) 40%, #fff);
+}
+
+.project-color-controls { display: flex; align-items: center; gap: 6px; }
+.project-editor .project-color-hex { width: 100px; font-family: var(--vscode-editor-font-family, monospace); }
+
+/* Semantic notifications: tinted surface with fully legible status text. */
+body {
+  --notice-success: #16713a;
+  --notice-warning: #995000;
+  --notice-error: #bc2525;
+  --notice-info: #2459b8;
+}
+body:is(.vscode-dark, .vscode-high-contrast) {
+  --notice-success: #83d69e;
+  --notice-warning: #f2b45f;
+  --notice-error: #f18b8b;
+  --notice-info: #8bb9f4;
+}
+[data-status="success"] { --notice-color: var(--notice-success); }
+[data-status="warning"] { --notice-color: var(--notice-warning); }
+[data-status="error"] { --notice-color: var(--notice-error); }
+[data-status="info"] { --notice-color: var(--notice-info); }
+#archive-notice[data-status], #status[data-status] {
+  color: var(--notice-color);
+  background: color-mix(in srgb, var(--notice-color) 10%, transparent);
+  border-radius: 4px;
+  padding: 6px 10px;
+  opacity: 1;
+}
+#archive-notice[data-status] { margin: 8px 12px 0; }
+
+.project-editor .project-path-label { flex: 1 0 100%; }
