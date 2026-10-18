@@ -95,7 +95,7 @@ test('stream bursts coalesce and flush before terminal events without losing tex
 test('webview asset URLs remain cacheable while CSP nonces change',()=>{
   const {provider}=setup();const webview={asWebviewUri:x=>x,cspSource:'local'};
   const a=provider.getHtml(webview),b=provider.getHtml(webview);
-  assert.equal(a.match(/chat.js\?build=([^" ]+)/)[1],b.match(/chat.js\?build=([^" ]+)/)[1]);
+  assert.equal(a.match(/chat(?:\.min)?\.js\?build=([^" ]+)/)[1],b.match(/chat(?:\.min)?\.js\?build=([^" ]+)/)[1]);
   assert.notEqual(a.match(/nonce="([^"]+)"/)[1],b.match(/nonce="([^"]+)"/)[1]);
 });
 

@@ -25,6 +25,7 @@ function validMessage(message) {
         && boolean(message.fullAccess) && model(message.model);
     case "snapshot":
       return id(message.conversation) && text(message.html, 8 * 1024 * 1024)
+        && (message.archive_revision === undefined || text(message.archive_revision, 128))
         && boolean(message.fullAccess) && model(message.model);
     case "loadArchive": case "resumeArchive": return id(message.id);
     case "deleteArchiveConfirmed": return id(message.id) && (message.source === undefined || projectId(message.source));

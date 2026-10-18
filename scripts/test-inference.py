@@ -17,7 +17,13 @@ sys.path.insert(0, str(root))
 sys.argv.append('--billing-status')  # Import without creating a user conversation.
 spec = importlib.util.spec_from_file_location('agent', root / 'ovh-agent.py')
 a = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(a)
+# This suite asserts published defaults, not the operator's local token caps.
+# Isolate import-time settings; never alter the running installation policy.
+with patch.dict(os.environ, {
+    "OVH_AGENT_CONTEXT_TOKENS": "262144", "OVH_AGENT_CONTEXT_RESERVE_TOKENS": "4096",
+    "OVH_AGENT_OUTPUT_TOKENS": "16384", "OVH_AGENT_COMPLEX_OUTPUT_TOKENS": "32768",
+}):
+    spec.loader.exec_module(a)
 # These heuristic fixtures must not consume installation-specific benchmark data.
 a.load_evidence = lambda *args, **kwargs: {}
 events = []

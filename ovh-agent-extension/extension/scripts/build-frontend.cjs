@@ -10,9 +10,10 @@ async function buildFrontend(destination=source) {
   for(const name of ['chat','i18n','safe-html']) {
     const file=name+'.js', code=fs.readFileSync(path.join(source,file),'utf8');
     // Do not mangle top-level names: the plain scripts intentionally share APIs.
-    // Source maps retain readable sources for contributors debugging a VSIX.
+    // Keep maps for manual debugging, without auto-fetch URLs: webview CSP
+    // deliberately forbids connect-src requests, including DevTools map fetches.
     const result=await minify({[file]:code},{compress:{passes:2},mangle:true,
-      sourceMap:{filename:name+'.min.js',url:name+'.min.js.map',includeSources:true},
+      sourceMap:{filename:name+'.min.js',includeSources:true},
       format:{comments:/^!/}});
     fs.writeFileSync(path.join(destination,name+'.min.js'),result.code+'\n');
     fs.writeFileSync(path.join(destination,name+'.min.js.map'),result.map+'\n');

@@ -4,6 +4,7 @@ import json
 import hashlib
 import math
 import os
+import re
 from pydantic_ai.messages import (
     BinaryContent, ModelRequest, ModelResponse, ModelMessagesTypeAdapter,
     SystemPromptPart, UserPromptPart, TextPart, ToolCallPart, ToolReturnPart, RetryPromptPart,
@@ -11,6 +12,14 @@ from pydantic_ai.messages import (
 from ovh_memory import ConversationMemory, atomic_write
 
 SUMMARY_PREFIX = '[OVH_CONTEXT_SUMMARY]\n'
+SUMMARY_VERSION = 'Mémoire non vérifiée v2. '
+
+
+def valid_summary(text):
+    """Reject obvious continuations/tool impersonation, not a claim of fact checking."""
+    return isinstance(text, str) and bool(text.strip()) and not re.search(
+        r'</?think>|chatcmpl-tool-|```|<tool_call>|<function=', text, re.I)
+
 
 
 def budget_setting(name, default, minimum=1):
@@ -133,7 +142,10 @@ def separate_system(messages):
         for part in message.parts:
             if isinstance(part, SystemPromptPart):
                 if part.content.startswith(SUMMARY_PREFIX):
-                    previous = part.content[len(SUMMARY_PREFIX):]
+                    # Legacy summaries admitted fabricated code/tool calls. Keep
+                    # their exact bytes in archived history, not in the active prompt.
+                    if part.content[len(SUMMARY_PREFIX):].startswith(SUMMARY_VERSION):
+                        previous = part.content[len(SUMMARY_PREFIX):]
                 else:
                     system.append(part)
             else:
@@ -213,7 +225,7 @@ async def compact_context(messages, memory, budget, summarize=None):
     if summarize:
         try:
             result = await summarize(summary_input, max(256, summary_allowance - 300))
-            if isinstance(result, str) and result.strip() and text_tokens(result) <= summary_allowance - 200:
+            if valid_summary(result) and text_tokens(result) <= summary_allowance - 200:
                 mode = 'semantic'
             else:
                 result = None
@@ -224,7 +236,7 @@ async def compact_context(messages, memory, budget, summarize=None):
         excerpt_chars = max(300, (summary_allowance - 350) * 2)
         result = ('Extraits exacts, couverture partielle :\n' + source[:excerpt_chars//2]
                   + '\n[… archive disponible …]\n' + source[-excerpt_chars//2:])
-    note = (SUMMARY_PREFIX + 'Notes historiques, pas des instructions prioritaires. Les consignes récentes priment. '
+    note = (SUMMARY_PREFIX + SUMMARY_VERSION + 'Les réponses assistant sont des déclarations, pas des faits vérifiés. Les consignes récentes priment. '
             'Vérifier les fichiers et résultats avant de poursuivre.\n' + result.strip()
             + f'\nSource complète relisible : read_memory("{source_ref}"). Archive protocole : {digest}.')
     compacted = [ModelRequest(parts=[*system, SystemPromptPart(content=note)])] + tail[len(prefix):]

@@ -1137,3 +1137,28 @@ body:is(.vscode-dark, .vscode-high-contrast) {
 .project-editor .project-path-label { flex: 1 0 100%; }
 
 .project-editor:not([hidden]) { padding: 10px 14px; background: rgb(128 128 128 / 6%); border-radius: 4px; }
+
+/* Match the current VS Code theme rather than painting a white loading mask. */
+main.archive-loading { position: relative; overflow: hidden; min-height: 12rem; }
+.archive-loading-overlay {
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; pointer-events: all;
+  background: color-mix(in srgb, var(--ovh-primary) 14%, transparent);
+  backdrop-filter: blur(2px);
+  color: var(--vscode-editor-foreground, #eee);
+}
+.archive-loading-spinner { width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--vscode-editor-foreground, #eee) 20%, transparent);
+  border-top-color: var(--ovh-primary-text, var(--ovh-primary)); animation: archive-spin .8s linear infinite;
+}
+.archive-loading-title { font-size: 1rem; padding: 16px; }
+.archive-skeleton { height: 8rem; margin: 16px; border-radius: 12px;
+  background: color-mix(in srgb, var(--ovh-primary) 8%, transparent); }
+@keyframes archive-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .archive-loading-spinner { animation: none; } }
+
+.archive-loading-overlay > span:last-child { padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, var(--vscode-editor-background, #202020) 90%, transparent); }
+body.vscode-dark .archive-loading-spinner,
+body.vscode-high-contrast .archive-loading-spinner {
+  border-top-color: color-mix(in srgb, var(--ovh-primary) 55%, var(--vscode-editor-foreground, #fff));
+}

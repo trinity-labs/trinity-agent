@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.14.3 — 2026-10-18
+
+- Recognize French catalogue styling requests as edits and retrieve current workspace sources.
+- For edit requests, archive and remove unverified historical assistant prose and legacy summaries from active context; retain user messages and exact tool results. Explicit memory tools remain available.
+- Reject summaries containing simulated tool calls/code and reject unsupported test-success claims even when no checks ran. Require a tracked edit or an explicit, truthful no-change outcome for edit requests.
+- Search readable sources by default, bound long lines/results and distinguish missing search matches from absent features.
+- Restore archive model selection and validate snapshot revisions; show an immediate theme-aware archive loader. Reduce auxiliary summary timeout to 15 seconds and report local fallback/recovery.
+
+- Base budget enforcement on OVH Public Cloud consumption and remaining credit, instead of local token estimates. Requires the companion backend update and configured OVH billing access.
+- Release completed and failed request reservations without converting unknown usage into spending. Keep concurrent reservations separate from provider consumption.
+- Preserve the legacy ledger for audit; use a separate provider-observation ledger. Daily and weekly limits track observed OVH changes and explicitly mark incomplete history. Monthly consumption comes from OVH.
+- Reject unavailable, stale, mismatched-currency or wrong-month billing data; retain the configured budget limits and credit expiry. OVH reporting delay still applies.
+
 ## 1.14.2 — 2026-10-18
 
 - Reuse the running backend for billing polls, preserving its cache and explicit forced refresh; correlate replies and reject late results. Update the companion backend with this release.

@@ -1,4 +1,10 @@
 {
+  "Aucune modification à restaurer": {
+      "fr": "Aucune modification à restaurer",
+      "en": "No changes to restore",
+      "de": "Keine Änderungen wiederherzustellen",
+      "es": "No hay cambios que restaurar"
+  },
   "Chemin du projet": {
     "fr": "Chemin du projet",
     "en": "Project path",

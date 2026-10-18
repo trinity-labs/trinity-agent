@@ -39,6 +39,25 @@ class Verification(unittest.TestCase):
     def edit(self, value):
         self.guard.write(self.file, self.file.read_text(), f'VALUE = {value}\n# existing user change\n')
 
+    def test_no_receipts_cannot_claim_test_success(self):
+        for text in ('Aucun test automatisé n’a échoué.', 'Tests réussis.', 'All tests passed.',
+                     'J’ai exécuté les tests du projet.'):
+            with self.subTest(text=text), self.assertRaises(VerificationError):
+                self.guard.validate_summary(text)
+        for text in ('Tests non exécutés.', 'Je propose de lancer les tests.',
+                     'Aucune modification effectuée : permission refusée pour app.py.'):
+            self.assertEqual(self.guard.validate_summary(text), text)
+
+    def test_edit_plan_is_not_completion_and_honest_blocker_is_allowed(self):
+        self.guard.task_intent = 'edit'
+        with self.assertRaisesRegex(VerificationError, 'aucun fichier'):
+            self.guard.validate_summary('Si vous validez, je pourrai créer le catalogue.')
+        text = 'Aucune modification effectuée : app.py est déjà conforme après lecture.'
+        self.assertEqual(self.guard.validate_summary(text), text)
+        self.edit(2)
+        self.guard.require_verified()
+        self.assertIn('Bilan des contrôles', self.guard.validate_summary('app.py modifié.'))
+
     def test_new_uncovered_script_is_rejected_before_any_write(self):
         target = self.workspace / 'manual-test.py'
         with self.assertRaisesRegex(VerificationError, 'verification_plan'):

@@ -140,3 +140,63 @@ with tempfile.TemporaryDirectory() as folder:
         assert a.update_plan(['Inspect'], 2).startswith('Erreur')
         assert json.loads((location/'plan.json').read_text())['current_step'] == 1
 print('PASS: real multi-tool Pydantic loop compacts mid-run, summary accounting, persistence and plan validation')
+
+# Exercise the actual deadline, cancellation and fallback without network or credits.
+from types import SimpleNamespace
+with tempfile.TemporaryDirectory() as folder:
+    events, cancelled = [], []
+    async def slow_summary(messages, info):
+        try:
+            await asyncio.sleep(10)
+        finally:
+            cancelled.append(True)
+        return ModelResponse(parts=[TextPart('Too late')])
+    fm = FunctionModel(slow_summary)
+    history = [ModelRequest(parts=[UserPromptPart('Keep EXACT-42')]),
+               ModelResponse(parts=[TextPart('Archived evidence. ' * 3000)])]
+    with patch.object(a, 'conversation_dir', return_value=Path(folder)), \
+         patch.object(a, 'emit', side_effect=events.append), \
+         patch.object(a, 'save_history'), patch.object(a, 'context_overhead', return_value=0), \
+         patch.object(a, 'CONTEXT_TOKEN_CAP', 5000), \
+         patch.object(a, 'SUMMARY_TIMEOUT_SECONDS', .01), \
+         patch.object(a, 'fetch_model_catalog', return_value=[{'id': fm.model_name, 'context_length': 131072}]), \
+         patch.object(a, 'model_capabilities', return_value={'reasoning': False, 'tools': True}):
+        ctx = SimpleNamespace(model=fm, model_settings={'max_tokens': 2048}, run_step=1)
+        managed = asyncio.run(a.manage_model_context(ctx, history))
+        assert cancelled == [True]
+        stats = next(e for e in events if e['type'] == 'context_compacted')
+        assert stats['summary_error'] == 'TimeoutError' and stats['summary_mode'] == 'extractive'
+        assert stats['duration_ms'] < 2000 and estimate_tokens(managed) <= 5000
+        assert any(e.get('reason') == 'TimeoutError' for e in events)
+        assert 'Reprise de la tâche' in events[-1]['text']
+        raw = next((Path(folder)/'context-checkpoints').glob('*.json')).read_bytes()
+        assert raw == ModelMessagesTypeAdapter.dump_json(history)
+        assert any(isinstance(p, UserPromptPart) and p.content == 'Keep EXACT-42' for m in managed for p in m.parts)
+print('PASS: real summary deadline cancels pending call, reports fallback and resumes with exact archive')
+
+# Reproduce poisoned summaries and assistant prose carried from Qwen to GPT-OSS.
+from ovh_context import valid_summary, SUMMARY_VERSION
+assert not valid_summary('Je dois ajouter du code. </think> chatcmpl-tool-edit_file')
+assert not valid_summary('```python\nprint("invented")\n```')
+with tempfile.TemporaryDirectory() as folder:
+    location = Path(folder)
+    polluted = [ModelRequest(parts=[SystemPromptPart(SUMMARY_PREFIX + 'fake tool result'),
+                                   UserPromptPart('Keep existing layout')]),
+                ModelResponse(parts=[TextPart('No catalogue exists.'), ToolCallPart('read_file', {'path':'chat.js'}, tool_call_id='read')]),
+                ModelRequest(parts=[ToolReturnPart('read_file', 'function renderModels() {}', tool_call_id='read')]),
+                ModelResponse(parts=[TextPart('Tests passed; catalogue missing.')])]
+    with patch.object(a, 'conversation_dir', return_value=location), \
+         patch.object(a.WorkspaceContext, 'search', side_effect=AssertionError('No auto historical retrieval on edits')):
+        clean = a.history_with_memory(polluted, 'Modernise la vue', include_excerpts=False)
+    validate_protocol(clean)
+    assert 'No catalogue exists' not in str(clean) and 'Tests passed' not in str(clean)
+    assert 'fake tool result' not in str(clean)
+    assert 'function renderModels()' in str(clean) and 'Keep existing layout' in str(clean)
+    assert next((location/'context-checkpoints').glob('*.json')).read_bytes() == ModelMessagesTypeAdapter.dump_json(polluted)
+    memory = ConversationMemory(location)
+    async def fabricated_summary(source, maximum):
+        return 'chatcmpl-tool-edit_file </think>'
+    managed, stats = asyncio.run(compact_context(history, memory, 5000, fabricated_summary))
+    assert stats['summary_mode'] == 'extractive'
+    assert any(p.content.startswith(SUMMARY_PREFIX + SUMMARY_VERSION) for m in managed for p in m.parts if isinstance(p, SystemPromptPart))
+print('PASS: contaminated cross-model history removed, exact protocol archived, fabricated summary rejected')

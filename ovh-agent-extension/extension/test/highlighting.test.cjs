@@ -15,12 +15,12 @@ function browser(minified) {
   const provider = new scope.module.exports.Provider(root, {});
   const dom = new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}), {runScripts:'outside-only',url:'https://test.invalid'});
   const w = dom.window;
-  const states=[];
-  w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:value=>states.push(value),postMessage:()=>{}});
+  const states=[],posted=[];
+  w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:value=>states.push(value),postMessage:value=>posted.push(value)});
   w.HTMLElement.prototype.scrollIntoView=function(){};
   w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','highlight.min.js','chat.js']) w.eval(fs.readFileSync(minified && ['i18n.js','safe-html.js','chat.js'].includes(name) ? path.join(minified,name.replace('.js','.min.js')) : path.join(root,'media',name),'utf8'));
-  return {dom, w, states, render:scope.module.exports.renderMarkdown,
+  return {dom, w, states, posted, render:scope.module.exports.renderMarkdown,
     emit:data=>w.dispatchEvent(new w.MessageEvent('message',{data}))};
 }
 
@@ -241,4 +241,90 @@ test('generated minified frontend preserves streams, final state, safety and sou
     const map=JSON.parse(fs.readFileSync(path.join(directory,'chat.min.js.map')));
     assert.equal(map.sourcesContent[0],fs.readFileSync(path.join(__dirname,'../media/chat.js'),'utf8'));
   } finally {if(dom)dom.window.close();fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+
+test('archive header restores its own routed model and clears stale routes', () => {
+  const {dom,w,emit}=browser();
+  try {
+    const label=()=>w.document.getElementById('selected-model').textContent;
+    emit({type:'model_selected',model:'auto-balanced'});
+    emit({type:'model_routed',model:'qwen-old'});
+    assert.match(label(),/qwen-old/);
+    emit({type:'archive_loaded',id:'gpt',messages:[
+      {type:'user',text:'hello',selection:'auto-balanced',model:'gpt-oss-120b'},
+      {type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced',automatic:true}
+    ]});
+    assert.match(label(),/gpt-oss-120b/);assert.doesNotMatch(label(),/qwen/);
+    emit({type:'snapshot_loaded',id:'qwen',html:'<p>snapshot</p>',model:'auto-balanced',timeline:[
+      {type:'model_active',model:'qwen-new',selection:'auto-balanced'}
+    ]});
+    assert.match(label(),/qwen-new/);
+    emit({type:'archive_loaded',id:'unknown',messages:[]});
+    assert.doesNotMatch(label(),/qwen|gpt/);
+    emit({type:'archive_loaded',id:'manual',model:'manual-model',messages:[]});
+    assert.equal(label(),'manual-model');
+    emit({type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced',automatic:true});
+    assert.match(label(),/gpt-oss-120b/);
+    emit({type:'cleared',conversation:'fresh'});
+    assert.doesNotMatch(label(),/gpt|qwen/);
+  } finally {dom.window.close();}
+});
+
+
+test('empty rollback does not claim files were restored',()=>{
+  const {dom,w,emit}=browser();
+  try {
+    emit({type:'verification_status',status:'rolled_back',restored:[],conflicts:[]});
+    assert.equal(w.document.querySelector('.verification-status').textContent,'No changes to restore');
+    emit({type:'verification_status',status:'rolled_back',restored:['app.py'],conflicts:[]});
+    assert.equal(w.document.querySelector('.verification-status').textContent,'Unverified changes rolled back');
+  } finally {dom.window.close();}
+});
+
+
+test('archive click immediately displays themed loading shell, bounded preview and error recovery',()=>{
+  const {dom,w,emit}=browser();
+  try {
+    const items=[{id:'a',title:'Selected A',updated_at:'v1'},{id:'b',title:'Selected B',updated_at:'v1'}];
+    emit({type:'archives',items});
+    const click=id=>w.document.querySelector(`[data-archive-id="${id}"] .archive-open`).click();
+    click('a');
+    const messages=w.document.getElementById('messages');
+    assert.equal(messages.getAttribute('aria-busy'),'true');
+    assert.match(messages.textContent,/Selected A/);
+    assert(messages.querySelector('[role="status"]'));
+    emit({type:'snapshot_loaded',id:'wrong',html:'<p>WRONG</p>'});
+    assert.doesNotMatch(messages.textContent,/WRONG/);
+    emit({type:'snapshot_loaded',id:'a',html:'<p>Cached A</p>',model:'auto-balanced',timeline:[]});
+    assert.equal(messages.hasAttribute('aria-busy'),false);
+    click('b');assert.doesNotMatch(messages.textContent,/Cached A/);
+    emit({type:'archive_open_failed',text:'failed'});
+    assert.equal(messages.hasAttribute('aria-busy'),false);
+    click('a');assert.match(messages.textContent,/Cached A/);
+    emit({type:'archive_loaded',id:'a',messages:[]});
+    assert.equal(messages.querySelector('.archive-loading-overlay'),null);
+  } finally {dom.window.close();}
+});
+
+
+test('restored execution survives delayed global model replies and snapshots echo its revision', async()=>{
+  const {dom,w,emit,posted}=browser();
+  try {
+    emit({type:'ready',model:'Qwen3.5-9B',conversation:'x'});
+    emit({type:'snapshot_loaded',id:'x',html:'<p>Latest answer</p>',model:'Qwen3.5-9B',archive_revision:'42:1234',timeline:[
+      {type:'user',model:'gpt-oss-120b',selection:'auto-balanced'},
+      {type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced',automatic:true}
+    ]});
+    emit({type:'models',selected:'Qwen3.5-9B',items:[]});
+    const label=w.document.getElementById('selected-model').textContent;
+    assert.match(label,/gpt-oss-120b/);assert.doesNotMatch(label,/Qwen/);
+    await new Promise(resolve=>setTimeout(resolve,400));
+    const snapshot=posted.filter(message=>message.type==='snapshot').at(-1);
+    assert.equal(snapshot.archive_revision,'42:1234');
+    assert.match(snapshot.html,/Latest answer/);
+    emit({type:'response',html:'<p>Newer answer</p>',archive_revision:'84:5678'});
+    await new Promise(resolve=>setTimeout(resolve,400));
+    assert.equal(posted.filter(message=>message.type==='snapshot').at(-1).archive_revision,'84:5678');
+  } finally {dom.window.close();}
 });

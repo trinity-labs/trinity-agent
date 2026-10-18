@@ -102,6 +102,59 @@ class Sessions(unittest.TestCase):
         a.update_metadata()
         self.assertEqual(json.loads(self.meta.read_text())['title'], 'Analyse le projet docker_trinity')
 
+    def test_snapshot_revision_rejects_newly_saved_old_html_and_external_append(self):
+        self.meta.write_text('{}')
+        snapshot=self.folder/'snapshot.json'
+        snapshot.write_text(json.dumps({'html':'old','model':'Qwen3.5-9B'}))
+        self.assertIsNone(a.read_snapshot())
+        revision=a.archive_revision()
+        a.save_snapshot('current',False,a.AUTO_MODEL,revision)
+        self.assertEqual(a.read_snapshot()['html'],'current')
+        with self.events.open('a') as stream:stream.write(json.dumps({'type':'response','text':'new answer'})+'\n')
+        self.assertIsNone(a.read_snapshot())
+        previous=snapshot.read_bytes()
+        a.save_snapshot('stale',False,'Qwen3.5-9B',revision)
+        self.assertEqual(snapshot.read_bytes(),previous)
+        a.save_snapshot('legacy',False,'Qwen3.5-9B')
+        self.assertEqual(snapshot.read_bytes(),previous)
+        a.save_snapshot('new answer',False,a.AUTO_MODEL,a.archive_revision())
+        self.assertEqual(a.read_snapshot()['html'],'new answer')
+
+    def test_archive_emission_preserves_selection_and_rendered_revision(self):
+        with self.events.open('a') as stream:stream.write(json.dumps({'type':'model_active','model':'gpt-oss-120b','selection':a.AUTO_MODEL,'automatic':True})+'\n')
+        timeline=a.read_archive('conversation',timeline_only=True)
+        self.assertEqual(timeline[-1]['selection'],a.AUTO_MODEL)
+        revision=a.archive_revision()
+        messages=a.read_archive('conversation')
+        with self.events.open('a') as stream:stream.write(json.dumps({'type':'response','text':'concurrent'})+'\n')
+        import io
+        output=io.StringIO()
+        with patch.object(a,'JSON_MODE',True),patch('sys.stdout',output):
+            a.emit({'type':'archive_loaded','id':'conversation','messages':messages})
+        self.assertEqual(json.loads(output.getvalue())['archive_revision'],revision)
+        self.assertNotEqual(revision,a.archive_revision())
+
+    def test_snapshot_is_emitted_before_model_history_is_deserialized(self):
+        outputs=[]
+        def inputs(requests):
+            requests.put({'type':'load_archive','id':'conversation'})
+            requests.put({'type':'shutdown'})
+        def history(candidate=None):
+            if candidate is not None:
+                self.assertTrue(any(e['type']=='snapshot_loaded' and not e.get('automatic') for e in outputs))
+            return []
+        with ExitStack() as stack:
+            mocks={'recover_verification':{},'read_task_state':{'return_value':{}},
+                'load_history':{'side_effect':history},'read_snapshot':{'return_value':{'html':'<p>saved</p>','model':a.AUTO_MODEL}},
+                'load_selected_model':{'return_value':a.AUTO_MODEL},'refresh_billing_async':{},
+                'current_budget_status':{'return_value':{}},'publish_budget':{},
+                'stdin_reader':{'side_effect':inputs},'emit':{'side_effect':outputs.append},
+                'write_pointer':{},'list_archives':{'return_value':[]}}
+            for name,settings in mocks.items():stack.enter_context(patch.object(a,name,**settings))
+            stack.enter_context(patch.object(a,'JSON_MODE',False))
+            a.main_json_lines()
+        self.assertTrue(any(e['type']=='snapshot_loaded' and not e.get('automatic') for e in outputs))
+
     def test_delayed_first_message_titles_before_failing_context_preparation(self):
         self.events.write_text('')
         self.meta.write_text(json.dumps({'id': 'conversation', 'title': 'Nouvelle conversation',
@@ -184,7 +237,7 @@ class Sessions(unittest.TestCase):
     def test_project_memory_precedes_workspace_retrieval(self):
         order=[]
         prepared={'context':'','sources':[],'files_scanned':0,'partial':False,'preparation_ms':0,'analysis':{'query':'Question'}}
-        with patch.object(a,'history_with_memory',side_effect=lambda history,query: order.append('memory') or history), \
+        with patch.object(a,'history_with_memory',side_effect=lambda history,query, **kwargs: order.append('memory') or history), \
              patch.object(a,'prepare_request',side_effect=lambda *args: order.append('files') or prepared):
             a.prepare_task_context([],'Question')
         self.assertEqual(order,['memory','files'])

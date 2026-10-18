@@ -124,3 +124,25 @@ The local lookup is bounded to avoid blocking on slow mounts. No budgets change.
 ## Contribuer au flux de l’extension
 
 Consultez [Architecture et contribution](ARCHITECTURE.md) pour le parcours des messages, les responsabilités des modules, les règles de cache et la génération du frontend minifié.
+
+### Provider-based budgets (1.14.3)
+
+Update the companion backend together with the extension. Configure OVH billing
+access through the balance control before sending paid requests. The budget now
+uses the OVH Public Cloud project's reported consumption and available credit;
+local model-token estimates are informational only. This includes other services
+charged to that same cloud project, not just this agent.
+
+Completed or failed requests release their temporary reservation. Unknown usage
+is never converted into a maximum-cost expense. The previous `usage-eur.json`
+ledger is preserved for audit and is no longer used to authorize requests; the
+provider observations are stored separately in `budgets/usage-ovh-eur.json`.
+
+The monthly counter comes from OVH. Daily and weekly counters track changes
+observed since monitoring began, with `partial` and `since` metadata: the API's
+monthly snapshot cannot reconstruct prior daily spending. Top-ups do not count
+as consumption. Existing daily/weekly/monthly limits and credit expiry remain.
+
+OVH usage is delayed; these checks are not a real-time provider-enforced quota.
+No requests are authorized from unavailable billing data, a cache older than five
+minutes, an OVH usage report older than 24 hours, or a report for another month.

@@ -67,6 +67,16 @@ Les événements d’outils, d’approbation et d’erreur conservent leur ordre
 
 Les clés, décisions d’approbation, vérifications de chemins, résultats d’outils mutables et réponses d’inférence ne sont pas mis en cache par ces changements. Une amélioration du rendu n’accélère pas nécessairement le fournisseur du modèle et ne réduit pas ses tokens.
 
+## Ouverture des conversations
+
+Le clic ouvre immédiatement la vue avec le titre et un voile de chargement teinté de la couleur principale. Le voile utilise les couleurs VS Code, un indicateur accessible et respecte la préférence de mouvement réduit. Il ne conserve pas le texte d’une autre conversation.
+
+Deux aperçus HTML au maximum (256 K caractères chacun) sont conservés dans la mémoire de la webview, avec une clé projet/conversation/date de modification. Ils sont assainis à la restitution et restent couverts par le loader jusqu’au chargement autoritatif. Un aperçu ne restaure ni permissions ni contexte du modèle. Les réponses portant un autre identifiant sont ignorées pendant l’ouverture ; un échec retire le loader et réaffiche les archives.
+
+Un snapshot est utilisable uniquement si sa révision (taille et mtime_ns du journal) correspond aux événements. Les anciens snapshots sans révision sont reconstruits. La webview renvoie la révision effectivement rendue ; une sauvegarde obsolète est refusée, même si sa date est récente. Cette révision sert à la cohérence du cache, pas à une décision de sécurité. Le modèle et le choix Auto sont restaurés depuis les événements ; une réponse tardive du catalogue ne les écrase pas.
+
+Lorsqu’un snapshot valide existe, le backend l’envoie avant de désérialiser l’historique du modèle. Sa boucle traite les prompts suivants seulement après cette désérialisation. Sans snapshot, le rendu initial reste reconstruit depuis les événements ; le squelette est visible pendant cette opération.
+
 ## Protocole de facturation
 
 Le frontend transmet `billingRefresh` pour le polling et `billing` pour l’action explicite. Avec un processus actif, l’extension envoie `billing_status` avec un `request_id` unique, `refresh` et `silent`. Le backend renvoie le même identifiant. Une réponse tardive ne peut pas terminer une nouvelle requête. Une fermeture du processus annule l’attente ; le délai maximum est de 30 secondes. Déployer le backend de la même release : un ancien backend qui ne renvoie pas l’identifiant n’est pas compatible avec ce chemin corrélé.
@@ -91,3 +101,13 @@ Le VSIX contient aussi les sources et les maps pour le diagnostic. Le gain porte
 - Exécuter `npm test` ; les tests couvrent aussi le frontend minifié et les source maps. Pour un changement backend, exécuter `python scripts/check-backend.py` depuis la racine du dépôt avec l’environnement Python du projet.
 - Ajouter tout nouveau module à la liste blanche de `scripts/package-vsix.cjs` et à celle d’export Git. Vérifier le contenu du VSIX après génération.
 - Ne pas publier les consignes, archives ou secrets locaux. Garder le même numéro de version dans `package.json`, `package-lock.json` et le tag de release.
+
+### Délai de compression du contexte
+
+Le résumé auxiliaire utilise le modèle actif, sans outils, avec un délai par défaut de 15 secondes (`OVH_AGENT_SUMMARY_TIMEOUT_SECONDS`). Le délai couvre la réponse complète. En cas d’échec, le backend émet un statut explicite puis utilise les extraits locaux ; il annonce ensuite la reprise. Le protocole complet est archivé avant compression. Le délai et le type d’erreur sont enregistrés, sans attribuer automatiquement la lenteur au fournisseur. Annuler l’appel local ne garantit pas l’annulation de sa facturation distante. `scripts/test-context.py` vérifie hors réseau le timeout réel, l’annulation de la coroutine, le secours et la conservation exacte de l’archive.
+
+### Preuves et contexte des modifications
+
+Pour une demande classée `edit`, le préchargement recherche le code actuel. Les réponses assistant historiques et les résumés antérieurs au format v2 sont retirés du contexte actif ; le protocole exact reste dans `context-checkpoints/`. Les demandes utilisateur et les paires appel/résultat d’outil sont conservées. La recherche automatique d’extraits historiques est désactivée pour ces modifications ; les outils de mémoire restent disponibles explicitement. Ce choix évite de réinjecter comme preuve une réponse erronée du modèle précédent. Les résumés v2 attribuent les déclarations et refusent les blocs de code/pseudo-appels ; ce filtre ne certifie pas leur exactitude sémantique.
+
+Le garde de sortie refuse une annonce de tests réussis sans reçu d’exécution, même si `verify_changes` indique `not_required`. Une demande de modification sans écriture suivie doit annoncer explicitement « Aucune modification effectuée » et expliquer le blocage ou l’état déjà conforme. Ce garde ne prouve pas à lui seul que l’explication est exacte. Les tests de régression reproduisent les demandes de catalogue, les réponses contaminées entre modèles, les faux bilans et la conservation des archives.

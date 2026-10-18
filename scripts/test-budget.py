@@ -341,5 +341,100 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(data["reservations"], {})
 
 
+class OvhBalanceTests(unittest.TestCase):
+    def setUp(self):
+        from ovh_budget import OvhBalanceLedger
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.now = datetime(2026, 10, 18, 15, tzinfo=timezone.utc)
+        self.snapshot = dict(available=True, currency='EUR', credit_currency='EUR',
+            project='test-project', current_usage=2.1, credit_available=200,
+            last_update=self.now.isoformat(), cached_at=self.now.timestamp(),
+            usage_period={'from':'2026-10-01T00:00:00Z'})
+        self.factory = lambda: OvhBalanceLedger.from_provider(self.root/'ovh.json',
+            {'daily':8,'weekly':56,'monthly':197}, self.root/'policy.json',
+            lambda:dict(self.snapshot), now=lambda:self.now)
+
+    def test_provider_balance_is_authoritative_not_settled_estimates(self):
+        ledger=self.factory()
+        self.assertAlmostEqual(ledger.status()['provider_balance'],197.9)
+        for cost in (None, '100', '0.02'):
+            token=ledger.reserve('.03');ledger.settle(token,cost)
+        state=ledger.status()
+        self.assertEqual(state['periods']['daily']['spent'],0)
+        self.assertEqual(state['periods']['monthly']['spent'],2.1)
+        self.assertEqual(state['pending_requests'],0)
+        self.assertTrue(state['periods']['daily']['partial'])
+        self.snapshot['current_usage']=2.35
+        self.snapshot['last_update']=(self.now+timedelta(seconds=1)).isoformat()
+        self.now+=timedelta(seconds=1)
+        state=ledger.status()
+        self.assertEqual(state['periods']['daily']['spent'],.25)
+        self.assertEqual(state['provider_balance'],197.65)
+        self.assertEqual(self.factory().status()['periods']['daily']['spent'],.25)
+
+    def test_configured_credit_cap_does_not_relabel_provider_balance(self):
+        policy={'schema':1,'limits':{},'credit':{'starts_at':'2026-10-18T00:00:00Z',
+                'expires_at':'2026-11-15T20:00:00Z','limit_eur':197}}
+        (self.root/'policy.json').write_text(json.dumps(policy))
+        state=self.factory().status()
+        self.assertEqual(state['provider_balance'],197.9)
+        self.assertEqual(state['authorized_balance'],197)
+
+    def test_corrupt_provider_baseline_never_resets(self):
+        self.factory().status()
+        path=self.root/'ovh.json';data=json.loads(path.read_text());del data['ovh']['baselines']['daily']
+        path.write_text(json.dumps(data));before=path.read_bytes()
+        with self.assertRaises(BudgetLedgerError):self.factory().status()
+        self.assertEqual(path.read_bytes(),before)
+
+    def test_insufficient_ovh_balance_and_concurrent_holds(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.snapshot['credit_available']=3
+        def attempt(_):
+            try:return self.factory().reserve('.6')
+            except BudgetExceeded:return None
+        with ThreadPoolExecutor(max_workers=2) as pool:tokens=list(pool.map(attempt,range(2)))
+        self.assertEqual(sum(token is not None for token in tokens),1)
+        for token in tokens:
+            if token:self.factory().settle(token,None)
+        self.assertAlmostEqual(self.factory().status()['provider_balance'],.9)
+
+    def test_missing_stale_mismatched_data_blocks_and_does_not_spend(self):
+        for patch in [{'available':False},{'stale':True},{'credit_currency':'USD'},
+                      {'cached_at':self.now.timestamp()-301},{'last_update':'bad'},
+                      {'usage_period':{'from':'2026-09-01T00:00:00Z'}}]:
+            original=dict(self.snapshot);self.snapshot.update(patch)
+            with self.assertRaises(BudgetLedgerError):self.factory().reserve('.1')
+            self.snapshot=original
+        self.assertFalse((self.root/'ovh.json').exists())
+
+    def test_failure_releases_reservation_even_if_billing_is_down(self):
+        ledger=self.factory();token=ledger.reserve('.2')
+        self.snapshot['available']=False
+        self.assertEqual(ledger.settle(token,None)['pending_requests'],0)
+        self.assertEqual(ledger.settle(token,None)['periods']['monthly']['spent'],2.1)
+
+    def test_month_change_and_top_up_are_not_counted_as_extra_spending(self):
+        ledger=self.factory();ledger.status()
+        self.snapshot['credit_available']=250
+        self.assertEqual(ledger.status()['periods']['daily']['spent'],0)
+        self.now=datetime(2026,11,1,1,tzinfo=timezone.utc)
+        self.snapshot.update(current_usage=.2,usage_period={'from':'2026-11-01T00:00:00Z'},
+                             last_update=self.now.isoformat(),cached_at=self.now.timestamp())
+        state=ledger.status()
+        self.assertEqual(state['periods']['monthly']['spent'],.2)
+        self.assertEqual(state['periods']['daily']['spent'],.2)
+        self.assertEqual(state['provider_balance'],249.8)
+
+    def test_older_backend_snapshot_cannot_restore_spent_credit(self):
+        ledger=self.factory();ledger.status();old=dict(self.snapshot)
+        self.now+=timedelta(seconds=60)
+        self.snapshot.update(current_usage=3,last_update=self.now.isoformat(),cached_at=self.now.timestamp())
+        ledger.status();self.snapshot=old
+        self.assertEqual(ledger.status()['provider_balance'],197)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

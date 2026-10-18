@@ -41,11 +41,11 @@ class BudgetExceeded(BudgetLedgerError):
     def __init__(self, status: dict, amount: Decimal):
         self.status = status
         self.amount = amount
-        labels = {"daily": "quotidien", "weekly": "hebdomadaire", "monthly": "mensuel", "credit": "crédit temporaire"}
+        labels = {"daily": "quotidien", "weekly": "hebdomadaire", "monthly": "mensuel", "credit": "crédit temporaire", "ovh": "solde OVH"}
         exceeded = [
             f"{labels[name]} ({period['limit']:.2f} €, réinitialisation {period['reset_at']})"
             for name, period in status["periods"].items()
-            if period["limit"] > 0 and name in status.get("exceeded_periods", [])
+            if (period["limit"] > 0 or name == "ovh") and name in status.get("exceeded_periods", [])
         ]
         super().__init__(
             f"Budget {' / '.join(exceeded)} insuffisant : "
@@ -366,4 +366,149 @@ class BudgetLedger:
                 previous = _money(data["spent"][period].get(key, "0"))
                 data["spent"][period][key] = str(_total((previous, charge)))
             del data["reservations"][reservation_id]
+            return self._status(data, now)
+
+
+class OvhBalanceLedger(BudgetLedger):
+    """Enforce limits against OVH observations, never local token estimates.
+
+    Daily/weekly counters measure observed changes since their first sample,
+    not a reconstructed invoice. Concurrent calls still reserve headroom.
+    """
+    @classmethod
+    def from_provider(cls, path, limits, policy_path, provider, now=None):
+        ledger = cls.from_policy(path, limits, policy_path, now=now)
+        ledger.provider = provider
+        ledger.credit_policy = ledger.credit
+        ledger.credit = None
+        return ledger
+
+    def _load(self):
+        existed = self.path.exists()
+        data = super()._load()
+        if not existed:
+            return data
+        try:
+            ovh = data['ovh']
+            for key in ('usage', 'credit', 'total'):
+                _money(ovh[key])
+            for key in ('reported_at', 'fetched_at'):
+                if datetime.fromisoformat(ovh[key].replace('Z', '+00:00')).tzinfo is None:
+                    raise ValueError('Date OVH invalide')
+            if not isinstance(ovh['project'], str) or not ovh['project']:
+                raise ValueError('Projet OVH absent')
+            datetime.strptime(ovh['month'], '%Y-%m-%d')
+            for period in ('daily', 'weekly'):
+                baseline = ovh['baselines'][period]
+                _money(baseline['total'])
+                date = datetime.strptime(baseline['key'], '%Y-%m-%d').replace(tzinfo=UTC)
+                if _periods(date)[period][0] != baseline['key']:
+                    raise ValueError('Période OVH invalide')
+                if datetime.fromisoformat(baseline['since'].replace('Z', '+00:00')).tzinfo is None:
+                    raise ValueError('Début de suivi absent')
+                if type(baseline['partial']) is not bool:
+                    raise ValueError('Couverture du suivi invalide')
+        except (KeyError, TypeError, ValueError, AttributeError) as error:
+            raise BudgetLedgerError('Registre des observations OVH invalide ; aucun compteur remis à zéro.') from error
+        return data
+
+    def _snapshot(self):
+        snapshot = self.provider()
+        try:
+            if not snapshot.get('available') or snapshot.get('stale') or snapshot.get('balance_error'):
+                raise ValueError('Relevé indisponible ou périmé')
+            if snapshot.get('currency') != 'EUR' or snapshot.get('credit_currency') != 'EUR':
+                raise ValueError('Devise du relevé incompatible')
+            usage = _money(snapshot['current_usage'])
+            credit = _money(snapshot['credit_available'])
+            reported = datetime.fromisoformat(snapshot['last_update'].replace('Z', '+00:00'))
+            period = datetime.fromisoformat(snapshot['usage_period']['from'].replace('Z', '+00:00'))
+            cached = datetime.fromtimestamp(float(snapshot['cached_at']), UTC)
+            now = self.now().astimezone(UTC)
+            if reported.tzinfo is None or period.tzinfo is None or not snapshot.get('project'):
+                raise ValueError('Période du relevé inconnue')
+            if not timedelta(0) <= now - cached <= timedelta(minutes=5):
+                raise ValueError('Cache de facturation trop ancien')
+            if not timedelta(0) <= now - reported <= timedelta(hours=24):
+                raise ValueError('Consommation OVH trop ancienne')
+            if period.astimezone(UTC).date().isoformat() != _periods(now)['monthly'][0]:
+                raise ValueError('Relevé du mois courant indisponible')
+            return dict(project=snapshot['project'], usage=str(usage), credit=str(credit),
+                        reported_at=_iso(reported.astimezone(UTC)), fetched_at=_iso(cached), month=period.date().isoformat())
+        except (KeyError, TypeError, ValueError, OverflowError) as error:
+            raise BudgetLedgerError('Budget OVH : solde vérifié indisponible ; configurez ou actualisez le suivi OVH.') from error
+
+    def _observe(self, data, now, snapshot):
+        old = data.get('ovh')
+        if old and old['project'] != snapshot['project']:
+            raise BudgetLedgerError('Le projet de facturation OVH a changé ; registre distinct requis.')
+        # A concurrent backend may still hold a valid but older cache.
+        if old and (snapshot['reported_at'], snapshot['fetched_at']) < (old['reported_at'], old['fetched_at']):
+            snapshot = {key: old[key] for key in ('project','usage','credit','reported_at','fetched_at','month')}
+        usage = _money(snapshot['usage'])
+        previous_total = _money(old['total']) if old else usage
+        delta = usage - _money(old['usage']) if old and old['month'] == snapshot['month'] else usage if old else ZERO
+        total = max(ZERO, previous_total + delta)
+        baselines = old.get('baselines', {}) if old else {}
+        for period, (key, _) in _periods(now).items():
+            if period == 'monthly':
+                data['spent'][period][key] = str(usage)
+                continue
+            baseline = baselines.get(period)
+            if not baseline or baseline['key'] != key:
+                baseline = {'key': key, 'total': str(previous_total), 'since': _iso(now), 'partial': True}
+                baselines[period] = baseline
+            data['spent'][period][key] = str(max(ZERO, total - _money(baseline['total'])))
+        data['ovh'] = {**snapshot, 'total': str(total), 'baselines': baselines}
+
+    def _available(self, data, now):
+        ovh = data['ovh']
+        available = max(ZERO, _money(ovh['credit']) - _money(ovh['usage']))
+        if self.credit_policy:
+            start, end, cap = self.credit_policy
+            available = min(available, cap) if start <= now < end else ZERO
+        return available
+
+    def _status(self, data, now):
+        result = super()._status(data, now)
+        ovh = data['ovh']
+        reserved = _total(_money(item['amount']) for item in data['reservations'].values())
+        available = self._available(data, now)
+        result['periods']['ovh'] = {
+            'limit': float(_money(ovh['credit'])), 'spent': float(_money(ovh['usage'])),
+            'reserved': float(reserved), 'remaining': float(max(ZERO, available - reserved)),
+            'reset_at': _iso(self.credit_policy[1]) if self.credit_policy else _iso(_periods(now)['monthly'][1]),
+        }
+        for period in ('daily', 'weekly'):
+            result['periods'][period].update(measurement='observed_ovh_variation',
+                                            **{key:ovh['baselines'][period][key] for key in ('since','partial')})
+        result.update(source='OVHcloud Public Cloud API', provider_reported_at=ovh['reported_at'],
+                      provider_balance=float(max(ZERO, _money(ovh['credit']) - _money(ovh['usage']))),
+                      authorized_balance=float(available), reporting_delayed=True)
+        result['blocked'] = result['blocked'] or available <= reserved
+        return result
+
+    @contextmanager
+    def _transaction(self):
+        snapshot = self._snapshot()
+        with super()._transaction() as (data, now):
+            self._observe(data, now, snapshot)
+            sequence = data['sequence']
+            yield data, now
+            if data['sequence'] != sequence:
+                reserved = _total(_money(item['amount']) for item in data['reservations'].values())
+                if reserved > self._available(data, now):
+                    status = self._status(data, now)
+                    status.update(blocked=True, exceeded_periods=['ovh'])
+                    raise BudgetExceeded(status, reserved)
+
+    def settle(self, reservation_id, actual_amount):
+        # Only OVH changes spending; completed and failed requests release their hold.
+        # Settlement must also work during an OVH outage, so it needs no new snapshot.
+        with super()._transaction() as (data, now):
+            if not self._valid_id(reservation_id, data):
+                raise BudgetLedgerError('Réservation inconnue.')
+            data['reservations'].pop(reservation_id, None)
+            if not data.get('ovh'):
+                raise BudgetLedgerError('Relevé OVH absent du registre.')
             return self._status(data, now)

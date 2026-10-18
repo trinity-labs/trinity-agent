@@ -19,7 +19,8 @@ if [ "${CODE_SERVER_DISABLE_BUILTIN_GIT:-1}" = "1" ]; then
     /usr/local/lib/node_modules/code-server/lib/vscode/extensions \
     /usr/lib/code-server/lib/vscode/extensions; do
     [ -d "$BUILTIN_EXTENSIONS_DIR" ] || continue
-    for BUILTIN_EXTENSION in git github github-authentication; do
+    # Keep github-authentication: account services await this provider even when Git is disabled.
+    for BUILTIN_EXTENSION in git github; do
       if [ -d "$BUILTIN_EXTENSIONS_DIR/$BUILTIN_EXTENSION" ]; then
         mv "$BUILTIN_EXTENSIONS_DIR/$BUILTIN_EXTENSION" \
           "$DISABLED_BUILTIN_EXTENSIONS_DIR/$BUILTIN_EXTENSION" 2>/dev/null || true

@@ -95,3 +95,28 @@ with tempfile.TemporaryDirectory() as directory:
     except ValueError:
         pass
 print('PASS: per-request limits, summaries, streams, uncertain charges, native EUR prices and USD rejection')
+
+# Production ledger: a failed model call releases its hold; only OVH advances spending.
+from ovh_budget import OvhBalanceLedger
+with tempfile.TemporaryDirectory() as directory:
+    now = datetime.now(timezone.utc)
+    snapshot = dict(available=True, currency='EUR', credit_currency='EUR', project='fixture',
+                    current_usage=2.1, credit_available=200, last_update=now.isoformat(),
+                    cached_at=now.timestamp(), usage_period={'from':now.replace(day=1,hour=0,minute=0,second=0,microsecond=0).isoformat()})
+    root = Path(directory)
+    ledger = OvhBalanceLedger.from_provider(root/'ovh.json', {'daily':8,'monthly':197}, root/'policy.json', lambda:snapshot, now=lambda:now)
+    def failed_provider(messages, info):
+        raise OSError('fixture transport failed')
+    wrapped = BudgetedModel(FunctionModel(failed_provider), lambda:ledger, lambda _:card, lambda _:None)
+    try:
+        Agent(wrapped).run_sync('Fixture only.', model_settings=settings)
+        raise AssertionError('Expected provider error')
+    except OSError:
+        pass
+    state=ledger.status()
+    assert state['pending_requests']==0 and state['periods']['daily']['spent']==0
+    assert state['periods']['monthly']['spent']==2.1 and state['provider_balance']==197.9
+    token=ledger.reserve('.001')
+    ledger.settle(token,'50')
+    assert ledger.status()['periods']['monthly']['spent']==2.1
+print('Provider-authoritative accounting ignores local estimates and failed-call maximums: OK')

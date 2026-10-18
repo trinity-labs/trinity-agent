@@ -185,6 +185,7 @@ class ChangeGuard:
         self.projects: set[Path] = set()
         self.observed: set[Path] = set()
         self.require_checks = require_checks
+        self.task_intent = "question"
         self.failures: dict[str, int] = {}
         self.state = {"version": 1, "workspace": str(self.workspace), "status": "pending",
                       "changes": {}, "baseline": {}, "receipts": [], "report": None}
@@ -369,6 +370,24 @@ class ChangeGuard:
 
     def validate_summary(self, output: str) -> str:
         summary = self.test_summary()
+        # Missing receipts mean "not executed", never "all passed". Check before
+        # the old early return, including the exact false claim seen in production.
+        prose = re.sub(r"```[\s\S]*?```|`[^`]*`|(?m:^>.*$)", "", output)
+        if not summary["checks"]:
+            claim = re.search(
+                r"aucun test[^.\n]{0,60}(?:échoué|echoue)|"
+                r"\b(?:tests?|contrôles|checks)\s+(?:automatisés?\s+)?(?:réussis?|validés?|passés?|passed)|"
+                r"(?:j[’']ai|nous avons)\s+(?:exécuté|lancé|passé)[^.\n]{0,50}\btests?\b|"
+                r"\ball tests pass(?:ed)?\b|\bno tests failed\b", prose, re.I)
+            if claim:
+                raise VerificationError("Aucune preuve de test exécuté dans cette tâche. Retire l’annonce de tests réussis ; exécute les contrôles ou indique explicitement qu’ils n’ont pas été exécutés.")
+        if self.task_intent == "edit" and not self.state["changes"]:
+            # A truthful blocker/no-op is allowed; a plan presented as completion is not.
+            honest = re.search(r"aucun(?:e)? (?:fichier[^.\n]{0,40}modifi|modification (?:effectuée|réalisée|appliquée))|"
+                               r"(?:je n[’']ai|n[’']a été)[^.\n]{0,30}modifi|"
+                               r"(?:no files (?:were )?changed|no changes made)", prose, re.I)
+            if not honest:
+                raise VerificationError("La demande est une modification, mais aucun fichier n’a été modifié par les outils suivis. Lis le code actuel puis réalise la demande autorisée. Si un blocage ou un état déjà conforme empêche une modification, écris explicitement « Aucune modification effectuée » et explique les faits vérifiés. Un plan ou une nouvelle demande de permission ne suffit pas.")
         if not summary["checks"]:
             return output
         footer = self.summary_markdown(summary)

@@ -124,6 +124,7 @@ class OvhAgentViewProvider {
         html: String(message.html || ""),
         full_access: Boolean(message.fullAccess),
         model: String(message.model || "auto-balanced"),
+        archive_revision: message.archive_revision,
       });
       if (message.type === "webviewReady") { i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [message.language, vscode.env.language])); this.showArchives(); void this.refreshBilling(false); }
     });

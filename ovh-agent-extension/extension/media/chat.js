@@ -246,6 +246,50 @@ let historyDraft = "";
 let busy = false;
 let activeArchiveId = "";
 let loadingArchive = null;
+let archivePreviewKey = '';
+let archiveRevision = '';
+let archiveModelRestored = false;
+const archivePreviews = new Map();
+// Two bounded previews accelerate repeat opens. The archive timestamp is part
+// of the key, and the backend always reloads authoritative context/permissions.
+function beginArchiveLoading(item, source, title) {
+  archiveRevision = ""; archiveModelRestored = false;
+  window.clearTimeout(snapshotTimer);
+  window.clearTimeout(viewStateTimer);
+  if (currentRun) window.clearInterval(currentRun.timer);
+  currentRun = null;
+  activityRows.clear(); approvalCards.clear();
+  archivePreviewKey = `${source || ''}:${item.id}:${item.updated_at || ''}`;
+  messages.innerHTML = safeHtml(archivePreviews.get(archivePreviewKey) || '');
+  if (!messages.firstChild) {
+    const heading = document.createElement('h2'); heading.className = 'archive-loading-title';
+    heading.textContent = title; messages.appendChild(heading);
+    const skeleton = document.createElement('div'); skeleton.className = 'archive-skeleton';
+    skeleton.setAttribute('aria-hidden', 'true'); messages.appendChild(skeleton);
+  }
+  const overlay = document.createElement('div'); overlay.className = 'archive-loading-overlay';
+  overlay.setAttribute('role', 'status'); overlay.setAttribute('aria-live', 'polite');
+  const spinner = document.createElement('span'); spinner.className = 'archive-loading-spinner';
+  spinner.setAttribute('aria-hidden', 'true'); overlay.appendChild(spinner);
+  const label = document.createElement('span'); label.textContent = t('Chargement de la conversation…');
+  overlay.appendChild(label); messages.appendChild(overlay);
+  messages.classList.add('archive-loading'); messages.setAttribute('aria-busy', 'true');
+  messages.scrollTop = 0; send.disabled = true;
+  setArchiveVisible(false); modelPanel.hidden = true;
+}
+function endArchiveLoading(remember = false) {
+  messages.querySelector('.archive-loading-overlay')?.remove();
+  messages.classList.remove('archive-loading'); messages.removeAttribute('aria-busy');
+  send.disabled = false;
+  if (remember && archivePreviewKey) {
+    const html = messages.innerHTML;
+    if (html.length <= 256 * 1024) {
+      archivePreviews.delete(archivePreviewKey); archivePreviews.set(archivePreviewKey, html);
+      while (archivePreviews.size > 2) archivePreviews.delete(archivePreviews.keys().next().value);
+    }
+  }
+  archivePreviewKey = '';
+}
 const resumableArchives = new Set();
 const sendArrow = send.innerHTML;
 function updateSendButton() {
@@ -300,10 +344,25 @@ function persist(streaming = false) {
       type: "snapshot",
       conversation: snapshotConversation,
       html: messages.innerHTML,
+      archive_revision: archiveRevision,
       fullAccess,
       model: selectedModel,
     });
   }, 350);
+}
+
+// Routing belongs to a conversation, not to the webview instance. Rebuild it
+// from archived execution events so a previous conversation cannot label this one.
+function restoreArchiveModel(data) {
+  archiveModelRestored = true;
+  const events = data.timeline || data.messages || [];
+  const execution = [...events].reverse().find(event =>
+    ['model_active', 'model_routed'].includes(event.type) && event.model);
+  const request = [...events].reverse().find(event => event.type === 'user' && !event.steering);
+  selectedModel = execution?.selection || request?.selection || data.model || request?.model || 'auto-balanced';
+  lastRoutedModel = selectedModel === 'auto-balanced'
+    ? (execution?.model || data.active_model || '') : '';
+  updateModelButton();
 }
 
 function updateModelButton() {
@@ -494,7 +553,7 @@ function setStatus(text, failed = false) {
 
 function setBusy(value, text = "", failed = false) {
   busy = value;
-  send.disabled = !!pendingFollowup;
+  send.disabled = !!pendingFollowup || !!loadingArchive;
   renderFollowups();
   updateSendButton();
   stop.hidden = false;
@@ -737,8 +796,7 @@ function applySnapshot(data) {
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
   for (const change of messages.querySelectorAll(".file-change")) wireFileChangeCopy(change);
   // Restored content must not change the access mode chosen in this webview.
-  if (data.model) selectedModel = data.model;
-  updateModelButton();
+  restoreArchiveModel(data);
   updateAccessButton();
   persist();
   scrollToBottom();
@@ -1059,7 +1117,7 @@ function renderArchiveRows(items, container, project) {
     const openArchive = () => {
       if(busy || loadingArchive) {setStatus(t("Termine ou arrête la tâche avant de changer de projet."), "warning");return;}
       loadingArchive = item.id;
-      window.clearTimeout(snapshotTimer);
+      beginArchiveLoading(item, source, displayTitle);
       if(!active && source) {
         setStatus(t("Chargement de la conversation…"));
         vscode.postMessage({type:"openProject",project:source,conversation:item.id});return;
@@ -1562,7 +1620,10 @@ function showVerification(data, article = ensureRun().article) {
     rolled_back: "Modifications non validées restaurées",
     conflict: "Conflit de restauration : changement extérieur préservé",
   };
-  badge.textContent = t(labels[data.status] || "Validation refusée");
+  // A failed read-only task can trigger rollback with no tracked changes.
+  const emptyRollback = data.status === "rolled_back" && Array.isArray(data.restored)
+    && data.restored.length === 0 && !(data.conflicts || []).length;
+  badge.textContent = t(emptyRollback ? "Aucune modification à restaurer" : (labels[data.status] || "Validation refusée"));
   badge.className = `verification-status verification-${Object.hasOwn(labels, data.status) ? data.status : "failed"}`;
   const details = [...(data.problems || []), ...(data.conflicts || [])];
   if (data.status === "passed") details.push(t("Ces contrôles couvrent leur périmètre, pas l’ensemble des affirmations du modèle."));
@@ -1877,6 +1938,8 @@ stop.addEventListener("click", () => {
 clear.addEventListener("click", () => {
   if (creatingConversation) return;
   creatingConversation = true;
+  archiveRevision = ""; archiveModelRestored = false;
+  endArchiveLoading();
   loadingArchive = null;
   window.clearTimeout(snapshotTimer);
   clear.disabled = true;
@@ -2011,13 +2074,18 @@ messages.addEventListener("click", (event) => {
 });
 
 window.addEventListener("message", ({ data }) => {
+  // Only accept revision tokens after conversation-ID filtering below.
   if (data.type === "archive_open_failed" || (loadingArchive && data.type === "error")) {
     loadingArchive = null;
+    endArchiveLoading();
     setArchiveVisible(true);
     setStatus(data.text || t("Termine ou arrête la tâche avant de changer de projet."), "warning");
     return;
   }
   if (loadingArchive && ["archive_loaded", "snapshot_loaded"].includes(data.type) && data.id !== loadingArchive) return;
+  if (typeof data.archive_revision === 'string' && ['archive_loaded','snapshot_loaded','response','error'].includes(data.type)) {
+    archiveRevision = data.archive_revision;
+  }
   if (creatingConversation) {
     if (data.type === "ready") { backendReady = true; return; }
     if (data.type === "cleared") {
@@ -2045,7 +2113,7 @@ window.addEventListener("message", ({ data }) => {
     }
     backendReady = true;
     followupCommand("list");
-    if (data.model) selectedModel = data.model;
+    if (data.model && !loadingArchive && !archiveModelRestored) selectedModel = data.model;
     updateModelButton();
     setBusy(busy, busy ? status.textContent : t("Connecté · {0}", data.model));
     persist();
@@ -2118,6 +2186,9 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "file_change") addFileChange(data);
   if (data.type === "model_active") {
+    if (data.selection) selectedModel = data.selection;
+    lastRoutedModel = selectedModel === "auto-balanced" ? (data.model || "") : "";
+    updateModelButton();
     const mode = data.automatic ? t("sélection automatique") : t("choix manuel verrouillé");
     const id=addActivity({...data, tool:"model", title:t("Modèle exécuté"), detail:`${data.model} · ${mode}`},false);
     currentRun.modelActivityId=id;
@@ -2200,7 +2271,7 @@ window.addEventListener("message", ({ data }) => {
     if (currentRun) finishRun("stopped");
     setBusy(false, "");
   }
-  if (data.type === "cleared") { activeArchiveId = data.conversation || ""; setBusy(false, t("Nouvelle conversation")); }
+  if (data.type === "cleared") { lastRoutedModel = ""; updateModelButton(); activeArchiveId = data.conversation || ""; setBusy(false, t("Nouvelle conversation")); }
   if (data.type === "configured") setBusy(false, t("Clé OVH enregistrée de façon sécurisée"));
   if (data.type === 'performance_status') {
     showPerformance(data.mode, data);
@@ -2281,7 +2352,8 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "models") {
     modelCatalog = data.items || [];
-    if (data.selected) selectedModel = data.selected;
+    // A delayed catalogue reply describes global preference, not the opened archive.
+    if (data.selected && !loadingArchive && !archiveModelRestored) selectedModel = data.selected;
     updateModelButton();
     renderModels();
     if (pendingImages.length) ensureVisionModel();
@@ -2299,7 +2371,9 @@ window.addEventListener("message", ({ data }) => {
     activeArchiveId = data.id || activeArchiveId;
     followups = [];
     followupCommand("list");
+    restoreArchiveModel(data);
     renderArchiveMessages(data.messages);
+    endArchiveLoading(true);
     setBusy(false, data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
   }
   if (data.type === "snapshot_loaded") {
@@ -2311,6 +2385,7 @@ window.addEventListener("message", ({ data }) => {
     followups = [];
     followupCommand("list");
     applySnapshot(data);
+    endArchiveLoading(true);
     setBusy(false, t("Conversation restaurée"));
   }
   if (data.type === "diagnostic") status.title = data.text;

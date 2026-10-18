@@ -125,7 +125,10 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     # Negated edits must not turn a read-only request into an edit or inherit one.
     readonly = bool(re.search(r'\b(?:aucune modification|sans modifi\w*|ne modifie pas|do not (?:modify|edit)|read.only)\b', current))
     actionable = re.sub(r'\b(?:aucune modification|sans modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', current)
-    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|deploi\w*|redemarr\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|augment\w*|fix|add|remove|refactor\w*|build|restart)\b', actionable)) and not question
+    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|deploi\w*|redemarr\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|augment\w*|fix|add|remove|refactor\w*|build|restart)\b', actionable)) and not question
+    # "Passe les boutons en ..." is an edit, while "passe en revue" is inspection.
+    action = action or (not question and not readonly and bool(re.search(
+        r'\b(?:passe|rends?)\s+(?:les?|la|ces?|cette)\s+[^.!?\n]{1,120}\s+(?:en|sans|transparent\w*|non[- ]fill)\b', actionable)))
     web_allowed = not bool(re.search(r"\b(?:sans (?:internet|web|recherche (?:web|internet))|hors ligne|offline|no (?:web|internet)|do not browse|(?:pas de|aucune|ni) recherche (?:web|internet)|n['’]utilise pas (?:internet|le web)|ne (?:cherche|recherche|consulte|va) pas (?:sur )?(?:internet|le web))\b", current))
     contested = bool(re.search(r'\b(?:dout\w*|tromp\w*|mensong\w*|hallucin\w*|inexact\w*|incorrect\w*|faux|fausse\w*|contradict\w*|wrong|mistak\w*|doubt\w*|mislead\w*|lied|lying)\b', current)
                      or re.search(r"\b(?:tu es|t['’]es|es.tu)\s+(?:bien |vraiment )?sur\b|\b(?:are you sure|is that (?:correct|true)|est.ce (?:vrai|normal)|tu (?:inventes|mens|confonds)|ce n['’]est pas vrai|c['’]est pas vrai|(?:tu as|t['’]as) vraiment (?:lu|verifie)|tu confirmes\s*\?)", current))
@@ -138,7 +141,7 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     def domain_of(text):
         if re.search(r'\b(?:cve(?:-\d+)*|pentest|red.?team|vulnerabil\w*|exploit|xss|sqli|cyber\w*)\b', text):
             return 'security'
-        if re.search(r'\b(?:css|html|interface|icone?s?|boutons?|hover|survol|opacity|opacite|police|font|couleur|branding)\b', text):
+        if re.search(r'\b(?:css|html|interface|icone?s?|boutons?|hover|survol|opacity|opacite|police|font|couleur|branding|vue|catalogue)\b', text):
             return 'ui'
         if re.search(r'\b(?:docker|kubernetes|xen|dom0|domu|vm|serveur|server|ssh|deploi\w*|deploy\w*)\b', text):
             return 'operations'

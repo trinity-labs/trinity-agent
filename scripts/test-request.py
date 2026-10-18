@@ -38,6 +38,16 @@ class Preparation(unittest.TestCase):
     def retrieve(self, prompt, recent=(), **kwargs):
         return r.retrieve_context(r.analyze_request(prompt), recent, self.project, self.allowed, **kwargs)
 
+    def test_actual_catalog_edit_requests_prepare_workspace(self):
+        for prompt in ('Modernise la vue des modèles', 'Passe les bouton du catalogue de modèle en non fill',
+                       'Rends les boutons transparents'):
+            with self.subTest(prompt=prompt):
+                a = r.analyze_request(prompt)
+                self.assertEqual((a.intent, a.domain, a.needs_workspace), ('edit', 'ui', True))
+        for prompt in ('Comment moderniser la vue des modèles ?', 'Passe en revue le catalogue',
+                       'Lis la vue sans modifier les boutons'):
+            self.assertNotEqual(r.analyze_request(prompt).intent, 'edit')
+
     def test_analysis_and_chained_followups_leave_original_request_intact(self):
         previous = ['Refactorise notre extension dans `chat.css`', 'Continue', 'ok aussi ça']
         analysis = r.analyze_request('oui continue', previous, image_count=1)
@@ -280,7 +290,7 @@ class Preparation(unittest.TestCase):
                    ModelResponse(parts=[TextPart('Done')])]
         prompt = 'oui continue'
         with patch.object(backend, 'WORKSPACE', self.project), patch.object(backend, 'ALLOWED_ROOT', self.allowed), \
-             patch.object(backend, 'history_with_memory', side_effect=lambda messages, query: messages) as memory:
+             patch.object(backend, 'history_with_memory', side_effect=lambda messages, query, **kwargs: messages) as memory:
             prepared, details = backend.prepare_task_context(history, prompt)
         self.assertIn('chat.css', memory.call_args.args[1])
         self.assertTrue(details['sources'])
@@ -447,7 +457,7 @@ class SourceEvidence(unittest.TestCase):
 
     def test_review_instructions_are_injected_then_removed_for_the_next_request(self):
         history = [ModelRequest(parts=[UserPromptPart('Explique Docker')])]
-        with patch.object(self.backend, 'history_with_memory', side_effect=lambda messages,query:messages):
+        with patch.object(self.backend, 'history_with_memory', side_effect=lambda messages,query, **kwargs:messages):
             prepared, details = self.backend.prepare_task_context(history, 'Tu es sûr ?')
             self.assertTrue(details['analysis']['fact_check'])
             self.assertTrue(any(isinstance(p,SystemPromptPart) and p.content.startswith(r.REVIEW_PREFIX)
