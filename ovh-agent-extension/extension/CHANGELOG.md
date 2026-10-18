@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.4 — 2026-10-18
+
+- Extend edit-context isolation to historical reasoning blocks as well as visible assistant text. Preserve exact archived messages and tool protocol; regression covers cross-model reasoning contamination.
+- Includes the 1.14.3 fixes below. The 1.14.3 publication workflow was cancelled during final review; 1.14.4 is the replacement candidate.
+
 ## 1.14.3 — 2026-10-18
 
 - Recognize French catalogue styling requests as edits and retrieve current workspace sources.

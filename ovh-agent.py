@@ -56,6 +56,7 @@ from pydantic_ai.messages import (
     ModelResponse,
     SystemPromptPart,
     TextPart,
+    ThinkingPart,
     TextPartDelta,
     PartStartEvent,
     PartDeltaEvent,
@@ -2423,7 +2424,7 @@ def history_with_memory(history: list, query: str = "", *, include_excerpts: boo
         sanitized = []
         for message in cleaned:
             if isinstance(message, ModelResponse):
-                parts = [p for p in message.parts if not isinstance(p, TextPart)]
+                parts = [p for p in message.parts if not isinstance(p, (TextPart, ThinkingPart))]
                 if not parts:
                     parts = [TextPart(content=f"[Réponse assistant historique non vérifiée retirée du contexte de modification. Archive exacte : {checkpoint}]")]
                 sanitized.append(replace(message, parts=parts))

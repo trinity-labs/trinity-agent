@@ -9,7 +9,7 @@ from unittest.mock import patch
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import (ModelRequest, ModelResponse, SystemPromptPart, UserPromptPart,
-                                  TextPart, ToolCallPart, ToolReturnPart, ModelMessagesTypeAdapter)
+                                  TextPart, ThinkingPart, ToolCallPart, ToolReturnPart, ModelMessagesTypeAdapter)
 from pydantic_ai.models.function import FunctionModel
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
@@ -182,7 +182,7 @@ with tempfile.TemporaryDirectory() as folder:
     location = Path(folder)
     polluted = [ModelRequest(parts=[SystemPromptPart(SUMMARY_PREFIX + 'fake tool result'),
                                    UserPromptPart('Keep existing layout')]),
-                ModelResponse(parts=[TextPart('No catalogue exists.'), ToolCallPart('read_file', {'path':'chat.js'}, tool_call_id='read')]),
+                ModelResponse(parts=[ThinkingPart('Previous unsupported reasoning: catalogue missing'), TextPart('No catalogue exists.'), ToolCallPart('read_file', {'path':'chat.js'}, tool_call_id='read')]),
                 ModelRequest(parts=[ToolReturnPart('read_file', 'function renderModels() {}', tool_call_id='read')]),
                 ModelResponse(parts=[TextPart('Tests passed; catalogue missing.')])]
     with patch.object(a, 'conversation_dir', return_value=location), \
@@ -191,6 +191,7 @@ with tempfile.TemporaryDirectory() as folder:
     validate_protocol(clean)
     assert 'No catalogue exists' not in str(clean) and 'Tests passed' not in str(clean)
     assert 'fake tool result' not in str(clean)
+    assert not any(isinstance(p, ThinkingPart) for m in clean for p in m.parts)
     assert 'function renderModels()' in str(clean) and 'Keep existing layout' in str(clean)
     assert next((location/'context-checkpoints').glob('*.json')).read_bytes() == ModelMessagesTypeAdapter.dump_json(polluted)
     memory = ConversationMemory(location)
