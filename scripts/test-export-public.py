@@ -23,7 +23,7 @@ class PublicExport(unittest.TestCase):
             subprocess.run(['git', 'init', '-q', str(source)], check=True)
             subprocess.run(['git', '-C', str(source), 'add', '.gitignore', 'scripts/export-public.py'], check=True)
             new_files = ['ovh_project_memory.py', 'scripts/test-project-memory.py', 'ovh_verification.py', 'ovh_budget.py', 'ovh_budget_model.py',
-                         'ovh_context.py', 'ovh_cache.py', 'ovh_resources.py', 'ovh_request.py',
+                         'ovh_context.py', 'ovh_vision.py', 'scripts/test-vision.py', 'ovh_cache.py', 'ovh_resources.py', 'ovh_request.py',
                          '.ovh-agent-checks.json', 'scripts/test-verification.py',
                          'scripts/test-export-public.py', 'scripts/test-resources.py',
                          'ovh-agent-extension/extension/test/activity.test.cjs']

@@ -189,7 +189,11 @@ test('diff line background remains visible behind literal source', () => {
     style.textContent=fs.readFileSync(path.join(__dirname,'../media/chat.css'),'utf8');
     w.document.head.append(style);
     const content=w.document.createElement('div');
-    content.className='markdown';
+    // Real file-change diffs sit outside .markdown. Simulate the host code theme.
+    const hostStyle=w.document.createElement('style');
+    hostStyle.textContent='code { background: rgb(60, 60, 60); border-radius: 4px; }';
+    w.document.head.prepend(hostStyle);
+    content.className='diff-scroller';
     content.innerHTML='<div class="diff-line added"><code>const x = 1;</code></div><div class="diff-line removed"><code>const x = 0;</code></div>';
     w.document.body.append(content);
     for (const line of content.children) {
@@ -326,5 +330,24 @@ test('restored execution survives delayed global model replies and snapshots ech
     emit({type:'response',html:'<p>Newer answer</p>',archive_revision:'84:5678'});
     await new Promise(resolve=>setTimeout(resolve,400));
     assert.equal(posted.filter(message=>message.type==='snapshot').at(-1).archive_revision,'84:5678');
+  } finally {dom.window.close();}
+});
+
+
+test('reopening interrupted conversation restores actions, partial text and resume control',()=>{
+  const {dom,w,emit}=browser();
+  try {
+    emit({type:'archive_loaded',id:'interrupted',resumable:true,messages:[
+      {type:'user',text:'Modifie le code'},
+      {type:'model_active',model:'gpt-oss-120b',timestamp:'2026-10-18T20:00:00Z'},
+      {type:'tool_start',id:'r1',title:'Lecture',detail:'app.py',timestamp:'2026-10-18T20:00:01Z'},
+      {type:'tool_end',id:'r1',success:true,detail:'Code lu',duration_ms:18},
+      {type:'partial_response',html:'<p>Analyse provisoire conservée</p>'}
+    ]});
+    assert.ok(w.document.querySelector('#messages').textContent.includes('Analyse provisoire conservée'));
+    assert.ok(w.document.querySelector('#messages').textContent.includes('Code lu'));
+    assert.equal(w.document.querySelectorAll('.message.working,.markdown.streaming').length,0);
+    assert.ok(w.document.querySelector('.message.stopped'));
+    assert.match(w.document.querySelector('#send').title,/Reprendre|Resume/i);
   } finally {dom.window.close();}
 });

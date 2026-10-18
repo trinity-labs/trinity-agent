@@ -111,3 +111,49 @@ Le résumé auxiliaire utilise le modèle actif, sans outils, avec un délai par
 Pour une demande classée `edit`, le préchargement recherche le code actuel. Les réponses assistant historiques, leurs blocs de raisonnement et les résumés antérieurs au format v2 sont retirés du contexte actif ; le protocole exact reste dans `context-checkpoints/`. Les demandes utilisateur et les paires appel/résultat d’outil sont conservées. La recherche automatique d’extraits historiques est désactivée pour ces modifications ; les outils de mémoire restent disponibles explicitement. Ce choix évite de réinjecter comme preuve une réponse erronée du modèle précédent. Les résumés v2 attribuent les déclarations et refusent les blocs de code/pseudo-appels ; ce filtre ne certifie pas leur exactitude sémantique.
 
 Le garde de sortie refuse une annonce de tests réussis sans reçu d’exécution, même si `verify_changes` indique `not_required`. Une demande de modification sans écriture suivie doit annoncer explicitement « Aucune modification effectuée » et expliquer le blocage ou l’état déjà conforme. Ce garde ne prouve pas à lui seul que l’explication est exacte. Les tests de régression reproduisent les demandes de catalogue, les réponses contaminées entre modèles, les faux bilans et la conservation des archives.
+
+### Visual reader and text executor
+
+When the selected executor cannot read images, `ovh_vision.py` performs one
+tool-free, budgeted visual extraction (60 seconds maximum, 4096 output tokens).
+The default reader is Qwen3.6-27B; `OVH_AGENT_VISION_READER` is an explicit operator
+override. It must advertise vision and native JSON schema in the effective provider
+capabilities. There is no silent fallback to a reader with weaker test results.
+Native structured output constrains format; it does not certify visual accuracy.
+The reader gets only the current task and images, without conversation history
+or workspace tools. Auto selects the executor independently of image capability;
+a native vision executor still receives images directly. The header identifies
+the executor; the status and a separate `usage` event (`purpose: vision`) identify
+the reader and its cost. `vision_reading` archives the extracted observations.
+
+The executor receives the original instruction plus explicitly untrusted visual
+observations, including uncertainty. Invalid, incomplete, unreadable or truncated
+extraction stops the task before execution. This validates the handoff format,
+not the truth of every observation. Historical binary attachments are not replayed
+to text-only models; original images remain in the conversation archive. There is
+no cross-conversation image cache. Local budgets and model policy remain separate
+from this public application behavior. Regression tests: `scripts/test-vision.py`.
+
+Direct image generation/retouch requests are excluded from this path. The current
+extension has no configured image-generation tool: it reports that limitation
+without calling the visual reader or pretending to generate pixels. This is
+separate from creating container images or implementing UI code from a screenshot.
+
+### Interrupted view restoration
+
+Closing the view stops its backend. Unfinished tasks therefore restore as
+interrupted, with an explicit Resume action; reopening does not execute tools
+automatically. Interrupted archives bypass cached HTML and reconstruct recorded
+model/tool activity. Tool detail previews are bounded to 4000 characters.
+`ResponseStream` saves a separate, bounded `response-draft.json` at most once per
+second (also at stream completion), since stdin snapshot commands wait behind
+inference. A new attempt or successful completion clears that draft. Recovered
+text remains visibly interrupted, never a verified final response. Abrupt process
+termination may lose the last second of streamed text; tool journals remain the
+source for recorded actions.
+
+Selecting a history folder or choosing a project records the explicit destination
+for the next new conversation (`ovhAgent.newConversationProject`). It does not
+move the current conversation. New Conversation starts in that folder and records
+the history assignment when the backend acknowledges `cleared`, after creating
+the archive directory. Without an explicit selection, it uses the IDE workspace.

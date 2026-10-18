@@ -36,6 +36,46 @@ class Sessions(unittest.TestCase):
         self.events = self.folder / 'events.jsonl'
         self.events.write_text(json.dumps({'type': 'user', 'text': 'Analyse\n  le projet docker_trinity'}) + '\n')
 
+    def test_partial_stream_survives_without_a_queued_webview_snapshot(self):
+        a.save_task_state(status='running',prompt='travaille')
+        with patch.object(a,'JSON_MODE',True),patch.object(a,'emit'):
+            stream=a.ResponseStream();stream.pending='Texte provisoire';stream.flush()
+        a.save_task_state(status='interrupted')
+        a.archive_event({'type':'model_active','model':'gpt-oss-120b'})
+        a.archive_event({'type':'tool_start','id':'read','title':'Lecture','detail':'app.py'})
+        restored=a.read_archive('conversation')
+        self.assertEqual(restored[-1]['type'],'partial_response')
+        self.assertEqual(restored[-1]['text'],'Texte provisoire')
+        self.assertTrue(any(e['type']=='tool_start' for e in restored))
+        self.assertFalse(any(e['type']=='response' for e in restored))
+        a.save_task_state(status='running',prompt='nouvelle demande')
+        self.assertFalse((self.folder/'response-draft.json').exists())
+        with patch.object(a,'JSON_MODE',True),patch.object(a,'emit'):
+            stream=a.ResponseStream();stream.pending='nouveau';stream.flush()
+        a.save_task_state(status='completed')
+        self.assertFalse((self.folder/'response-draft.json').exists())
+        self.assertFalse(any(e['type']=='partial_response' for e in a.read_archive('conversation')))
+
+    def test_interrupted_archive_bypasses_snapshot_and_exposes_resume(self):
+        a.save_task_state(status='interrupted',prompt='travaille')
+        outputs=[]
+        def inputs(requests):
+            requests.put({'type':'load_archive','id':'conversation'})
+            requests.put({'type':'shutdown'})
+        with ExitStack() as stack:
+            mocks={'recover_verification':{},'load_history':{'return_value':[]},
+                'read_snapshot':{'side_effect':AssertionError('Interrupted HTML may be stale')},
+                'load_selected_model':{'return_value':a.AUTO_MODEL},'refresh_billing_async':{},
+                'current_budget_status':{'return_value':{}},'publish_budget':{},
+                'stdin_reader':{'side_effect':inputs},'emit':{'side_effect':outputs.append},
+                'write_pointer':{},'list_archives':{'return_value':[]}}
+            for name,settings in mocks.items():stack.enter_context(patch.object(a,name,**settings))
+            stack.enter_context(patch.object(a,'JSON_MODE',False))
+            a.main_json_lines()
+        restored=[e for e in outputs if e['type']=='archive_loaded']
+        self.assertEqual(len(restored),2)
+        self.assertTrue(all(e['resumable'] for e in restored))
+
     def test_activity_durations_are_monotonic_and_paired_by_id(self):
         outputs = []
         with patch.object(a, 'emit', side_effect=outputs.append), patch.object(a, 'read_task_state', return_value={}), \
@@ -197,6 +237,32 @@ class Sessions(unittest.TestCase):
         self.assertEqual(json.loads(self.meta.read_text())['title'], 'Vérifie la configuration DNS')
         a.update_metadata(first_message='Deuxième demande')
         self.assertEqual(json.loads(self.meta.read_text())['title'], 'Vérifie la configuration DNS')
+
+    def test_image_generation_never_enters_reader_or_executor(self):
+        outputs=[]
+        def input_messages(requests):
+            requests.put({'type':'prompt','text':'Génère une image de chat','model':'gpt-oss-120b'})
+            requests.put({'type':'shutdown'})
+        with ExitStack() as stack:
+            mocks={
+                'recover_verification':{},'load_history':{'return_value':[]},
+                'read_snapshot':{'return_value':None},'load_selected_model':{'return_value':'gpt-oss-120b'},
+                'save_selected_model':{},'refresh_billing_async':{},'current_budget_status':{'return_value':{}},
+                'publish_budget':{},'stdin_reader':{'side_effect':input_messages},'emit':{'side_effect':outputs.append},
+                'is_selectable_model':{'return_value':True},
+                'compact_history':{'return_value':([],{'before_chars':0})},
+                'prepare_task_context':{'return_value':([],{})},
+                'get_agent':{'side_effect':AssertionError('Executor must not be called')},
+                'extract_visual_context':{'side_effect':AssertionError('Reader must not be called')},
+                'begin_verification':{'side_effect':AssertionError('No mutations expected')},
+            }
+            for name,settings in mocks.items():stack.enter_context(patch.object(a,name,**settings))
+            stack.enter_context(patch.object(a,'JSON_MODE',False))
+            stack.enter_context(patch.object(a,'VERIFICATION_GUARD',None))
+            a.main_json_lines()
+        error=next(e for e in outputs if e['type']=='error')
+        self.assertIn('aucun outil de génération',error['text'])
+        self.assertFalse(any(e['type']=='response' for e in outputs))
 
     def test_local_document_answer_archives_without_any_model_or_compaction(self):
         workspace=self.root/'project';workspace.mkdir()

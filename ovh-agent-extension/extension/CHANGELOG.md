@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.5 — 2026-10-18
+
+- Remove header background overrides in light and dark themes; use the installed app branding logo while preserving theme opacity.
+- Restore interrupted conversations and selected project placement; improve full-width diff highlighting.
+- Support external file tools in full-access mode with archived notices, absolute file paths and verified rollback; keep restricted mode boundaries.
+- Add hybrid image reading before code reasoning, with separate image-generation intent handling.
+- Include accumulated context, budgeting, archive and packaging fixes validated by the offline regression suites.
+
 ## 1.14.4 — 2026-10-18
 
 - Extend edit-context isolation to historical reasoning blocks as well as visible assistant text. Preserve exact archived messages and tool protocol; regression covers cross-model reasoning contamination.

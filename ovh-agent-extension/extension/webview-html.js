@@ -13,6 +13,16 @@ function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, we
   const configuredColor = String(env.OVH_AGENT_PRIMARY_COLOR || "").trim();
   const primaryColor = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor : "#3e3aab";
   const mediaRoot = path.join(extensionUri.fsPath || extensionUri, "media");
+  // Branding already resolves/sanitizes the app icon into the installed manifest.
+  // Reuse that local asset rather than loading an arbitrary URL into the webview.
+  let logoFile = "trinity-icon.png";
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(extensionUri.fsPath || extensionUri, "package.json"), "utf8"));
+    const candidate = String(manifest.icon || "");
+    if (/^media\/[a-z0-9_.-]+\.(?:png|svg|jpg|jpeg|webp)$/i.test(candidate) &&
+        fs.existsSync(path.join(mediaRoot, candidate.slice(6)))) logoFile = candidate.slice(6);
+  } catch { /* The packaged original remains available when metadata cannot be read. */ }
+  const logoUri = webview.asWebviewUri(joinPath(extensionUri, "media", logoFile));
   // Packaging generates minified assets; source checkouts work without a build.
   const asset = name => fs.existsSync(path.join(mediaRoot, name+".min.js")) ? name+".min.js" : name+".js";
   const styleUri = webview.asWebviewUri(joinPath(extensionUri, "media", "chat.css"));
@@ -29,7 +39,7 @@ function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, we
   const iconsUri = webview.asWebviewUri(joinPath(extensionUri, "media", "icons.min.js"));
   const safeHtmlUri = webview.asWebviewUri(joinPath(extensionUri, "media", asset("safe-html")));
   const nonce = crypto.randomBytes(24).toString("base64");
-  const revision = crypto.createHash("sha256").update(["chat.css", "monokai.min.css", "highlight.min.js", asset("chat"), asset("i18n"), "purify.min.js", "icons.min.js", asset("safe-html")].map(name => {
+  const revision = crypto.createHash("sha256").update([logoFile, "chat.css", "monokai.min.css", "highlight.min.js", asset("chat"), asset("i18n"), "purify.min.js", "icons.min.js", asset("safe-html")].map(name => {
     const stat = fs.statSync(path.join(extensionUri.fsPath || extensionUri, "media", name));
     return `${name}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
   }).join("|")).digest("hex").slice(0, 20);
@@ -37,13 +47,13 @@ function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, we
 <html lang="fr"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; connect-src 'none'; img-src data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; connect-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${codeStyleUri}?build=${revision}">
 <link rel="stylesheet" href="${styleUri}?build=${revision}">
 <style nonce="${nonce}">:root { --ovh-primary: ${primaryColor}; }</style>
 <title>${brandName}</title>
 </head><body data-emoji-mode="${/^[0-3]$/.test(env.OVH_AGENT_EMOJI_MODE || "") ? env.OVH_AGENT_EMOJI_MODE : "1"}" data-language="${localeOverride}" data-brand-name="${brandName}" data-brand-badge="${brandBadge}" data-primary-color="${primaryColor}" data-performance-mode="${performanceMode}">
-<header><div class="header-leading"><span id="history-brand" class="history-brand" aria-hidden="true">${uiIcon("nodes")}</span><button id="history" hidden class="icon back-history" title="Retour à l’historique" aria-label="Retour à l’historique">${uiIcon("back")}</button><div class="brand"><strong>${brandName}</strong><button id="model-picker" title="Choisir le modèle"><span id="selected-model">Auto équilibré</span>${uiIcon("chevron")}</button></div></div><div class="header-actions"><button id="project-picker" class="icon" title="Choisir ou créer un projet" aria-label="Choisir ou créer un projet">${uiIcon("project")}</button><button id="billing" class="icon billing" title="Configurer le suivi du solde OVHcloud" aria-label="Solde OVHcloud">${uiIcon("database")}<span class="billing-dot"></span></button><button id="configure" class="icon" title="Configurer la clé OVH" aria-label="Configurer la clé">${uiIcon("key")}</button><button id="clear" class="icon" title="Nouvelle conversation" aria-label="Nouvelle conversation">${uiIcon("plus")}</button></div></header>
+<header><div class="header-leading"><span id="history-brand" class="history-brand" aria-hidden="true"><img class="header-app-logo" src="${escapeBrand(String(logoUri))}?build=${revision}" alt=""></span><button id="history" hidden class="icon back-history" title="Retour à l’historique" aria-label="Retour à l’historique">${uiIcon("back")}</button><div class="brand"><strong>${brandName}</strong><button id="model-picker" title="Choisir le modèle"><span id="selected-model">Auto équilibré</span>${uiIcon("chevron")}</button></div></div><div class="header-actions"><button id="project-picker" class="icon" title="Choisir ou créer un projet" aria-label="Choisir ou créer un projet">${uiIcon("project")}</button><button id="billing" class="icon billing" title="Configurer le suivi du solde OVHcloud" aria-label="Solde OVHcloud">${uiIcon("database")}<span class="billing-dot"></span></button><button id="configure" class="icon" title="Configurer la clé OVH" aria-label="Configurer la clé">${uiIcon("key")}</button><button id="clear" class="icon" title="Nouvelle conversation" aria-label="Nouvelle conversation">${uiIcon("plus")}</button></div></header>
 <div class="workspace-content">
 <aside id="archive-panel">${archiveBanner}<p id="archive-notice" role="status"></p><div id="archive-list"><p class="archive-empty">Chargement…</p></div><p class="agent-disclaimer"></p></aside><dialog id="delete-dialog"><h3>${uiIcon("trash", "delete-title-icon")}Supprimer définitivement ?</h3><p id="delete-title"></p><p>Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.</p><div class="delete-dialog-actions"><button id="delete-cancel" type="button">Annuler</button><button id="delete-confirm" type="button">Supprimer définitivement</button></div></dialog>
 <aside id="model-panel" hidden><div class="model-head"><div><strong>Modèles OVHcloud</strong><span>Catalogue et tarifs en direct</span><span id="model-availability" aria-live="polite"></span></div><button id="close-models" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div><div class="model-tools"><input id="model-search" type="search" placeholder="Rechercher un modèle…"><button id="refresh-models" class="icon" title="Actualiser les tarifs">${uiIcon("reload")}</button></div><div id="model-list"><p class="model-empty">Chargement du catalogue…</p></div><div class="model-foot">Tarifs OVHcloud HT. Seuls les modèles sélectionnables sont affichés. Les modèles non conversationnels ou indisponibles sont exclus. Le mode Auto ne compte pas comme un modèle.</div></aside>

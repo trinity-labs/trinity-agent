@@ -520,3 +520,32 @@ test('archive assignment and attachment reject symlinked parents before moving d
  assert(fs.existsSync(path.join(outside,'one','meta.json')));
  assert(!fs.existsSync(path.join(store.dataRoot,'archive',b.id,'one')));
 });
+
+test('selected folder becomes the workspace and group of the next new conversation',async t=>{
+ const {root,store,provider,values}=typedPicker(t),project=store.create(root,'selected-folder');
+ await provider.openProject(project.id);
+ assert.equal(provider.workspace,root,'selection must not move the existing conversation');
+ assert.equal(values['ovhAgent.newConversationProject'],project.id);
+ provider.ensureAgent=async()=>{
+  provider.agent={stdin:{write:line=>{
+   assert.equal(JSON.parse(line).type,'clear');
+   const folder=path.join(store.dataRoot,'archive',project.id,'new');
+   fs.mkdirSync(folder,{recursive:true});fs.writeFileSync(path.join(folder,'meta.json'),JSON.stringify({id:'new',workspace:project.root}));
+   fs.writeFileSync(path.join(folder,'../current'),'new');
+  }}};return true;
+ };
+ await provider.clearConversation();
+ assert.equal(provider.workspace,project.root);
+ assert.equal(provider.store.session,project.id);
+ provider.consumeOutput('{"type":"cleared","conversation":"new"}\n');
+ assert.equal(store.assignments()[project.id+':new'],project.id);
+ assert.equal(provider.pendingConversationProject,undefined);
+});
+
+
+test('a removed selected folder cannot silently create a conversation in the IDE root',async t=>{
+ const {provider,calls}=typedPicker(t),posted=[];
+ provider.newConversationProject='f'.repeat(20);provider.post=e=>posted.push(e);
+ await provider.clearConversation();
+ assert.equal(posted.at(-1).type,'error');assert.equal(calls.length,0);
+});

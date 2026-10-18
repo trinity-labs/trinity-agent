@@ -746,6 +746,15 @@ function renderArchiveMessages(items) {
   approvalCards.clear();
   messages.innerHTML = "";
   for (const item of items || []) {
+    if (item.type === "user" && !item.steering && currentRun) finishRun("stopped");
+    if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
+    if (item.type === "tool_start") addActivity(item);
+    if (item.type === "tool_end") finishActivity(item);
+    if (item.type === "partial_response") {
+      setMarkdown(item.html || "");
+      finishRun("stopped");
+    }
+    if (["response", "error"].includes(item.type) && currentRun) finishRun(item.type === "response" ? "done" : "error");
     if (item.type === "user") addUserMessage(item.text || "", item.images || [], item.timestamp || null);
     if (item.type === "file_change") addArchivedFileChange(item);
     if (item.type === "response") addArchivedAssistant(item.html || "", false, item.timestamp || null);
@@ -765,6 +774,11 @@ function renderArchiveMessages(items) {
       messages.appendChild(article);
     }
   }
+  if (currentRun) finishRun("stopped");
+  messages.querySelectorAll(".activity-row").forEach(row => { delete row.dataset.durationMs; });
+  restoreActivityTimings(messages, items || []);
+  // Replaying an archive is not a new execution: do not display its render time.
+  messages.querySelectorAll(".activity-elapsed").forEach(el => { el.textContent = ""; el.removeAttribute("title"); });
   if (!messages.children.length) {
     messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
   }
@@ -791,6 +805,7 @@ function applySnapshot(data) {
   for (const article of messages.querySelectorAll(".message.working")) {
     article.classList.remove("working");
     article.classList.add("stopped");
+    article.querySelectorAll(".streaming").forEach(content => content.classList.remove("streaming"));
   }
   for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
@@ -982,7 +997,7 @@ function renderArchives(items, projects) {
   }
   for(const project of projects) {
     const group=document.createElement('details');
-    group.className='archive-project';group.dataset.projectId=project.id;
+    group.className='archive-project';group.classList.toggle('selected',Boolean(project.selected));group.dataset.projectId=project.id;
     group.open=expanded.get(project.id) ?? false;
     const color=/^#[a-f0-9]{6}$/i.test(project.color||'')?project.color:primaryColor;
     group.dataset.projectName=project.name;group.dataset.projectColor=color;group.dataset.projectRoot=project.root;
@@ -990,6 +1005,10 @@ function renderArchives(items, projects) {
     group.style.setProperty('--project-color',displayedColor);
     const summary=document.createElement('summary');
     summary.draggable=false;
+    summary.addEventListener('click',event=>{
+      if(event.target.closest('button'))return;
+      vscode.postMessage({type:'openProject',project:project.id});
+    });
     const handle=document.createElement('button');handle.type='button';handle.className='icon archive-drag-handle project-drag-handle';handle.draggable=true;handle.innerHTML=uiIcon('grip');
     handle.title=t('Déplacer le dossier : glisser-déposer ou Alt + ↑ / ↓');handle.setAttribute('aria-label',handle.title+' : '+project.name);handle.setAttribute('aria-keyshortcuts','Alt+ArrowUp Alt+ArrowDown');
     handle.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
@@ -1006,7 +1025,7 @@ function renderArchives(items, projects) {
     });
     const caret=document.createElement('button');caret.type='button';caret.className='icon project-caret';caret.innerHTML=uiIcon('chevron');
     const updateCaret=()=>{caret.setAttribute('aria-expanded',String(group.open));caret.title=t(group.open?'Replier le projet':'Déplier le projet');caret.setAttribute('aria-label',caret.title+' : '+project.name);};
-    caret.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();group.open=!group.open;updateCaret();});
+    caret.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();group.open=!group.open;updateCaret();if(group.open)vscode.postMessage({type:'openProject',project:project.id});});
     group.addEventListener('toggle',updateCaret);updateCaret();
     const icon=document.createElement('span');icon.className='project-folder-icon';icon.innerHTML=uiIcon('folder');
     const name=document.createElement('span');name.className='project-folder-name';name.textContent=project.name;name.title=project.root;
@@ -1830,7 +1849,7 @@ function renderPendingImages() {
 function ensureVisionModel() {
   const current = modelCatalog.find((item) => item.id === selectedModel);
   if (selectedModel === "auto-balanced" || !modelCatalog.length || current?.vision) return;
-  // Le serveur route uniquement cette demande vers un modèle Vision.
+  // Le lecteur Vision extrait les pixels ; le modèle sélectionné exécute la tâche.
   // La préférence de l’utilisateur reste inchangée.
   setStatus(t("Un modèle Vision sera utilisé pour cette image ; ton modèle sélectionné est conservé."));
 }
@@ -2364,6 +2383,9 @@ window.addEventListener("message", ({ data }) => {
     if (selectedModel !== "auto-balanced") lastRoutedModel = "";
     updateModelButton();
   }
+  if (data.type === "project_selected") {
+    archiveList.querySelectorAll('.archive-project').forEach(group=>group.classList.toggle('selected',group.dataset.projectId===data.project));
+  }
   if (data.type === "archive_loaded") {
     loadingArchive = null;
     setArchiveVisible(false);
@@ -2373,8 +2395,9 @@ window.addEventListener("message", ({ data }) => {
     followupCommand("list");
     restoreArchiveModel(data);
     renderArchiveMessages(data.messages);
+    if (data.resumable) resumableArchives.add(activeArchiveId);
     endArchiveLoading(true);
-    setBusy(false, data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
+    setBusy(false, data.resumable ? t("Tâche interrompue - clique sur ▶ pour la reprendre.") : data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
   }
   if (data.type === "snapshot_loaded") {
     loadingArchive = null;

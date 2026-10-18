@@ -28,7 +28,7 @@ header {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--vscode-panel-border);
-  background: var(--vscode-sideBar-background);
+  background: transparent;
 }
 header strong, header span { display: block; }
 header strong { font-size: 13px; letter-spacing: .1px; }
@@ -414,6 +414,9 @@ main {
 }
 .copy-diff:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
 .diff-scroller {
+  /* One shared column keeps short rows painted across the longest scrolled line. */
+  display: grid;
+  grid-template-columns: minmax(100%, max-content);
   max-height: 430px;
   overflow: auto;
   background: var(--vscode-editor-background);
@@ -752,7 +755,8 @@ button:disabled { cursor: default; opacity: .45; }
 }
 header {
   border-bottom-color: color-mix(in srgb, var(--ovh-primary) 35%, transparent);
-  background: var(--ovh-primary-pastel);
+  /* The header follows its host surface; keep branding on text and controls. */
+  background: transparent;
 }
 .brand strong { color: var(--ovh-primary); }
 .back-history { color: var(--ovh-primary); }
@@ -893,7 +897,7 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 
 #archive-banner[hidden] { display: none; }
 
-/* Bootstrap outline icons and Font Awesome logo: selected vectors only, colored by the current branding. */
+/* Selected outline vectors inherit the current branding color. */
 svg.agent-icon { display: inline-block; fill: currentColor; stroke: none; flex-shrink: 0; vertical-align: middle; }
 svg.agent-icon path { fill: inherit; stroke: none; }
 .icon svg.agent-icon, .round svg.agent-icon, .access svg.agent-icon,
@@ -909,7 +913,8 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 .copy-diff .agent-icon { width: 12px; height: 12px; }
 
 .history-brand { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; color: var(--ovh-primary); }
-.history-brand .agent-icon { width: 23px; height: 23px; }
+/* Keep opacity on the parent so original and branded logos share both themes. */
+.history-brand .header-app-logo { width: 23px; height: 23px; object-fit: contain; display: block; }
 #history[hidden], #history-brand[hidden] { display: none; }
 
 #configure .icon-key { transform: rotate(135deg) scaleY(-1); transform-origin: center; }
@@ -917,7 +922,7 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 /* The dark header needs a lighter brand accent, especially for its logo. */
 body.vscode-dark header, body.vscode-high-contrast header {
   --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
-  background: color-mix(in srgb, var(--ovh-primary) 14%, var(--vscode-sideBar-background));
+  background: transparent;
   border-bottom-color: color-mix(in srgb, var(--ovh-primary-text) 35%, transparent);
 }
 body.vscode-dark header .brand strong, body.vscode-high-contrast header .brand strong,
@@ -956,7 +961,9 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 }
 .archived-verification pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* Diff source must not inherit inline Markdown code backgrounds. */
+/* Diffs also live outside .markdown; keep the code cell transparent so the
+   added/deleted row background reaches across the source, not just its gutter. */
+.diff-scroller .diff-line > code,
 .markdown .diff-line > code { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 0 12px 0 0; font: inherit; }
 
 /* Only explicitly selected conversations appear in project folders. */
@@ -1162,3 +1169,11 @@ body.vscode-dark .archive-loading-spinner,
 body.vscode-high-contrast .archive-loading-spinner {
   border-top-color: color-mix(in srgb, var(--ovh-primary) 55%, var(--vscode-editor-foreground, #fff));
 }
+
+/* Match the softened dark-mode send button, including its blink transparency. */
+body:is(.vscode-dark, .vscode-high-contrast) .markdown.streaming::after {
+  background: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
+}
+
+/* Explicit destination for the next new conversation. */
+.archive-project.selected > summary { background: var(--ovh-primary-selected); }

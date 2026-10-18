@@ -79,6 +79,7 @@ class OvhAgentViewProvider {
       }
     } catch {}
     this.projectArchives = new Map();
+    this.newConversationProject = state?.get("ovhAgent.newConversationProject");
   }
 
   async resolveWebviewView(webviewView) {
@@ -299,13 +300,20 @@ class OvhAgentViewProvider {
         await this.stopAgent(false);
         entry = projects.attach(this.workspace, this.store.current(), entry.root);
       }
-      // Adding a folder organizes history without changing the current conversation's context.
+      // Selection chooses the destination of the next conversation, not the current task.
+      await this.selectConversationFolder(entry);
       this.showArchives();
     } catch (error) {
       vscode.window.showErrorMessage(String(error.message));
     } finally {
       this.switchingProject = false;
     }
+  }
+
+  async selectConversationFolder(entry) {
+    this.newConversationProject = entry.id;
+    await this.state?.update("ovhAgent.newConversationProject", entry.id);
+    this.post({type:"project_selected",project:entry.id});
   }
 
   async activateProject(entry, conversation) {
@@ -324,7 +332,7 @@ class OvhAgentViewProvider {
 
   async openProject(id, conversation) {
     if(!this.windowLock) {this.post({type:"archive_open_failed"});return;}
-    if(this.busy || this.switchingProject || this.startPromise || this.deleting) {
+    if((conversation && this.busy) || this.switchingProject || this.startPromise || this.deleting) {
       this.post({type:"archive_open_failed"});
       vscode.window.showInformationMessage(t("Termine ou arrête la tâche avant de changer de projet."));return;
     }
@@ -335,7 +343,7 @@ class OvhAgentViewProvider {
       if(!entry)throw new Error(t("Projet introuvable."));
       if(conversation && !new ArchiveStore(entry.root,this.store.dataRoot).list().some(item=>item.id===conversation))throw new Error(t("Conversation introuvable."));
       if(conversation)await this.activateProject(entry,conversation);
-      else {projects.register(entry.root);this.showArchives();}
+      else {projects.register(entry.root);await this.selectConversationFolder(entry);this.showArchives();}
     } catch(error) {this.post({type:"archive_open_failed",text:String(error.message)});vscode.window.showErrorMessage(String(error.message));}
     finally {this.switchingProject=false;}
   }
@@ -541,7 +549,7 @@ class OvhAgentViewProvider {
       const entries=registry.catalog();
       if(!entries.some(p=>p.id===this.store.session))entries.unshift({id:this.store.session,name:path.basename(this.workspace),root:this.workspace});
       const assignments=registry.assignments(),items=[];
-      const projects=registry.list().map(entry=>({...entry,active:entry.id===this.store.session,documents:registry.documents(entry),items:[]}));
+      const projects=registry.list().map(entry=>({...entry,selected:entry.id===this.newConversationProject,active:entry.id===this.store.session,documents:registry.documents(entry),items:[]}));
       const groups=new Map(projects.map(entry=>[entry.id,entry]));
       for(const entry of entries) {
         const active=entry.id===this.store.session;
@@ -762,7 +770,16 @@ class OvhAgentViewProvider {
           message.html = this.renderMarkdown(this.responseText);
         }
         if (message.type === "error") message.html = this.renderMarkdown(`**Erreur :** ${message.text}`);
-        if (message.type === "cleared") message.workspace = this.workspace;
+        if (message.type === "cleared") {
+          message.workspace = this.workspace;
+          // The backend has now created the archive directory, so assignment is safe.
+          const target = this.pendingConversationProject;
+          this.pendingConversationProject = undefined;
+          if (target && message.conversation) {
+            try { new ProjectStore(this.store.dataRoot).assign(this.store.session,message.conversation,target); }
+            catch (error) { this.post({type:"diagnostic",text:`Classement de la conversation impossible : ${error.message}`}); }
+          }
+        }
         if (message.type === "archive_loaded") {
           message.messages = (message.messages || []).map((item) => ({
             ...item,
@@ -808,11 +825,17 @@ class OvhAgentViewProvider {
   }
 
   async clearConversation() {
+    const dataRoot=this.store.dataRoot;
+    // An explicitly selected folder wins; browsing an old archive alone does not.
+    const selected=new ProjectStore(dataRoot).list().find(entry=>entry.id===this.newConversationProject);
+    if (this.newConversationProject && !selected) {
+      this.post({type:"error",text:"Le dossier sélectionné n’existe plus. Sélectionne un dossier avant de créer la conversation."});
+      return;
+    }
     await this.stopAgent(false);
     this.busy = false;
-    const dataRoot=this.store.dataRoot;
-    // A new conversation belongs to the IDE workspace, independent of the last archive opened.
-    this.workspace=this.initialWorkspace;
+    this.pendingConversationProject = undefined;
+    this.workspace=selected?.root || this.initialWorkspace;
     this.store=new ArchiveStore(this.workspace,dataRoot);
     new ProjectStore(dataRoot).activate(this.initialWorkspace,this.workspace,{register:false});
     await this.state?.update("ovhAgent.projectRoot",this.workspace);
@@ -820,6 +843,7 @@ class OvhAgentViewProvider {
       this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, "initialization failed") });
       return;
     }
+    this.pendingConversationProject = selected?.id;
     this.agent.stdin.write(`${JSON.stringify({ type: "clear" })}\n`);
   }
 

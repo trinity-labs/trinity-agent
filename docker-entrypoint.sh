@@ -39,4 +39,10 @@ node /home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-branding.cjs
 # One updater per container; installs on disk without interrupting the editor.
 python3 /home/coder/TRINITY-DOCKER/var/docker/docker_ide/scripts/auto-update.py --watch &
 
+# Optional private relay: durable queue, one supervisor, no public-package dependency.
+trinity_relay=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/.local-agent/relay.py
+if [ -f "$trinity_relay" ] && [ -f "${trinity_relay%/*}/relay-state/enabled" ]; then
+  /opt/ovh-agent/bin/python "$trinity_relay" --watch >/dev/null 2>&1 &
+fi
+
 exec "$@"

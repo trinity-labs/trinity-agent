@@ -175,8 +175,9 @@ class Check:
 
 
 class ChangeGuard:
-    def __init__(self, workspace: Path, directory: Path, *, runner=run_check, publish=None, require_checks=False):
+    def __init__(self, workspace: Path, directory: Path, *, runner=run_check, publish=None, require_checks=False, allow_external=False):
         self.workspace = workspace.resolve()
+        self.allow_external = allow_external
         self.directory = directory
         self.runner = runner
         self.publish = publish or (lambda _event: None)
@@ -196,7 +197,7 @@ class ChangeGuard:
 
     def _path(self, path: Path) -> Path:
         path = path.resolve()
-        if not path.is_relative_to(self.workspace) or path.is_relative_to(self.directory.resolve()):
+        if (not self.allow_external and not path.is_relative_to(self.workspace)) or path.is_relative_to(self.directory.resolve()):
             raise VerificationError("Chemin hors périmètre des modifications vérifiables.")
         return path
 
@@ -207,7 +208,8 @@ class ChangeGuard:
             if path.is_file():
                 self.observed.add(path)
             folder = path if path.is_dir() else path.parent
-            while folder.is_relative_to(self.workspace):
+            # External projects retain their own checks; never widen the default workspace.
+            while self.allow_external or folder.is_relative_to(self.workspace):
                 if any((folder / name).exists() for name in (".ovh-agent-checks.json", "package.json", ".git", "pyproject.toml")):
                     if folder in self.projects:
                         return
@@ -273,7 +275,7 @@ class ChangeGuard:
                     self.checks.update(discovered)
                     self.projects.add(folder)
                     return
-                if folder == self.workspace:
+                if folder == self.workspace or folder == folder.parent:
                     return
                 folder = folder.parent
 
@@ -293,7 +295,7 @@ class ChangeGuard:
         paths = set(self.observed) | {Path(p) for p in self.state["changes"]} | {Path(p) for p in check.protected}
         for argument in check.argv:
             path = check.root / argument
-            if path.is_file() and path.resolve().is_relative_to(self.workspace):
+            if path.is_file() and (self.allow_external or path.resolve().is_relative_to(self.workspace)):
                 paths.add(path.resolve())
         return {str(p): digest(contents(p)) for p in paths}
 

@@ -291,7 +291,9 @@ test('history nests conversations in project folders and routes cross-project op
   emit({type:'archives',items:[],projects:[a,b]});groups=document.querySelectorAll('.archive-project');assert.equal(groups[0].open,true);
   groups[1].querySelector('.archive-open').click();assert.equal(sent.at(-1).type,'openProject');assert.equal(sent.at(-1).project,b.id);assert.equal(sent.at(-1).conversation,'same-id');
   assert.equal(document.querySelector('.project-folder-open'),null);
-  const sentBefore=sent.length;groups[1].querySelector('.project-caret').click();assert.equal(groups[1].open,true);assert.equal(sent.length,sentBefore);
+  const sentBefore=sent.length;groups[1].querySelector('.project-caret').click();assert.equal(groups[1].open,true);assert.equal(sent.length,sentBefore+1);
+  assert.equal(sent.at(-1).type,'openProject');assert.equal(sent.at(-1).project,b.id);assert.equal(sent.at(-1).conversation,undefined);
+  emit({type:'project_selected',project:b.id});assert(groups[1].classList.contains('selected'));assert(!groups[0].classList.contains('selected'));
   emit({type:'archive_loaded',id:'same-id',messages:[]});
   groups[0].querySelector('.archive-open').click();assert.equal(sent.at(-1).type,'loadArchive');assert.equal(sent.at(-1).id,'same-id');
   emit({type:'archives',items:[],projects:[{...a,items:[]}]});assert.equal(document.querySelector('.archive-project .archive-empty').textContent,'Aucune conversation associée à ce projet.');

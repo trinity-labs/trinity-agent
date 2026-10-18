@@ -130,3 +130,6 @@
 !/ovh-agent-extension/extension/ARCHITECTURE.md
 !/ovh-agent-extension/extension/scripts/build-frontend.cjs
 !/ovh-agent-extension/extension/webview-html.js
+
+!/ovh_vision.py
+!/scripts/test-vision.py

@@ -36,6 +36,57 @@ class Verification(unittest.TestCase):
         self.events = []
         self.guard = ChangeGuard(self.workspace, self.root/'receipts', publish=self.events.append)
 
+    def test_access_mode_external_paths_and_symlinks(self):
+        outside = self.root / 'outside.txt'
+        outside.write_text('outside')
+        link = self.workspace / 'external-link'
+        link.symlink_to(outside)
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'VERIFICATION_GUARD', None):
+            for full in (False, True, False):
+                with patch.object(backend, 'FULL_ACCESS', full):
+                    for path in (outside, link):
+                        if full:
+                            self.assertEqual(backend.resolve_path(str(path)), outside)
+                            self.assertEqual(backend.relative_name(outside), str(outside))
+                        else:
+                            with self.assertRaises(backend.ModelRetry):
+                                backend.resolve_path(str(path))
+                    self.assertEqual(backend.resolve_path('app.py'), self.file)
+                    self.assertIn('Accès complet actif' if full else 'Mode restreint', backend.access_instructions())
+
+    def test_external_access_notice_once_and_absolute_change_path(self):
+        outside = self.root / 'outside.txt'
+        events = []
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'FULL_ACCESS', True), patch.object(backend, 'VERIFICATION_GUARD', None), patch.object(backend, 'EXTERNAL_ACCESS_NOTICES', set()), patch.object(backend, 'emit', side_effect=events.append), patch.object(backend, 'read_task_state', return_value={}):
+            backend.resolve_path(str(outside))
+            backend.resolve_path(str(outside))
+            backend.resolve_path(str(self.file))
+            starts = [e for e in events if e['type'] == 'tool_start']
+            self.assertEqual(len(starts), 1)
+            self.assertEqual(starts[0]['title'], 'Accès hors projet')
+            self.assertEqual(starts[0]['detail'], str(outside))
+            backend.emit_file_change(backend.relative_name(outside), '+content')
+            self.assertEqual(events[-1]['path'], str(outside))
+            self.assertFalse(any(e['type'] == 'approval' for e in events))
+
+    def test_external_project_checks_and_rollback_remain_active(self):
+        # Use this fixture as an external project to a different workspace.
+        other = self.root / 'other'
+        other.mkdir()
+        guard = ChangeGuard(other, self.root / 'external-receipts', allow_external=True)
+        with patch.object(backend, 'WORKSPACE', other), patch.object(backend, 'FULL_ACCESS', True), patch.object(backend, 'VERIFICATION_GUARD', guard):
+            self.assertEqual(backend.resolve_path(str(self.file)), self.file)
+        original = self.file.read_text()
+        guard.write(self.file, original, 'VALUE = 2\n# existing user change\n')
+        self.assertEqual(guard.verify()['status'], 'passed')
+        recovered = ChangeGuard.recover(other, guard.directory, allow_external=True)
+        self.assertTrue(recovered.rollback()['restored'])
+        self.assertEqual(self.file.read_text(), original)
+        with self.assertRaises(VerificationError):
+            guard._path(guard.directory / 'journal.json')
+        with self.assertRaises(VerificationError):
+            ChangeGuard(other, self.root / 'restricted').observe(self.file)
+
     def edit(self, value):
         self.guard.write(self.file, self.file.read_text(), f'VALUE = {value}\n# existing user change\n')
 
