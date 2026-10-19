@@ -46,7 +46,7 @@
   }
   function translateSnapshot(node) {
     // Only application-owned labels; never rewrite user/model prose or code.
-    const selectors = ".label,.activity-summary-text,.activity-row strong,.approval-card > strong,.approval-actions button,.file-change summary strong,.welcome p";
+    const selectors = ".label,.activity-summary-text,.activity-row strong,.approval-card > strong,.approval-actions button,.file-change summary strong,.welcome p,.execution-evidence";
     for (const element of node.querySelectorAll(selectors)) {
       if (element.children.length) continue;
       const value = element.textContent;

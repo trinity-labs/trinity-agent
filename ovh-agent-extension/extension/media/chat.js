@@ -618,6 +618,7 @@ function addArchivedAssistant(html, failed = false, timestamp = null) {
   article.append(label, content);
   stamp(article, timestamp);
   messages.appendChild(article);
+  return article;
 }
 
 function wireFileChangeCopy(details) {
@@ -749,7 +750,9 @@ function renderArchiveMessages(items) {
   activityRows.clear();
   approvalCards.clear();
   messages.innerHTML = "";
+  let evidenceArticle = null;
   for (const item of items || []) {
+    if (item.type === "user" && !item.steering) evidenceArticle = null;
     if (item.type === "user" && !item.steering && currentRun) finishRun("stopped");
     if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
     if (item.type === "tool_start") addActivity(item);
@@ -761,7 +764,25 @@ function renderArchiveMessages(items) {
     if (["response", "error"].includes(item.type) && currentRun) finishRun(item.type === "response" ? "done" : "error");
     if (item.type === "user") addUserMessage(item.text || "", item.images || [], item.timestamp || null);
     if (item.type === "file_change") addArchivedFileChange(item);
-    if (item.type === "response") addArchivedAssistant(item.html || "", false, item.timestamp || null);
+    if (item.type === "response") {
+      const article = addArchivedAssistant(item.html || "", false, item.timestamp || null);
+      // Evidence usually precedes the response. Move its one compact badge to
+      // the answer rather than creating duplicate activity/answer verdicts.
+      if (evidenceArticle?.classList.contains("archived-execution")) {
+        const badge = evidenceArticle.querySelector(":scope > .execution-evidence");
+        if (badge) article.appendChild(badge);
+        evidenceArticle.remove();
+      }
+      evidenceArticle = article;
+    }
+    if (item.type === "execution_evidence") {
+      if (!evidenceArticle) {
+        evidenceArticle = document.createElement("article");
+        evidenceArticle.className = "message assistant archived-execution";
+        messages.appendChild(evidenceArticle);
+      }
+      showExecutionEvidence(item, evidenceArticle);
+    }
     if (item.type === "error") addArchivedAssistant(item.html || "", true, item.timestamp || null);
     if (item.type === "verification_status" && item.status !== "running") {
       const article = document.createElement("article");
@@ -814,6 +835,7 @@ function applySnapshot(data) {
   for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
   for (const change of messages.querySelectorAll(".file-change")) wireFileChangeCopy(change);
+  restoreExecutionEvidence(messages, data.timeline || []);
   // Restored content must not change the access mode chosen in this webview.
   restoreArchiveModel(data);
   updateAccessButton();
@@ -1654,6 +1676,64 @@ function showVerification(data, article = ensureRun().article) {
   persist();
 }
 
+function showExecutionEvidence(data, article) {
+  if (!article) return;
+  const pending = data.incomplete === true || ["unresolved", "running", "failed_checks", "failed_files"]
+    .some(key => Array.isArray(data[key]) && data[key].length > 0);
+  // A successful command or a green test alone cannot certify acceptance.
+  // No configured contract is a neutral completion state, not a task failure.
+  const verified = data.criteria_status === "passed" && data.contract_satisfied === true && !pending;
+  const noContract = data.criteria_status === "not_configured" && data.contract_satisfied == null && !pending;
+  const state = verified ? "passed" : noContract ? "no-contract" : "unverified";
+  let badge = article.querySelector(":scope > .execution-evidence");
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.className = "execution-evidence";
+    badge.setAttribute("role", "status");
+    article.appendChild(badge);
+  }
+  badge.dataset.evidenceState = state;
+  badge.textContent = t(verified ? "Critères vérifiés" : noContract
+    ? "Exécution terminée · sans contrat" : "Critères non vérifiés");
+  const statusLabel = value => t(({passed:"réussis", failed:"en échec", not_run:"non exécutés",
+    not_required:"non requis", not_configured:"non configurés"})[value] || "non vérifiés");
+  badge.title = t("Commandes : {0} · tests : {1} · critères : {2}",
+    statusLabel(data.command_status), statusLabel(data.test_status), statusLabel(data.criteria_status)) + "\n" +
+    t(noContract ? "Aucun contrat de réussite n’est configuré pour cette tâche."
+      : "La validation couvre uniquement les critères configurés, pas une autonomie générale.");
+}
+
+function restoreExecutionEvidence(root, timeline) {
+  // Older snapshots may predate the badge even though their authoritative
+  // timeline already contains evidence. Match actual responses, never tool rows.
+  const responses = [];
+  let pending = null, last = null;
+  for (const item of timeline) {
+    if (item.type === "user" && !item.steering) { pending = null; last = null; }
+    if (item.type === "execution_evidence") {
+      pending = item;
+      if (last) last.evidence = item;
+    }
+    if (item.type === "response") {
+      last = {timestamp:item.timestamp, evidence:pending};
+      responses.push(last);
+    }
+  }
+  const articles = [...root.querySelectorAll(":scope > .message.assistant")]
+    .filter(article => article.querySelector(":scope > .content")?.innerHTML.trim());
+  const timestampKey = value => {
+    const date = value ? new Date(value) : null;
+    return date && Number.isFinite(date.getTime()) ? date.toISOString() : null;
+  };
+  responses.forEach((response, index) => {
+    if (!response.evidence) return;
+    const key = timestampKey(response.timestamp);
+    const matched = key ? articles.filter(article => timestampKey(article.querySelector(":scope > .message-time")?.dateTime) === key) : [];
+    const article = matched.length === 1 ? matched[0] : articles.length === responses.length ? articles[index] : null;
+    if (article) showExecutionEvidence(response.evidence, article);
+  });
+}
+
 function formatModelCost(value, currency = "EUR") {
   return formatMoney(value, currency);
 }
@@ -2202,6 +2282,12 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "tool_end") finishActivity(data);
   if (data.type === "task_checkpoint") addCompletedActivity("context", t("Point d’avancement"), t("{0} s écoulées · {1} appels restants", data.elapsed_seconds, data.remaining_requests), data);
   if (data.type === "verification_status") showVerification(data);
+  if (data.type === "execution_evidence") {
+    const last = messages.lastElementChild;
+    const article = currentRun?.article || (last?.classList.contains("assistant") ? last : ensureRun().article);
+    showExecutionEvidence(data, article);
+    persist();
+  }
   if (data.type === "verification_check") {
     const detail = verificationCheckText(data);
     addActivity({...data, tool: "command", title: data.check, detail}, false);

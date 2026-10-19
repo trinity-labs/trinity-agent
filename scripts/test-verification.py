@@ -36,6 +36,19 @@ class Verification(unittest.TestCase):
         self.events = []
         self.guard = ChangeGuard(self.workspace, self.root/'receipts', publish=self.events.append)
 
+    def test_noop_contract_checks_run_once_without_manufacturing_a_change(self):
+        self.file.write_text('VALUE = 2\n# existing user change\n')
+        self.guard.ensure_checks(['Behavior'])
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+        self.assertFalse(self.guard.state['changes'])
+        count = len(self.guard.state['receipts'])
+        self.guard.ensure_checks(['Behavior'])
+        self.assertEqual(len(self.guard.state['receipts']), count)
+        self.file.write_text('VALUE = 1\n# external edit\n')
+        self.guard.observe(self.file)
+        self.guard.ensure_checks(['Behavior'])
+        self.assertFalse(self.guard.state['receipts'][-1]['passed'])
+
     def test_access_mode_external_paths_and_symlinks(self):
         outside = self.root / 'outside.txt'
         outside.write_text('outside')

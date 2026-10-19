@@ -35,6 +35,17 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/agent-verification"
           "$RUNNER_TEMP/agent-verification/bin/pip" install 'pydantic-ai-slim[openai]==2.56.0'
           "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/check-backend.py
+      - name: Evaluate independent autonomy scenarios without paid calls
+        env:
+          PYDANTIC_AI_NO_BANNER: '1'
+        run: |
+          "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/evaluate-agent.py --seed 20261019 --output "$RUNNER_TEMP/agent-evaluation.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: autonomy-evaluation
+          path: ${{ runner.temp }}/agent-evaluation.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Measure offline backend cold and warm starts
         env:
           PYDANTIC_AI_NO_BANNER: '1'

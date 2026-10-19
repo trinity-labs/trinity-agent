@@ -25,6 +25,15 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.memory=ProjectMemory(self.data,self.ctx.id,self.work)
     def remember(self,text='Décision PostgreSQL choisie pour les transactions'):
         return self.ctx.remember('old',text,'project','declared','demande utilisateur')
+    def test_registered_empty_project_does_not_abort_export(self):
+        empty='a'*20
+        (self.data/'projects.json').write_text(json.dumps([{'id':empty}]))
+        result=aggregate(self.data,[self.ctx.id,empty])
+        self.assertIn('Aucune mémoire ni conversation',Path(result['file']).read_text())
+        self.assertTrue(result['projects'][-1]['empty'])
+        with self.assertRaisesRegex(ValueError,'Projet inconnu'):
+            aggregate(self.data,['b'*20])
+
     def test_evaluation_archives_are_not_project_knowledge(self):
         self.remember('Benchmark deliberately contains a wrong answer')
         (self.folder/'meta.json').write_text(json.dumps({'evaluation':True}))

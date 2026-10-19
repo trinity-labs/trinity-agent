@@ -106,3 +106,21 @@ def is_image_generation_request(prompt):
         r'modifie|modifier|retouche|retoucher|edit|transforme|transformer)\s+'
         r'(?:(?:moi|nous)\s+)?(?:(?:de|d|une?|la|les|des|cette|ces|mon|ma|a|an|the|this)\s+){0,3}'
         r'(?:image|photo|illustration|dessin|picture|photograph|painting)s?\b', text))
+
+
+def run_reader_sync(awaitable):
+    """Preserve the sync agent's event loop and its pooled provider connections.
+
+    asyncio.run closes a new loop and clears the thread's current loop; a later
+    cached text client can then fail after an image turn. The synchronous backend
+    and Pydantic Agent.run_sync must share the same live thread-local loop.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(awaitable)

@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from unittest.mock import Mock, call
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, SystemPromptPart, TextPart, ToolCallPart, ToolReturnPart
@@ -18,6 +19,8 @@ sys.path.insert(0, str(root))
 from ovh_memory import atomic_write
 from ovh_request import analyze_request, SourceReview, REVIEW_INSTRUCTIONS
 VERIFICATION_GUARD = None
+TASK_ENGINE = None
+ACTIVE_TOOLS = None
 
 names = {'read_followups', 'write_followups', 'publish_followups', 'handle_followup', 'apply_steering'}
 syntax = ast.parse((root / 'ovh-agent.py').read_text())
@@ -48,6 +51,8 @@ with tempfile.TemporaryDirectory() as temporary:
     assert requests.get_nowait()['type'] == 'next_followup'
     scope['FOLLOWUP_RUNNING'] = True
     command('add', id='steer', text='Use the new requirement', mode='steer')
+    steering_engine = Mock()
+    scope['TASK_ENGINE'] = steering_engine
     calls = []
     def work() -> str:
         """A fake tool that accepts steering while running."""
@@ -67,6 +72,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert [i['id'] for i in scope['read_followups']()] == ['later']
     assert task['prompt'].endswith('Check the result carefully')
     assert sum(e['type'] == 'steer_applied' for e in events) == 2
+    # A correction must invalidate controller evidence too, not merely appear
+    # as another model message whose old conclusion could survive compaction.
+    assert steering_engine.focus.call_args_list == [call('Use the new requirement'), call('Check the result carefully')]
     assert any(isinstance(p, UserPromptPart) and p.content == 'Check the result carefully' for m in result.all_messages() for p in m.parts)
     # Late steer (final model response already received) is dispatched as a continuation.
     scope['FOLLOWUP_RUNNING'] = False
@@ -131,6 +139,7 @@ with tempfile.TemporaryDirectory() as temporary:
     # Verify both steering application and the actual dispatcher selection use the saved order.
     applied = scope['apply_steering']([])
     assert [p.content for m in applied for p in m.parts if isinstance(p,UserPromptPart)] == ['s2','s1']
+    assert steering_engine.focus.call_args_list[-2:] == [call('s2'), call('s1')]
     dispatcher = next(node for node in ast.walk(syntax) if isinstance(node,ast.If)
                       and ast.unparse(node.test) == "request_type == 'next_followup'")
     # Execute the real dispatch branch in a one-iteration loop (it contains continue).

@@ -268,3 +268,90 @@ async def check_prepared_tools():
     assert await a.prepare_tool_for_request(ctx,ToolDefinition(name='write_file')) is not None
 asyncio.run(check_prepared_tools())
 print('PASS: read-only tool schemas and steering restoration')
+
+# A read-only task is an execution permission, including in full filesystem access.
+# Neutral steering, tool discovery and a stale advertised schema cannot grant it.
+from ovh_execution import WorkflowController, guarded_tool, read_only_policy
+from pydantic_ai.messages import ToolReturnPart
+for readonly_prompt in ('Lecture seule : audite ce dépôt.', 'Read only: inspect the repository.', 'Inspecte le projet sans le modifier.'):
+    async def check_unscoped_readonly():
+        ctx = SimpleNamespace(prompt=readonly_prompt, messages=[ModelRequest(parts=[UserPromptPart(readonly_prompt)])])
+        with patch.object(a, 'TASK_ENGINE', None), patch.object(a, 'ACTIVE_TOOLS', a.ToolSelection(readonly_prompt)):
+            assert await a.prepare_tool_for_request(ctx, ToolDefinition(name='edit_file')) is None
+            ctx.messages.append(ModelRequest(parts=[UserPromptPart('Continue.')]))
+            assert await a.prepare_tool_for_request(ctx, ToolDefinition(name='edit_file')) is None
+    asyncio.run(check_unscoped_readonly())
+assert read_only_policy('Ne modifie pas les fichiers.', True)
+assert read_only_policy('Continue.', True)
+assert not read_only_policy('Corrige app.py sans modifier les tests', True)
+assert not read_only_policy('Now implement the fix', True)
+
+# The unmodified evaluator prompt authorizes a check even when no edit is needed.
+# Its requested final report must not silently turn that task into read-only.
+no_op_prompt = ('Laboratoire autorisé : mets le port à 12345 dans current.json et PORT à 12345 dans app.py. '
+    'Préserve les données utilisateur, les autres fichiers et les contrôles de référence. '
+    'Vérifie le résultat avec les contrôles existants. Réponse française concise. '
+    'Si les valeurs sont déjà correctes, vérifie et indique Aucune modification effectuée.')
+assert not read_only_policy(no_op_prompt)
+assert read_only_policy(no_op_prompt, True)  # A report alone cannot lift an earlier restriction.
+for report_prompt in ('Vérifie puis indique « Aucune modification effectuée ».',
+                      'Check the result and report "No changes made".'):
+    assert not read_only_policy(report_prompt)
+    assert read_only_policy(report_prompt, True)
+for restriction in ('Aucune modification.', 'Aucune modification autorisée.',
+                    'Lecture seule. Indique « Aucune modification effectuée ».',
+                    'Read only. Report "No changes made".'):
+    assert read_only_policy(restriction)
+async def check_no_op_tools():
+    ctx = SimpleNamespace(prompt=no_op_prompt, messages=[ModelRequest(parts=[UserPromptPart(no_op_prompt)])])
+    with patch.object(a, 'TASK_ENGINE', None), patch.object(a, 'ACTIVE_TOOLS', a.ToolSelection(no_op_prompt)):
+        assert await a.prepare_tool_for_request(ctx, ToolDefinition(name='verify_changes')) is not None
+asyncio.run(check_no_op_tools())
+
+with tempfile.TemporaryDirectory() as readonly_folder:
+    workspace = Path(readonly_folder) / 'project'
+    workspace.mkdir()
+    state = Path(readonly_folder) / 'state'
+    engine = WorkflowController(workspace, state, allow_external=True)
+    engine.focus('Lecture seule : audite ce dépôt.')
+    engine.focus('Continue.')
+    engine = WorkflowController(workspace, state, allow_external=True)
+    engine.focus('Poursuis la lecture.')
+    assert engine.read_only
+    called = []
+    def write_file(path: str, content: str) -> str:
+        """Write the temporary fixture when explicitly authorized."""
+        called.append(path)
+        (workspace / path).write_text(content)
+        return 'Fichier écrit.'
+    wrapped = guarded_tool(write_file, lambda: engine)
+    assert json.loads(wrapped('blocked.txt', 'forbidden'))['category'] == 'read_only'
+    assert not called and not (workspace / 'blocked.txt').exists()
+    for tool_name in ('edit_file_batch', 'execute_operation', 'run_host_command', 'install_tools', 'verify_changes'):
+        def forbidden_mutator():
+            raise AssertionError('A read-only mutation was executed')
+        forbidden_mutator.__name__ = tool_name
+        assert json.loads(engine.invoke(forbidden_mutator))['executed'] is False
+    for use_prepare in (True, False):
+        rounds = []
+        def readonly_model(messages, info):
+            rounds.append(1)
+            if len(rounds) == 1:
+                assert ('write_file' in {tool.name for tool in info.function_tools}) is not use_prepare
+                # Deliberately request the hidden tool or a stale advertised tool.
+                return ModelResponse(parts=[ToolCallPart('write_file', {'path': 'blocked.txt', 'content': 'forbidden'})])
+            if not use_prepare:
+                returned = [part for message in messages for part in message.parts if isinstance(part, ToolReturnPart)]
+                assert json.loads(returned[-1].content)['category'] == 'read_only'
+            return ModelResponse(parts=[TextPart('No changes made.')])
+        tool = a.Tool(wrapped, prepare=a.prepare_tool_for_request if use_prepare else None)
+        with patch.object(a, 'TASK_ENGINE', engine), patch.object(a, 'ACTIVE_TOOLS', a.ToolSelection('Lecture seule')):
+            result = Agent(FunctionModel(readonly_model), tools=[tool], retries=1).run_sync('Lecture seule : audite ce dépôt.')
+        assert result.output == 'No changes made.' and not called and not (workspace / 'blocked.txt').exists()
+    engine.focus('Oui, modifie maintenant authorized.txt')
+    assert not engine.read_only
+    assert wrapped('authorized.txt', 'explicitly allowed') == 'Fichier écrit.'
+    assert (workspace / 'authorized.txt').read_text() == 'explicitly allowed'
+    engine.focus('Ne modifie pas les fichiers.')
+    assert engine.read_only
+print('PASS: persistent read-only execution authorization, hidden/stale SDK tools and explicit write steering')

@@ -133,3 +133,26 @@
 
 !/ovh_vision.py
 !/scripts/test-vision.py
+
+# Public semantic policy; private task rules remain excluded.
+!/ovh_instructions.py
+
+!/ovh_task_engine.py
+!/ovh_acceptance.py
+!/ovh_repository.py
+!/ovh_execution.py
+!/ovh_operations.py
+!/scripts/test-task-engine.py
+!/scripts/test-acceptance.py
+!/scripts/test-repository.py
+!/scripts/test-execution.py
+!/scripts/test-operations.py
+!/scripts/test-autonomy.py
+!/scripts/evaluate-autonomy.py
+
+!/ovh_tools.py
+!/ovh_process.py
+!/scripts/test-tools.py
+!/scripts/test-process.py
+!/scripts/evaluate-agent.py
+!/scripts/test-agent-evaluation.py

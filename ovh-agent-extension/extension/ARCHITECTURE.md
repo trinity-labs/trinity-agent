@@ -157,3 +157,178 @@ for the next new conversation (`ovhAgent.newConversationProject`). It does not
 move the current conversation. New Conversation starts in that folder and records
 the history assignment when the backend acknowledges `cleared`, after creating
 the archive directory. Without an explicit selection, it uses the IDE workspace.
+
+
+### Model policy and executable controls
+
+The companion backend defines shared semantic guidance in `ovh_instructions.py`.
+Tool descriptions explain inputs and outputs; controllers enforce permissions,
+budgets, tracked-edit verification and receipt freshness. Deployment-specific
+policy stays outside the public extension. Do not duplicate a controller's
+algorithm in the model prompt: expose its result and recovery instructions.
+
+A successful tool exit establishes execution, not fulfillment of the user's
+intent. File rollback does not roll back arbitrary shell, network, database or
+service effects. Acceptance tests must exercise the requested behavior and keep
+independent cases unavailable to the agent under evaluation. Record partial
+results, interrupted mutations and infrastructure errors separately from model
+quality scores.
+
+## Contrôleur d’exécution et autonomie vérifiable
+
+Le modèle choisit les actions et formule une réponse. Le contrôleur conserve les
+preuves et décide si une conclusion de réussite est recevable. Les mécanismes
+ci-dessous sont publics ; aucun réglage privé de crédit, de relais ou de déploiement
+n’est exporté avec eux.
+
+| Module backend | Responsabilité et limite |
+| --- | --- |
+| `ovh_execution.py` | Enveloppe des outils, corrections utilisateur persistantes, erreurs, état final et liaison des contrôleurs. Un contenu lu est opaque : le mot « erreur » dans un fichier n’est pas un échec de lecture. |
+| `ovh_task_engine.py` | Journal SQLite transactionnel avec synchronisation durable ; intention avant exécution, résultat inconnu après interruption, réconciliation par callback de confiance. Arguments et sorties sont hachés dans ce journal. |
+| `ovh_acceptance.py` | Contrat déclaratif figé au début du tour, postconditions relues, reçus des contrôles vérifiés et détection des preuves périmées. |
+| `ovh_operations.py` | Plans nommés pour fichiers, services, bases de données et opérations distantes : application, sondes, retour arrière et contrôle de restauration. Chaque déploiement doit fournir ses propres commandes et sondes. |
+| `ovh_repository.py` | Carte bornée : AST Python, analyse lexicale JS/TS, dépendances et empreintes du contenu. Cache de parsing réutilisé uniquement pour les mêmes octets. |
+| `scripts/evaluate-autonomy.py` | Évaluation reproductible avec postconditions indépendantes, tâches générées, interruptions, concurrence et faux succès. L’exécuteur par défaut est déterministe : il ne mesure pas un modèle. |
+
+Les outils `inspect_repository`, `workflow_status`, `verify_task_acceptance`,
+`execute_operation` et `reconcile_operation` exposent ces mécanismes au modèle.
+Le journal réside dans `execution/` de la conversation. Le verrou de session du
+backend exclut un ancien worker avant la reprise ; les transactions disposent
+également d’un verrou de processus. Un résultat inconnu n’autorise pas un rejeu
+aveugle. Les écritures de fichiers peuvent être réconciliées par leurs empreintes
+avant/après ; une commande shell quelconque n’a pas de rollback universel.
+
+Les états restent distincts : exécution réussie, contrôles réussis, contrat
+satisfait. Sans contrat indépendant, `task_fulfilled` reste `null`. Les critères
+proposés par le modèle sont signalés `model_proposed` et ne certifient pas la
+réussite. Un contrat satisfait porte seulement sur son périmètre déclaré :
+`natural_language_goal_verified` reste faux. Un résultat incertain ou un contrat
+non satisfait conserve la tâche comme interrompue et suspend la file suivante.
+Une tentative de correction finale est permise ; le moteur ne boucle pas pour
+fabriquer une preuve absente.
+
+### Déclarer un contrat
+
+Le fichier existant `.ovh-agent-checks.json` peut contenir une section optionnelle :
+
+```json
+{
+  "version": 1,
+  "checks": [],
+  "acceptance": {
+    "version": 1,
+    "criteria": [
+      {"id": "configured-port", "type": "json_equals", "path": "config.json", "pointer": "/port", "value": 8080},
+      {"id": "legacy-removed", "type": "file_absent", "path": "legacy.json"}
+    ]
+  }
+}
+```
+
+Types disponibles : `file_exists`, `file_absent`, `file_sha256`, `text_contains`,
+`text_absent`, `json_equals` et `configured_check`. Ce dernier référence par
+`check` le nom d’un contrôle de la section `checks`. Un reçu doit correspondre à
+son argv, dossier, phase, date et empreintes actuelles. Les scripts et protections
+déclarés du contrôle sont figés ; leurs dépendances transitives doivent aussi
+être déclarées si elles font partie de la preuve. Modifier la politique pendant
+le tour invalide son contrat, sans accepter automatiquement de nouveaux critères.
+
+### Déclarer une opération récupérable
+
+La section optionnelle `operations` contient `version: 1` et `plans`. Chaque plan
+possède `name`, `kind` (`file`, `service`, `database` ou `remote`), `scope`
+(`local` ou `remote`), `cwd`, `timeout`, et quatre listes argv : `apply`, `verify`,
+`rollback`, `verify_rollback`. `protect` ajoute des fichiers de preuve à figer.
+Le code source contient un exemple complet et les règles du schéma.
+
+Les sondes renvoient 0 si la postcondition est vraie, 1 si elle est fausse ; tout
+autre résultat reste inconnu. Après une interruption, une sonde supplémentaire
+`verify_idle` doit prouver que l’exécution a cessé avant toute réconciliation ;
+sans cette preuve, même un état momentanément attendu reste inconnu. Un échec de restauration est bloquant. Une cible
+distante exige `target`, un `remote_cwd` absolu distinct du dossier local et un
+exécuteur autorisé avec vérification des clés SSH. Aucun chemin SSHFS ne choisit
+implicitement une machine d’exécution. Les commandes, migrations, transactions
+SQL et sondes de santé restent propres au service ; déclarer un plan ne rend pas
+ses effets arbitraires automatiquement réversibles.
+
+### Évaluer sans confondre tests et performance du modèle
+
+Depuis la racine du backend :
+
+```sh
+python scripts/check-backend.py
+python scripts/evaluate-autonomy.py --seed 20261019 --output /tmp/autonomy-report.json
+```
+
+La première commande exécute les suites offline. La seconde sauvegarde scénarios,
+latence, récupération, conflits, fausses conclusions et origine des erreurs.
+Aucun appel payant par défaut. Un exécuteur injectable permet de tester un modèle
+sur les mêmes postconditions cachées ; son coût et ses tokens ne doivent pas
+être déduits des mesures de l’exécuteur déterministe. Les tests ne certifient ni
+une autonomie générale ni l’absence de régressions en production.
+
+Les adaptations locales utilisent ce même journal plutôt qu’un second suivi
+concurrent. Elles conservent leurs règles propres de livraison, de CSS et de
+publication. Une modification Python est chargée au prochain démarrage du
+backend ; elle ne nécessite pas de reconstruire le frontend. Les manifestes de
+mise à jour doivent néanmoins inclure tous les nouveaux modules publics.
+
+### Outils différés, contexte et exécution bornée (1.15)
+
+`ovh_tools.py` conserve un noyau de fichiers, commandes et contrôles. Les familles
+spécialisées sont activées par le besoin explicite ou par `discover_tools` lors
+suivant ; la sélection est propre au tour, sans modifier les autorisations.
+`ovh_repository.py` classe les candidats par chemins, symboles et dépendances
+avant la limite finale. Les empreintes invalident le cache de parsing. Le contexte
+du contrôleur est borné à 4 800 caractères : portée, corrections, critères et
+opérations inconnues. Une observation issue d'un ancien processus n'est jamais
+présentée comme une validation actuelle.
+
+`ovh_process.py` supervise les commandes et contrôles configurés : sortie conservée
+sur 16 Ko, arrêt au-delà de 16 Mio émis, expiration et arrêt du groupe de processus.
+Les secrets hérités de l'environnement sont filtrés. Le profil par défaut
+`approved` conserve la politique d'autorisation et **n'est pas un confinement OS** ;
+un processus hostile qui se détache peut échapper au groupe. Le profil explicite
+`OVH_AGENT_COMMAND_PROFILE=workspace` exige bubblewrap et les namespaces Linux,
+isole le réseau et monte seulement le workspace en écriture ainsi que les chemins
+d'exécution autorisés en lecture. Il refuse l'exécution si cette capacité manque.
+Les contrôles déclarés et transports SSH restent des exécutions approuvées ; le
+profil workspace concerne l'outil de commande locale, pas toute l'application.
+Un timeout SSH ne prouve jamais l'arrêt de la commande distante.
+
+Les reçus de contrôle couvrent les entrées observées, sujets littéraux déclarés,
+changements et fichiers protégés ; ajouter une entrée observée invalide le reçu.
+Déclarer les dépendances de preuve reste nécessaire. Un contrôle échoué a un
+résultat connu, mais ne constitue pas une preuve de réussite. Les effets d'une
+commande shell arbitraire peuvent rester inconnus et nécessiter réconciliation.
+
+### Campagnes réelles et comparaison du coût
+
+`scripts/evaluate-agent.py` exerce les vrais outils backend dans des fixtures
+isolées, avec oracle indépendant, modifications concurrentes, données utilisateur
+à préserver, injection dans une source, corrections et tâches déjà satisfaites.
+Le défaut utilise un modèle simulé et n'effectue aucun appel payant :
+
+```sh
+python scripts/evaluate-agent.py --seed 20261019 --output /tmp/agent-offline.json
+python scripts/evaluate-agent.py --real-model gpt-oss-120b \
+  --cases multi_file,already_satisfied,source_injection,correction_compaction \
+  --request-limit 48 --token-limit 120000 --max-cost-eur 0.10 \
+  --output /tmp/agent-live.json
+```
+
+Chaque fichier de sortie doit être neuf. Le rapport conserve empreintes des
+sources, modèle, paramètres, résultats par cas et mesures des schémas. Les limites
+de campagne s'ajoutent au registre de facturation réel. `--eager-tools` fournit un
+comparateur sur les mêmes outils de fixture. Les gardes artificiels restent
+séparés des tâches du modèle ; un échec fournisseur ne compte pas comme une
+réussite ni comme une erreur de raisonnement. Quelques tâches réussies ne mesurent
+pas une supériorité sur les agents concurrents.
+
+Les choix ont été comparés aux sources primaires :
+[réparation validée Codex](https://developers.openai.com/cookbook/examples/codex/build_iterative_repair_loops_with_codex),
+[hooks Claude Code](https://code.claude.com/docs/en/hooks),
+[persistance OpenHands](https://docs.openhands.dev/sdk/guides/convo-persistence) et
+[carte de dépôt Aider](https://aider.chat/docs/repomap.html).
+Il s'agit d'une étude ciblée des mécanismes documentés, pas d'un audit exhaustif
+ni d'un accès aux implémentations propriétaires.

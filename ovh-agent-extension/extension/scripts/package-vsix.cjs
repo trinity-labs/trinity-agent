@@ -30,7 +30,7 @@ try {
   if (publisher === 'trinity') {
     const crypto = require('node:crypto');
     const backend = {};
-    for (const name of ['ovh-agent.py', 'ovh_memory.py', 'ovh_workspace.py', 'ovh_project_memory.py', 'ovh_context.py', 'ovh_vision.py', 'ovh_cache.py', 'ovh_resources.py', 'ovh_request.py', 'ovh_budget.py', 'ovh_budget_model.py', 'ovh_evaluation.py', 'ovh_verification.py', 'ovh-agent.sh']) {
+    for (const name of ['ovh-agent.py', 'ovh_memory.py', 'ovh_workspace.py', 'ovh_project_memory.py', 'ovh_context.py', 'ovh_vision.py', 'ovh_cache.py', 'ovh_resources.py', 'ovh_request.py', 'ovh_budget.py', 'ovh_budget_model.py', 'ovh_evaluation.py', 'ovh_verification.py', 'ovh_instructions.py', 'ovh_task_engine.py', 'ovh_acceptance.py', 'ovh_repository.py', 'ovh_execution.py', 'ovh_operations.py', 'ovh_tools.py', 'ovh_process.py', 'ovh-agent.sh']) {
       backend[name] = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(root, '../..', name))).digest('hex');
     }
     fs.writeFileSync(path.join(stage, 'local-update.json'), JSON.stringify({backend}));

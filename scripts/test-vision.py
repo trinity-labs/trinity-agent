@@ -57,6 +57,27 @@ class Vision(unittest.TestCase):
                        'Crée une image Docker', 'Modifie le bouton dans le code']:
             self.assertFalse(v.is_image_generation_request(prompt),prompt)
 
+    def test_image_handoff_preserves_cached_text_client_event_loop(self):
+        from pydantic_ai import Agent
+        loops=[]
+        async def text_provider(messages, info):
+            loops.append(asyncio.get_running_loop())
+            if len(loops)>1:
+                self.assertIs(loops[0],loops[-1], 'cached provider switched loops')
+            return ModelResponse(parts=[TextPart('text')])
+        loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
+        try:
+            agent=Agent(FunctionModel(text_provider))
+            agent.run_sync('before')
+            async def reader():
+                self.assertIs(asyncio.get_running_loop(),loops[0])
+                return 'image'
+            self.assertEqual(v.run_reader_sync(reader()),'image')
+            agent.run_sync('after')
+            self.assertFalse(loop.is_closed())
+        finally:
+            loop.close();asyncio.set_event_loop(None)
+
     def test_timeout_is_not_a_successful_reading(self):
         async def timeout(awaitable, timeout):
             awaitable.close()

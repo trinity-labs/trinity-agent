@@ -216,6 +216,11 @@ def main():
     for keyfile in [Path('/run/secrets/OVH_AI_API_KEY'),Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/OVH_AI_API_KEY')]:
         if not os.environ.get('OVH_AI_API_KEY') and keyfile.is_file(): os.environ['OVH_AI_API_KEY']=keyfile.read_text().strip()
     if not os.environ.get('OVH_AI_API_KEY'): raise SystemExit('API key unavailable')
+    # Validate the actual provider-backed ledger once before scheduling cases.
+    # A billing outage is not evidence of poor model quality.
+    status=a.budget_ledger().status()
+    if status.get('blocked'):
+        raise RuntimeError('Campagne suspendue : budget OVH indisponible ; aucun cas lancé.')
     catalog=a.fetch_model_catalog(force=True)
     models=[m for m in catalog if m.get('selectable') and m.get('kind')=='chat' and (not args.models or m['id'] in args.models)]
     cases=[c for c in build_cases(args.level,args.seed) if not args.cases or c[0] in args.cases]

@@ -948,11 +948,25 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 .followups button { color: var(--ovh-primary); border: 0; border-radius: 4px; padding: 6px; background: transparent; cursor: pointer; }
 .followups button:hover { background: color-mix(in srgb, var(--ovh-primary) 18%, transparent); }
 .followups .agent-icon { width: 14px; height: 14px; }
-.verification-status {
+.verification-status,
+.execution-evidence {
   opacity: .5;
   margin: 8px 0;
   font-size: 0.85em;
   color: var(--vscode-descriptionForeground);
+}
+.execution-evidence {
+  display: table;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ovh-primary) 5%, transparent);
+}
+.execution-evidence[data-evidence-state="passed"] {
+  color: var(--ovh-primary-text, var(--ovh-primary));
+}
+.execution-evidence[data-evidence-state="unverified"] {
+  color: var(--vscode-editorWarning-foreground, var(--vscode-descriptionForeground));
 }
 .verification-failed,
 .verification-observed_failure,

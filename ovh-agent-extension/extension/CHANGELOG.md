@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.15.0 — 2026-10-19
+
+- Separate command completion, fresh check receipts and independently verified task criteria; show their scope in live and restored conversations.
+- Persist tool intentions, uncertain outcomes, user corrections and recovery evidence; reject blind replay and false successful writes.
+- Add declared recovery plans for files, services, databases and explicit remote targets, with independent postcondition and rollback probes.
+- Activate specialized tool schemas on demand and rank repository symbols before truncating the context.
+- Bound command output and child-process lifetime; provide an optional fail-closed workspace sandbox without changing the default access policy.
+- Add reproducible adversarial evaluations and a budgeted real-model runner with independent oracles, provenance, tokens, latency and cost reporting.
+- Preserve pooled provider connections across text → image → text turns.
+- Keep compliant no-op tasks verifiable and invalidate check receipts when observed inputs change. Update the companion backend together with this client.
+
 ## 1.14.5 — 2026-10-18
 
 - Remove header background overrides in light and dark themes; use the installed app branding logo while preserving theme opacity.

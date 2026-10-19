@@ -144,7 +144,9 @@ class BackendTools(unittest.TestCase):
             binary.parent.mkdir(parents=True);binary.write_text('#!/bin/sh\necho project-command-ok\n');binary.chmod(0o700)
             with patch.object(a,'WORKSPACE',root),patch.object(a,'ALLOWED_ROOT',root),patch.object(a,'VERIFICATION_GUARD',None),patch.object(a,'request_approval',return_value=True),patch.object(a,'activity_start',return_value='id'),patch.object(a,'activity_end'):
                 result=a.run_command('agent-local-check')
-                self.assertIn('project-command-ok',result);self.assertIn('exit=0',result)
+                evidence=json.loads(result)
+                self.assertIn('project-command-ok',evidence['output']);self.assertEqual(evidence['exit_code'],0)
+                self.assertTrue(evidence['passed']);self.assertTrue(evidence['executed'])
     def test_backend_evidence_is_shared_with_time_and_limited_scope(self):
         a=self.a
         with tempfile.TemporaryDirectory() as folder:

@@ -37,16 +37,19 @@ def worker(args):
     else:
         spec=importlib.util.spec_from_file_location('benchmark_backend',ROOT/'ovh-agent.py')
         a=importlib.util.module_from_spec(spec);sys.modules[spec.name]=a;spec.loader.exec_module(a)
-    if not Path(args.workspace).is_relative_to(a.ALLOWED_ROOT):
-        # CI runners need not have /home/coder; keep every path in the fixture.
-        import hashlib
-        a.ALLOWED_ROOT=Path(args.workspace).parent
-        a.WORKSPACE=Path(args.workspace)
-        a.SESSION_ID=hashlib.sha256(str(a.WORKSPACE).encode()).hexdigest()[:20]
-        a.SESSION_FILE=a.STATE_ROOT/(a.SESSION_ID+'.json')
-        a.ARCHIVE_ROOT=a.DATA_ROOT/'archive'/a.SESSION_ID
-        a.POINTER_FILE=a.ARCHIVE_ROOT/'current'
-        a.MODEL_SELECTION_FILE=a.ARCHIVE_ROOT/'selected-model'
+    # Isolate policy as well as storage on every host. Merely placing the
+    # fixture under /home/coder used to import that user's global AGENT.md and
+    # misreport its private 8k-token policy as public application overhead.
+    # An explicitly requested adapter can still inject its own private policy;
+    # the report labels that opt-in measurement separately below.
+    import hashlib
+    a.ALLOWED_ROOT=Path(args.workspace).parent
+    a.WORKSPACE=Path(args.workspace)
+    a.SESSION_ID=hashlib.sha256(str(a.WORKSPACE).encode()).hexdigest()[:20]
+    a.SESSION_FILE=a.STATE_ROOT/(a.SESSION_ID+'.json')
+    a.ARCHIVE_ROOT=a.DATA_ROOT/'archive'/a.SESSION_ID
+    a.POINTER_FILE=a.ARCHIVE_ROOT/'current'
+    a.MODEL_SELECTION_FILE=a.ARCHIVE_ROOT/'selected-model'
     imported=time.perf_counter()
     events=[]
     def emit(event):
@@ -66,12 +69,16 @@ def worker(args):
         captured.append({'instruction_tokens':a.text_tokens(info.instructions or ''),
                          'schema_tokens':a.text_tokens(json.dumps(schema,ensure_ascii=False,separators=(',',':'))),
                          'message_tokens':a.estimate_tokens(messages),'tools':len(schema)})
-        return ModelResponse(parts=[TextPart('Offline fixture completed.')])
+        return ModelResponse(parts=[TextPart('Aucune modification effectuée. Mesure hors réseau ; aucune inspection ni validation du projet annoncée.')])
     fake=FunctionModel(respond,model_name='gpt-oss-120b')
     a.BudgetedModel=lambda *args,**kwargs:fake
     a.fetch_model_catalog=lambda *args,**kwargs:[{'id':'gpt-oss-120b','context_length':131072}]
     a.model_capabilities=lambda *args,**kwargs:{'tools':True,'reasoning':True,'reasoning_efforts':['low','medium']}
     a.AGENTS.clear()
+    # Production creates a task before preparing tool schemas. Measure that path,
+    # rather than the unfiltered catalogue exposed by standalone get_agent calls.
+    stamp=time.perf_counter();a.begin_verification('Inspecte le projet sans le modifier.')
+    verification_ms=(time.perf_counter()-stamp)*1000
     stamp=time.perf_counter();agent=a.get_agent('gpt-oss-120b');build=(time.perf_counter()-stamp)*1000
     stamps=[]
     for _ in range(4):
@@ -91,7 +98,7 @@ def worker(args):
     stamp=time.perf_counter()
     compacted,stats=asyncio.run(compact_context(history,ConversationMemory(Path(args.data)/'synthetic'),10000))
     compact_ms=(time.perf_counter()-stamp)*1000
-    print(json.dumps({'import_ms':(imported-started)*1000,'ready_ms':events[0], 'agent_build_ms':build,
+    print(json.dumps({'import_ms':(imported-started)*1000,'ready_ms':events[0], 'agent_build_ms':build,'task_start_ms':verification_ms,
         'first_request_offline_ms':stamps[0],'warm_request_offline_ms':statistics.median(stamps[1:]),
         'first_read_ms':reads[0],'warm_read_ms':statistics.median(reads[1:]),
         'context':captured[-1],'compaction_ms':compact_ms,'compacted_tokens':estimate_tokens(compacted),
@@ -117,7 +124,8 @@ def main():
                 result=subprocess.run(command,input='',text=True,capture_output=True,timeout=90)
                 if result.returncode:raise RuntimeError(result.stderr[-3000:])
                 row=json.loads(result.stdout.splitlines()[-1]);row.update(phase=phase,run=i);rows.append(row)
-    output={'scope':'offline backend; fresh app data vs reused app data; OS caches not flushed; provider cold/warm not measured',
+    output={'scope':'offline backend; isolated user profile and fresh app data vs reused app data; OS caches not flushed; provider cold/warm not measured',
+            'policy_scope':'isolated_fixture_plus_explicit_adapter' if args.adapter else 'isolated_fixture',
             'adapter':args.adapter,'rows':rows,'medians':{phase:{key:statistics.median(r[key] for r in rows if r['phase']==phase)
                 for key in rows[0] if key.endswith('_ms')} for phase in ('cold_app_state','warm_restart')}}
     serialized=json.dumps(output,ensure_ascii=False,indent=2)

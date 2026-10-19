@@ -47,38 +47,9 @@ def contents(path: Path) -> bytes | None:
 
 
 def run_check(argv: list[str], cwd: Path, timeout: int = 120) -> dict:
-    """No shell interpolation; retain real exit status and bounded output."""
-    started = time.monotonic()
-    env = {key: value for key, value in os.environ.items()
-           if key not in {"OVH_AI_API_KEY", "OVHCLOUD_API_KEY", "OPENAI_API_KEY"}}
-    env["PYDANTIC_AI_NO_BANNER"] = "1"
-    env["PATH"] = os.pathsep.join([str(cwd / ".agent-tools/venv/bin"),
-                                   str(cwd / ".agent-tools/npm/node_modules/.bin"), env.get("PATH", "")])
-    with tempfile.TemporaryFile() as output:
-        try:
-            process = subprocess.Popen(argv, cwd=cwd, env=env, stdout=output,
-                                       stderr=subprocess.STDOUT, start_new_session=True)
-        except OSError as error:
-            return {"exit_code": None, "passed": False, "output": str(error), "duration_ms": 0}
-        timed_out = False
-        try:
-            process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-        finally:
-            # A test must not leave background children writing after validation.
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait()
-        output.seek(0, os.SEEK_END)
-        length = output.tell()
-        output.seek(max(0, length - 16000))
-        text = output.read().decode("utf-8", "replace")
-    return {"exit_code": process.returncode, "passed": not timed_out and process.returncode == 0,
-            "timed_out": timed_out, "output": text, "output_truncated": length > 16000,
-            "duration_ms": round((time.monotonic() - started) * 1000)}
+    """Use the shared bounded executor; configured checks retain argv semantics."""
+    from ovh_process import run_process
+    return run_process(argv, cwd, timeout)
 
 
 def test_count(result: dict) -> dict:
@@ -293,6 +264,12 @@ class ChangeGuard:
 
     def _evidence_files(self, check: Check) -> dict:
         paths = set(self.observed) | {Path(p) for p in self.state["changes"]} | {Path(p) for p in check.protected}
+        # Literal declared subjects matter even when a compliant task needs no edit.
+        for pattern in check.patterns:
+            if not any(marker in pattern for marker in ('*', '?', '[')):
+                path = (check.root / pattern).resolve()
+                if self.allow_external or path.is_relative_to(self.workspace):
+                    paths.add(path)
         for argument in check.argv:
             path = check.root / argument
             if path.is_file() and (self.allow_external or path.resolve().is_relative_to(self.workspace)):
@@ -301,6 +278,10 @@ class ChangeGuard:
 
     def _fresh(self, receipt: dict) -> bool:
         if receipt.get("environment_changed"):
+            return False
+        check = self.checks.get(receipt.get("key"))
+        # Newly observed inputs expand the evidence scope and invalidate old receipts.
+        if check and self._evidence_files(check) != receipt.get("fingerprints"):
             return False
         return ("fingerprints" in receipt and not receipt.get("changed_during_check")
                 and receipt.get("change_versions") == {p: c["written"] for p, c in self.state["changes"].items()}
@@ -329,6 +310,29 @@ class ChangeGuard:
                 if argv == check.argv and cwd.resolve() == check.root.resolve():
                     return self._execute(key, check, "manual")
             return None
+
+    def ensure_checks(self, names) -> None:
+        """Execute contract-required checks even for an already compliant task.
+
+        Reuse fresh successful receipts; checking a no-op must not require making
+        a pointless edit, or rerunning every unrelated project test.
+        """
+        with self.lock:
+            names = set(names)
+            if not names:
+                return
+            self.observe(self.workspace)
+            selected = {key: check for key, check in self.checks.items() if check.name in names}
+            missing = names - {check.name for check in selected.values()}
+            if missing:
+                raise VerificationError('Contrôles attendus absents : ' + ', '.join(sorted(missing)))
+            self.require_checks = True
+            for key, check in selected.items():
+                previous = next((r for r in reversed(self.state['receipts'])
+                                 if r['key'] == key and r['phase'] in {'manual', 'after'}), None)
+                if previous and previous.get('passed') and self._fresh(previous):
+                    continue
+                self._execute(key, check, 'manual')
 
     def test_summary(self) -> dict:
         with self.lock:

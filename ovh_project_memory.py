@@ -416,10 +416,21 @@ def schedule_export(data_root,project,workspace):
 def aggregate(data_root,projects):
     if not projects:raise ValueError('Choisir au moins un projet.')
     data=Path(data_root).resolve();parts=['# Mémoires des projets sélectionnés','', 'Export explicite ; les périmètres et sources restent séparés.','']
+    # A registered folder may have no conversation yet. Absence of an archive
+    # is not proof that the project identifier is unknown.
+    try:
+        registry=json.loads((data/'projects.json').read_text())
+        registered={row['id'] for row in registry if isinstance(row,dict) and isinstance(row.get('id'),str)} if isinstance(registry,list) else set()
+    except (OSError,ValueError):
+        registered=set()
     reports=[];generations=[]
     for project in dict.fromkeys(projects):
         memory=ProjectMemory(data,project)
-        if not memory.archive.is_dir() and not memory.root.is_dir():raise ValueError('Projet inconnu.')
+        if not memory.archive.is_dir() and not memory.root.is_dir():
+            if project not in registered: raise ValueError('Projet inconnu : '+project)
+            parts += [f'## Projet {project}', '', 'Aucune mémoire ni conversation enregistrée pour ce projet.', '']
+            reports.append({'project':project,'documents':0,'empty':True})
+            continue
         generation=memory.generation()
         report=memory.materialize();reports.append(report);generations.append((memory,generation))
         text=read_text_cached(Path(report['memory']))

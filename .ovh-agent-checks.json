@@ -199,6 +199,138 @@
       "protect": [
         "scripts/test-evaluation.py"
       ]
+    },
+    {
+      "name": "Autonomie : task-engine",
+      "paths": [
+        "ovh_task_engine.py",
+        "ovh-agent.py",
+        "scripts/test-task-engine.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-task-engine.py"
+      ],
+      "protect": [
+        "scripts/test-task-engine.py"
+      ]
+    },
+    {
+      "name": "Autonomie : acceptance",
+      "paths": [
+        "ovh_acceptance.py",
+        "ovh-agent.py",
+        "scripts/test-acceptance.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-acceptance.py"
+      ],
+      "protect": [
+        "scripts/test-acceptance.py"
+      ]
+    },
+    {
+      "name": "Autonomie : repository",
+      "paths": [
+        "ovh_repository.py",
+        "ovh-agent.py",
+        "scripts/test-repository.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-repository.py"
+      ],
+      "protect": [
+        "scripts/test-repository.py"
+      ]
+    },
+    {
+      "name": "Autonomie : operations",
+      "paths": [
+        "ovh_operations.py",
+        "ovh-agent.py",
+        "scripts/test-operations.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-operations.py"
+      ],
+      "protect": [
+        "scripts/test-operations.py"
+      ]
+    },
+    {
+      "name": "Autonomie : execution",
+      "paths": [
+        "ovh_execution.py",
+        "ovh-agent.py",
+        "scripts/test-execution.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-execution.py"
+      ],
+      "protect": [
+        "scripts/test-execution.py"
+      ]
+    },
+    {
+      "name": "Autonomie : autonomy",
+      "paths": [
+        "ovh_execution.py",
+        "ovh-agent.py",
+        "scripts/test-autonomy.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-autonomy.py"
+      ],
+      "protect": [
+        "scripts/test-autonomy.py"
+      ]
+    },
+    {
+      "name": "Autonomie : tools",
+      "paths": [
+        "ovh_tools.py",
+        "scripts/test-tools.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-tools.py"
+      ],
+      "protect": [
+        "scripts/test-tools.py"
+      ]
+    },
+    {
+      "name": "Autonomie : process",
+      "paths": [
+        "ovh_process.py",
+        "scripts/test-process.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-process.py"
+      ],
+      "protect": [
+        "scripts/test-process.py"
+      ]
+    },
+    {
+      "name": "Autonomie : agent-evaluation",
+      "paths": [
+        "scripts/evaluate-agent.py",
+        "scripts/test-agent-evaluation.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-agent-evaluation.py"
+      ],
+      "protect": [
+        "scripts/test-agent-evaluation.py"
+      ]
     }
   ]
 }

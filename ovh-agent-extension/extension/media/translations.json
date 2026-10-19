@@ -1,4 +1,76 @@
 {
+  "Critères vérifiés": {
+    "fr": "Critères vérifiés",
+    "en": "Criteria verified",
+    "de": "Kriterien geprüft",
+    "es": "Criterios verificados"
+  },
+  "Critères non vérifiés": {
+    "fr": "Critères non vérifiés",
+    "en": "Criteria not verified",
+    "de": "Kriterien nicht geprüft",
+    "es": "Criterios no verificados"
+  },
+  "Exécution terminée · sans contrat": {
+    "fr": "Exécution terminée · sans contrat",
+    "en": "Execution complete · no contract",
+    "de": "Ausführung abgeschlossen · ohne Vertrag",
+    "es": "Ejecución finalizada · sin contrato"
+  },
+  "Commandes : {0} · tests : {1} · critères : {2}": {
+    "fr": "Commandes : {0} · tests : {1} · critères : {2}",
+    "en": "Commands: {0} · tests: {1} · criteria: {2}",
+    "de": "Befehle: {0} · Tests: {1} · Kriterien: {2}",
+    "es": "Comandos: {0} · pruebas: {1} · criterios: {2}"
+  },
+  "Aucun contrat de réussite n’est configuré pour cette tâche.": {
+    "fr": "Aucun contrat de réussite n’est configuré pour cette tâche.",
+    "en": "No success contract is configured for this task.",
+    "de": "Für diese Aufgabe ist kein Erfolgsvertrag konfiguriert.",
+    "es": "No hay un contrato de éxito configurado para esta tarea."
+  },
+  "La validation couvre uniquement les critères configurés, pas une autonomie générale.": {
+    "fr": "La validation couvre uniquement les critères configurés, pas une autonomie générale.",
+    "en": "Validation covers only the configured criteria, not general autonomy.",
+    "de": "Die Validierung deckt nur die konfigurierten Kriterien ab, keine allgemeine Autonomie.",
+    "es": "La validación cubre únicamente los criterios configurados, no una autonomía general."
+  },
+  "réussis": {
+    "fr": "réussis",
+    "en": "passed",
+    "de": "bestanden",
+    "es": "superados"
+  },
+  "en échec": {
+    "fr": "en échec",
+    "en": "failed",
+    "de": "fehlgeschlagen",
+    "es": "fallidos"
+  },
+  "non exécutés": {
+    "fr": "non exécutés",
+    "en": "not run",
+    "de": "nicht ausgeführt",
+    "es": "no ejecutados"
+  },
+  "non requis": {
+    "fr": "non requis",
+    "en": "not required",
+    "de": "nicht erforderlich",
+    "es": "no requeridos"
+  },
+  "non configurés": {
+    "fr": "non configurés",
+    "en": "not configured",
+    "de": "nicht konfiguriert",
+    "es": "no configurados"
+  },
+  "non vérifiés": {
+    "fr": "non vérifiés",
+    "en": "not verified",
+    "de": "nicht geprüft",
+    "es": "no verificados"
+  },
   "Aucune modification à restaurer": {
       "fr": "Aucune modification à restaurer",
       "en": "No changes to restore",
