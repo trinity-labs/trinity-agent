@@ -30,7 +30,9 @@ class ProcessTests(unittest.TestCase):
         for _ in range(50):
             try:
                 state = Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1].split()[0]
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
+                # Linux may reap the process after open() but before read();
+                # ESRCH, like ENOENT, means the observed child is already gone.
                 return
             if state == 'Z':
                 return
@@ -40,6 +42,14 @@ class ProcessTests(unittest.TestCase):
         except ProcessLookupError:
             pass
         self.fail('Child remained alive after command cleanup')
+
+    def test_reaped_child_during_proc_read_is_stopped(self):
+        with patch.object(Path, 'read_text', side_effect=ProcessLookupError), patch.object(os, 'kill') as kill:
+            self.assert_child_stopped(12345)
+            kill.assert_not_called()
+        # Unrelated access errors still fail instead of certifying cleanup.
+        with patch.object(Path, 'read_text', side_effect=PermissionError), self.assertRaises(PermissionError):
+            self.assert_child_stopped(12345)
 
     def test_success_and_exit_status_are_real(self):
         result = self.run_python('import os; os.write(1,b"OUT\\n"); os.write(2,b"ERR\\n")')

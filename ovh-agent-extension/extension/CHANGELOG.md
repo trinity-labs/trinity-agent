@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.3 — 2026-10-19
+
+- Handle a process disappearing during the cleanup test’s `/proc` read; retain failures for unrelated access errors.
+- Includes the Qwen optimizations below. CI stopped candidate 1.15.2 before Marketplace publication.
+
 ## 1.15.2 — 2026-10-19
 
 - Apply discovered Qwen capabilities before the first request; distinguish reasoning support from adjustable effort.
