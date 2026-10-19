@@ -351,3 +351,34 @@ test('reopening interrupted conversation restores actions, partial text and resu
     assert.match(w.document.querySelector('#send').title,/Reprendre|Resume/i);
   } finally {dom.window.close();}
 });
+
+// A passing generic suite did not detect the later theme overrides in production.
+test('header background stays transparent after the full cascade in every theme', () => {
+  const css = fs.readFileSync(path.resolve(__dirname, '../media/chat.css'), 'utf8');
+  for (const theme of ['vscode-light', 'vscode-dark', 'vscode-high-contrast']) {
+    const dom = new JSDOM(`<style>${css}</style><body class="${theme}"><header><span class="history-brand"></span></header></body>`);
+    assert.equal(dom.window.getComputedStyle(dom.window.document.querySelector('header')).backgroundColor, 'rgba(0, 0, 0, 0)', theme);
+    assert.equal(dom.window.getComputedStyle(dom.window.document.querySelector('.history-brand')).opacity, theme === 'vscode-light' ? '0.25' : '0.75', theme);
+    dom.window.close();
+  }
+});
+
+// Folder color is sampled at click time, including a pending color edit.
+test('archive loading uses folder color and clears it for ungrouped conversations',()=>{
+  const {dom,w,emit}=browser();
+  try {
+    emit({type:'archives',items:[{id:'plain',title:'Plain'}]});
+    const row=w.document.querySelector('[data-archive-id="plain"]');
+    const group=w.document.createElement('section');group.className='archive-project';
+    group.style.setProperty('--project-color','#e29136');
+    row.parentNode.append(group);group.append(row);
+    row.querySelector('.archive-open').click();
+    const messages=w.document.getElementById('messages');
+    assert.equal(messages.style.getPropertyValue('--archive-loading-color'),'#e29136');
+    emit({type:'archive_open_failed',text:'failed'});
+    assert.equal(messages.style.getPropertyValue('--archive-loading-color'),'');
+    group.parentNode.append(row);
+    row.querySelector('.archive-open').click();
+    assert.equal(messages.style.getPropertyValue('--archive-loading-color'),'');
+  } finally {dom.window.close();}
+});

@@ -252,7 +252,10 @@ let archiveModelRestored = false;
 const archivePreviews = new Map();
 // Two bounded previews accelerate repeat opens. The archive timestamp is part
 // of the key, and the backend always reloads authoritative context/permissions.
-function beginArchiveLoading(item, source, title) {
+function beginArchiveLoading(item, source, title, color) {
+  // Resolve the clicked folder now: a previous conversation must not tint this loader.
+  if (/^#[a-f0-9]{6}$/i.test(color || "")) messages.style.setProperty("--archive-loading-color", color);
+  else messages.style.removeProperty("--archive-loading-color");
   archiveRevision = ""; archiveModelRestored = false;
   window.clearTimeout(snapshotTimer);
   window.clearTimeout(viewStateTimer);
@@ -280,6 +283,7 @@ function beginArchiveLoading(item, source, title) {
 function endArchiveLoading(remember = false) {
   messages.querySelector('.archive-loading-overlay')?.remove();
   messages.classList.remove('archive-loading'); messages.removeAttribute('aria-busy');
+  messages.style.removeProperty('--archive-loading-color');
   send.disabled = false;
   if (remember && archivePreviewKey) {
     const html = messages.innerHTML;
@@ -1136,7 +1140,7 @@ function renderArchiveRows(items, container, project) {
     const openArchive = () => {
       if(busy || loadingArchive) {setStatus(t("Termine ou arrête la tâche avant de changer de projet."), "warning");return;}
       loadingArchive = item.id;
-      beginArchiveLoading(item, source, displayTitle);
+      beginArchiveLoading(item, source, displayTitle, button.closest(".archive-project")?.style.getPropertyValue("--project-color"));
       if(!active && source) {
         setStatus(t("Chargement de la conversation…"));
         vscode.postMessage({type:"openProject",project:source,conversation:item.id});return;

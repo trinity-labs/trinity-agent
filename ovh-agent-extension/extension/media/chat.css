@@ -1150,24 +1150,24 @@ main.archive-loading { position: relative; overflow: hidden; min-height: 12rem; 
 .archive-loading-overlay {
   position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 12px; pointer-events: all;
-  background: color-mix(in srgb, var(--ovh-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 14%, transparent);
   backdrop-filter: blur(2px);
   color: var(--vscode-editor-foreground, #eee);
 }
 .archive-loading-spinner { width: 28px; height: 28px; border-radius: 50%;
   border: 3px solid color-mix(in srgb, var(--vscode-editor-foreground, #eee) 20%, transparent);
-  border-top-color: var(--ovh-primary-text, var(--ovh-primary)); animation: archive-spin .8s linear infinite;
+  border-top-color: var(--archive-loading-color, var(--ovh-primary-text, var(--ovh-primary))); animation: archive-spin .8s linear infinite;
 }
 .archive-loading-title { font-size: 1rem; padding: 16px; }
 .archive-skeleton { height: 8rem; margin: 16px; border-radius: 12px;
-  background: color-mix(in srgb, var(--ovh-primary) 8%, transparent); }
+  background: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 8%, transparent); }
 @keyframes archive-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .archive-loading-spinner { animation: none; } }
 
 .archive-loading-overlay > span:last-child { padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, var(--vscode-editor-background, #202020) 90%, transparent); }
 body.vscode-dark .archive-loading-spinner,
 body.vscode-high-contrast .archive-loading-spinner {
-  border-top-color: color-mix(in srgb, var(--ovh-primary) 55%, var(--vscode-editor-foreground, #fff));
+  border-top-color: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 55%, var(--vscode-editor-foreground, #fff));
 }
 
 /* Match the softened dark-mode send button, including its blink transparency. */
