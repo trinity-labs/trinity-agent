@@ -1,10 +1,12 @@
 """Evaluation tests challenge independent oracles, reporting and paid opt-in."""
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location('agent_evaluator', Path(__file__).with_name('evaluate-agent.py'))
 evaluation = importlib.util.module_from_spec(spec)
@@ -55,6 +57,71 @@ class AgentEvaluationTests(unittest.TestCase):
         self.assertEqual(report['stopped_reason'], 'infrastructure_failure')
         self.assertFalse(report['complete'])
         self.assertFalse(report['scenarios'][0]['controller_accepted'])
+        request = report['scenarios'][0]['model_requests'][0]
+        self.assertFalse(request['response_received'])
+        self.assertEqual(request['error_type'], 'ConnectionError')
+        self.assertTrue(all(value is None for value in request['usage'].values()))
+        self.assertGreaterEqual(request['latency_ms'], 0)
+
+    def test_live_settings_default_to_production_and_only_explicit_values_override(self):
+        production = {'max_tokens': 8192, 'openai_reasoning_effort': 'low', 'temperature': .2}
+        backend = SimpleNamespace(generation_settings=Mock(return_value=production),
+            model_capabilities=Mock(return_value={'reasoning': True, 'reasoning_efforts': ['none', 'low']}))
+        analysis = {'domain': 'code', 'complexity': 'standard'}
+        settings = evaluation.case_settings(backend, 'fixture-model', 'fixture request', analysis)
+        backend.generation_settings.assert_called_once_with('fixture-model', 'fixture request', analysis)
+        self.assertEqual(settings, {**production, 'timeout': 45})
+        overridden = evaluation.case_settings(backend, 'fixture-model', 'fixture request', analysis,
+            reasoning_effort='none', max_output_tokens=4096)
+        self.assertEqual(overridden, {**settings, 'openai_reasoning_effort': 'none', 'max_tokens': 4096})
+        self.assertEqual(production['max_tokens'], 8192)
+        with self.assertRaises(ValueError):
+            evaluation.case_settings(backend, 'fixture-model', '', analysis, reasoning_effort='high')
+        # An explicit empty schema is different from an unknown effort enum.
+        backend.model_capabilities.return_value['reasoning_efforts'] = []
+        with self.assertRaises(ValueError):
+            evaluation.case_settings(backend, 'fixture-model', '', analysis, reasoning_effort='low')
+
+    def test_optional_usage_distinguishes_missing_zero_and_partial_coverage(self):
+        from pydantic_ai.messages import ModelResponse
+        from pydantic_ai.usage import RequestUsage
+        missing = evaluation.response_usage(ModelResponse(parts=[], usage=RequestUsage(input_tokens=20, output_tokens=5)))
+        present = evaluation.response_usage(ModelResponse(parts=[], usage=RequestUsage(input_tokens=20, output_tokens=5,
+            cache_read_tokens=0, cache_write_tokens=3, details={'reasoning_tokens': 0})))
+        self.assertIsNone(missing['reasoning_tokens'])
+        self.assertIsNone(missing['cache_read_tokens'])
+        self.assertEqual(present['reasoning_tokens'], 0)
+        self.assertEqual(present['cache_read_tokens'], 0)
+        summary = evaluation.optional_usage_summary([{'usage': missing}, {'usage': present}])
+        self.assertEqual(summary['reasoning_tokens'],
+            {'observed_tokens': 0, 'requests_with_counter': 1, 'attempted_requests': 2})
+        self.assertEqual(summary['cache_write_tokens']['observed_tokens'], 3)
+
+    def test_recovery_keeps_settings_and_records_every_request(self):
+        report = evaluation.run_campaign(cases=('interrupted_write',), reasoning_effort='none', max_output_tokens=4096)
+        row = report['scenarios'][0]
+        self.assertTrue(report['passed'], row['error'])
+        self.assertTrue(row['interruption_triggered'])
+        self.assertEqual(row['generation_settings'],
+            {'max_tokens': 4096, 'openai_reasoning_effort': 'none', 'timeout': 45})
+        self.assertGreater(len(row['model_requests']), 4)
+        self.assertEqual(len(row['model_requests']), len(row['schemas']))
+        for request, schema in zip(row['model_requests'], row['schemas']):
+            self.assertEqual(request['settings_fingerprint'], row['settings_fingerprint'])
+            self.assertEqual(request['schema_fingerprint'], schema['fingerprint'])
+            self.assertTrue(request['response_received'])
+            self.assertGreaterEqual(request['latency_ms'], 0)
+        self.assertEqual(row['prompt_analysis']['paths'], ['current.json', 'app.py'])
+
+    def test_cli_forwards_optional_settings_without_implicit_override(self):
+        for flags, expected in (([], (None, None)),
+                               (['--reasoning-effort', 'none', '--max-output-tokens', '4096'], ('none', 4096))):
+            with self.subTest(flags=flags), patch.object(evaluation.sys, 'argv', ['evaluate-agent.py', '--output', 'unused.json', *flags]), \
+                    patch.object(evaluation, 'run_campaign', return_value={'passed': True}) as campaign, \
+                    patch('sys.stdout', new_callable=io.StringIO):
+                self.assertEqual(evaluation.main(), 0)
+                self.assertEqual((campaign.call_args.kwargs['reasoning_effort'],
+                                  campaign.call_args.kwargs['max_output_tokens']), expected)
 
     def test_compaction_keeps_the_loop_of_reused_provider_clients(self):
         import asyncio
@@ -85,6 +152,7 @@ class AgentEvaluationTests(unittest.TestCase):
     def test_bad_limits_and_unknown_cases_fail_before_backend_load(self):
         with patch.object(evaluation, 'load_backend', side_effect=AssertionError('must not initialize backend')):
             for parameters in ({'request_limit': 0}, {'token_limit': -1}, {'max_cost_eur': float('nan')},
+                               {'max_output_tokens': 0}, {'max_output_tokens': True}, {'reasoning_effort': 'invented'},
                                {'cases': ('invented',)}, {'cases': ('multi_file', 'multi_file')}):
                 with self.subTest(parameters=parameters), self.assertRaises(ValueError):
                     evaluation.run_campaign(**parameters)

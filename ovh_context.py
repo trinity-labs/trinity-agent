@@ -7,7 +7,7 @@ import os
 import re
 from pydantic_ai.messages import (
     BinaryContent, ModelRequest, ModelResponse, ModelMessagesTypeAdapter,
-    SystemPromptPart, UserPromptPart, TextPart, ToolCallPart, ToolReturnPart, RetryPromptPart,
+    SystemPromptPart, UserPromptPart, TextPart, ThinkingPart, ToolCallPart, ToolReturnPart, RetryPromptPart,
 )
 from ovh_memory import ConversationMemory, atomic_write
 
@@ -57,11 +57,13 @@ def estimate_tokens(messages):
     return total
 
 
-def transcript(messages):
-    """Readable evidence for retrieval and summarization; binary data stays in JSON."""
+def transcript(messages, include_thinking=True):
+    """Readable history; only summary inputs may omit non-evidential reasoning."""
     lines = []
     for message in messages:
         for part in message.parts:
+            if not include_thinking and isinstance(part, ThinkingPart):
+                continue
             if isinstance(part, ToolCallPart):
                 lines.append(f'TOOL CALL {part.tool_call_id} {part.tool_name}: {part.args_as_json_str()}')
             else:
@@ -214,12 +216,21 @@ async def compact_context(messages, memory, budget, summarize=None):
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(checkpoint_dir / f'{digest}.json', raw)
     removed = [m for unit in units[:count] for m in unit]
-    source = (('Résumé précédent (à vérifier contre les sources) :\n' + previous + '\n') if previous else '') + transcript(removed)
-    source_ref = memory.put(source)
+    previous_source = ('Résumé précédent (à vérifier contre les sources) :\n' + previous + '\n') if previous else ''
+    source_ref = memory.put(previous_source + transcript(removed))
+    # Completed reasoning is speculative, not tool evidence. Do not pay to
+    # summarize it again; archives and the retained active protocol stay exact.
+    thoughts = [p for m in removed for p in m.parts if isinstance(p, ThinkingPart)]
+    source = previous_source + (
+        '[Raisonnement ancien omis du résumé ; archive complète disponible.]\n' if thoughts else ''
+    ) + transcript(removed, include_thinking=False)
     # Bound the summarizer itself. Never hide that the source is only excerpts.
     source_budget = min(SUMMARY_SOURCE_CHARS, max(3000, budget * 2))
     summary_input = source if len(source) <= source_budget else (
         source[:source_budget//2] + '\n[EXTRAITS : partie médiane archivée, ne pas la deviner]\n' + source[-source_budget//2:])
+    stats.update(summary_source_tokens=text_tokens(summary_input),
+                 summary_thinking_omitted_tokens=sum(text_tokens(p.content) for p in thoughts),
+                 summary_thinking_omitted_parts=len(thoughts))
     result = None
     mode = 'extractive'
     if summarize:

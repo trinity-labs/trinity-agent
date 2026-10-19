@@ -13,7 +13,8 @@ from pydantic_ai.messages import (ModelRequest, ModelResponse, SystemPromptPart,
 from pydantic_ai.models.function import FunctionModel
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
-from ovh_context import compact_context, estimate_tokens, SUMMARY_PREFIX, bound_tool_outputs, text_only_history, TOOL_OUTPUT_CHARS
+from ovh_context import (compact_context, estimate_tokens, SUMMARY_PREFIX, bound_tool_outputs,
+                         text_only_history, TOOL_OUTPUT_CHARS, transcript, text_tokens)
 from ovh_memory import ConversationMemory
 
 
@@ -97,6 +98,66 @@ with tempfile.TemporaryDirectory() as directory:
     except ValueError:
         pass
 print('PASS: exact history, full output archives, safe tool boundaries, latest request, semantic/fallback compaction, oversized prompt')
+
+# Reasoning-heavy models must not spend another request summarizing speculation.
+# Exercise actual compaction, with old completed and recent active tool rounds.
+with tempfile.TemporaryDirectory() as folder:
+    memory = ConversationMemory(Path(folder))
+    old_thinking = 'OLD-UNVERIFIED: perhaps the deployment already succeeded. ' * 600
+    active_thinking = 'ACTIVE-THINKING: inspect the latest observed state.'
+    history = [
+        ModelRequest(parts=[SystemPromptPart('Never edit production.'),
+                            UserPromptPart('Inspect EXACT-42; preserve the user configuration.')]),
+        ModelResponse(parts=[ThinkingPart(old_thinking), TextPart('Inspection requested.'),
+                             ToolCallPart('lookup', {'path': 'config.json'}, tool_call_id='old')]),
+        ModelRequest(parts=[ToolReturnPart('lookup', 'OBSERVED: config is unchanged.', tool_call_id='old')]),
+        ModelResponse(parts=[TextPart('The lookup completed.')]),
+        ModelRequest(parts=[UserPromptPart('Continue EXACT-42 without modifying production.')]),
+        ModelResponse(parts=[ThinkingPart(active_thinking),
+                             ToolCallPart('lookup', {'path': 'latest.json'}, tool_call_id='active')]),
+        ModelRequest(parts=[ToolReturnPart('lookup', 'LATEST: verification remains pending.', tool_call_id='active')]),
+    ]
+    original = ModelMessagesTypeAdapter.dump_json(history)
+    full_transcript = transcript(history)
+    assert old_thinking in full_transcript and active_thinking in full_transcript
+    assert old_thinking not in transcript(history, include_thinking=False)
+    inputs = []
+    async def summarize_without_thinking(source, maximum):
+        inputs.append(source)
+        assert 'OLD-UNVERIFIED' not in source and 'ACTIVE-THINKING' not in source
+        assert 'preserve the user configuration' in source
+        assert 'TOOL CALL old lookup: {"path":"config.json"}' in source
+        assert 'OBSERVED: config is unchanged.' in source
+        assert 'Raisonnement ancien omis' in source
+        return 'Inspect EXACT-42 while preserving configuration. Lookup observed unchanged config; verification remains pending.'
+    managed, stats = asyncio.run(compact_context(history, memory, 5000, summarize_without_thinking))
+    assert stats['compacted'] and stats['summary_mode'] == 'semantic' and len(inputs) == 1
+    assert stats['summary_source_tokens'] == text_tokens(inputs[0])
+    assert stats['summary_thinking_omitted_tokens'] == text_tokens(old_thinking)
+    assert stats['summary_thinking_omitted_parts'] == 1
+    validate_protocol(managed)
+    assert any(isinstance(p, ThinkingPart) and p.content == active_thinking for m in managed for p in m.parts)
+    assert 'LATEST: verification remains pending.' in transcript(managed)
+    assert 'Never edit production.' in transcript(managed)
+    assert 'Continue EXACT-42 without modifying production.' in transcript(managed)
+    assert ModelMessagesTypeAdapter.dump_json(history) == original
+    assert next((Path(folder)/'context-checkpoints').glob('*.json')).read_bytes() == original
+    documents = [p.read_text() for p in memory.docs.glob('*.md')]
+    assert full_transcript in documents
+    assert any(old_thinking in document and 'OBSERVED: config is unchanged.' in document for document in documents)
+    # The extractive fallback follows the same omission, while exact archives survive.
+    fallback, fallback_stats = asyncio.run(compact_context(history, memory, 5000))
+    assert fallback_stats['summary_mode'] == 'extractive'
+    assert 'OLD-UNVERIFIED' not in transcript(fallback)
+    assert active_thinking in transcript(fallback)
+    # Under budget, every part, including reasoning, remains byte-for-byte intact.
+    recent = history[-3:]
+    unchanged, unchanged_stats = asyncio.run(compact_context(recent, memory, 5000))
+    assert not unchanged_stats['compacted']
+    assert ModelMessagesTypeAdapter.dump_json(unchanged) == ModelMessagesTypeAdapter.dump_json(recent)
+print('PASS: summary omits only removed reasoning; exact archives, active reasoning, constraints and tool evidence retained '
+      f'({stats["summary_thinking_omitted_tokens"]} estimated reasoning tokens omitted, '
+      f'{stats["summary_source_tokens"]} estimated summary-input tokens)')
 
 sys.argv.append('--billing-status')
 spec = importlib.util.spec_from_file_location('agent_context_test', root/'ovh-agent.py')

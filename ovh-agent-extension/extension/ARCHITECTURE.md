@@ -332,3 +332,29 @@ Les choix ont été comparés aux sources primaires :
 [carte de dépôt Aider](https://aider.chat/docs/repomap.html).
 Il s'agit d'une étude ciblée des mécanismes documentés, pas d'un audit exhaustif
 ni d'un accès aux implémentations propriétaires.
+
+
+### Réglages Qwen et coût des résumés (1.15.2)
+
+Le catalogue est chargé avant le choix des paramètres, y compris à froid. Une liste
+`reasoning_efforts` explicitement vide n'autorise pas les réglages GPT `low/medium` :
+raisonnement disponible et effort réglable sont deux capacités distinctes. Le
+catalogue OVH annonce actuellement ces niveaux pour Qwen3.8, pas pour Qwen3.5/3.6.
+L'OpenAPI générique ne prouve pas l'effet d'un paramètre sur chaque modèle.
+Aucun `chat_template_kwargs` non annoncé n'est injecté.
+
+Pendant une compaction nécessaire, seuls les anciens blocs de raisonnement sont
+exclus de la source envoyée au résumeur ; instructions, réponses visibles et
+résultats d'outils restent disponibles. Le protocole complet est archivé et le
+raisonnement des tours d'outils conservés reste intact. Cela économise la source
+du résumé, sans désactiver le raisonnement du modèle ni certifier sa qualité.
+
+Le banc `evaluate-agent.py` utilise les paramètres de production par défaut.
+`--reasoning-effort` et `--max-output-tokens` permettent une comparaison explicite,
+avec la même configuration à la reprise. Les compteurs absents restent inconnus.
+Les réglages issus de petits essais locaux ne deviennent pas des valeurs par défaut
+universelles ; les tâches complexes conservent leur politique de raisonnement.
+
+Références : [API OVH](https://oai.endpoints.kepler.ai.cloud.ovh.net/doc/Qwen3.6-27B/openapi.json),
+[Qwen3.6](https://huggingface.co/Qwen/Qwen3.6-27B),
+[Qwen3.8](https://huggingface.co/Qwen/Qwen3.8-27B).

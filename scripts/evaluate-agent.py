@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from contextlib import ExitStack
+from dataclasses import asdict
 import hashlib
 import importlib.util
 import json
@@ -26,7 +27,9 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-VERSION = 1
+VERSION = 2
+REASONING_EFFORTS = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh')
+OPTIONAL_USAGE = ('reasoning_tokens', 'cache_read_tokens', 'cache_write_tokens')
 TASK_CASES = ('multi_file', 'already_satisfied', 'preexisting_change',
               'stale_path_recovery', 'concurrent_user_change', 'source_injection',
               'correction_compaction', 'interrupted_write')
@@ -38,6 +41,49 @@ ALLOWED_TOOLS = frozenset({'read_file', 'list_files', 'search_text', 'edit_file'
 
 def sha(value):
     return hashlib.sha256(value if isinstance(value, bytes) else value.encode()).hexdigest()
+
+
+def json_fingerprint(value):
+    return sha(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+
+
+def case_settings(backend, model_id, prompt, analysis, *, reasoning_effort=None, max_output_tokens=None):
+    # Live comparisons inherit production policy. The reference adapter performs
+    # no inference and must not fetch a catalogue merely to run offline tests.
+    settings = dict(backend.generation_settings(model_id, prompt, analysis)) if model_id else {}
+    settings.setdefault('timeout', 45)
+    if reasoning_effort is not None:
+        if model_id:
+            capabilities = backend.model_capabilities(model_id)
+            supported = capabilities.get('reasoning_efforts')
+            if not capabilities.get('reasoning') or (supported is not None and reasoning_effort not in supported):
+                raise ValueError('Requested reasoning effort is not supported by the configured model')
+        settings['openai_reasoning_effort'] = reasoning_effort
+    if max_output_tokens is not None:
+        settings['max_tokens'] = max_output_tokens
+    return settings
+
+
+def response_usage(response):
+    # RequestUsage's SDK constructor stores only supplied fields on the instance;
+    # its class defaults are zero even when the provider omitted a counter. Do
+    # not turn those defaults into evidence of zero reasoning or cache usage.
+    supplied = vars(response.usage) if response is not None else {}
+    details = supplied.get('details', {})
+    values = {key: supplied.get(key) for key in ('input_tokens', 'output_tokens', *OPTIONAL_USAGE)}
+    values['reasoning_tokens'] = supplied.get('output_reasoning_tokens', details.get('reasoning_tokens'))
+    return {key: value if type(value) is int and value >= 0 else None for key, value in values.items()}
+
+
+def optional_usage_summary(requests):
+    # Partial sums retain coverage, so one omitted counter cannot masquerade as
+    # a complete campaign total. Failed requests count as unavailable evidence.
+    result = {}
+    for name in OPTIONAL_USAGE:
+        observed = [item['usage'][name] for item in requests if item['usage'][name] is not None]
+        result[name] = {'observed_tokens': sum(observed) if observed else None,
+                        'requests_with_counter': len(observed), 'attempted_requests': len(requests)}
+    return result
 
 
 def atomic_report(path, report):
@@ -192,7 +238,8 @@ def claim_state(text):
 
 
 def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_limit=50000,
-             model_factory=None, eager_tools=False):
+             model_factory=None, eager_tools=False, model_id=None,
+             reasoning_effort=None, max_output_tokens=None):
     from pydantic_ai import Agent
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
     from pydantic_ai.usage import RunUsage, UsageLimits
@@ -211,7 +258,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
     backend.FULL_ACCESS = False
     backend.JSON_MODE = False
     backend.VERIFICATION_GUARD = backend.TASK_ENGINE = None
-    events, attempts, schemas = [], [], []
+    events, attempts, schemas, model_requests = [], [], [], []
     original_emit, original_read = backend.emit, backend.read_file
     original_edit = backend.edit_file
     def emit(event):
@@ -252,6 +299,10 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         backend.begin_verification(fixture['prompt'], fact_check=False)
         if eager_tools and hasattr(backend, 'ACTIVE_TOOLS'):
             stack.enter_context(patch.object(backend, 'ACTIVE_TOOLS', None))
+        analysis = asdict(backend.analyze_request(fixture['prompt']))
+        analysis['paths'] = list(analysis['paths'])
+        settings = case_settings(backend, model_id, fixture['prompt'], analysis,
+            reasoning_effort=reasoning_effort, max_output_tokens=max_output_tokens)
         history = None
         if name == 'correction_compaction':
             backend.TASK_ENGINE.focus('Ancien objectif invalide : port 999.')
@@ -267,15 +318,28 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         class SchemaAuditModel(WrapperModel):
             async def request(self, messages, model_settings, model_request_parameters):
                 definitions = model_request_parameters.function_tools
+                schema_data = [{'name': item.name, 'description': item.description,
+                    'parameters': item.parameters_json_schema} for item in definitions]
                 schemas.append({'count': len(definitions),
-                    'characters': sum(len(json.dumps({'name': item.name, 'description': item.description,
-                        'parameters': item.parameters_json_schema}, ensure_ascii=False)) for item in definitions),
-                    'names': [item.name for item in definitions]})
-                return await self.wrapped.request(messages, model_settings, model_request_parameters)
+                    'characters': sum(len(json.dumps(item, ensure_ascii=False)) for item in schema_data),
+                    'names': [item.name for item in definitions], 'fingerprint': json_fingerprint(schema_data)})
+                request_started, response, error_type = time.monotonic(), None, None
+                try:
+                    response = await self.wrapped.request(messages, model_settings, model_request_parameters)
+                    return response
+                except Exception as failure:
+                    error_type = type(failure).__name__
+                    raise
+                finally:
+                    model_requests.append({'latency_ms': round((time.monotonic()-request_started)*1000, 3),
+                        'response_received': response is not None, 'error_type': error_type,
+                        'settings_fingerprint': json_fingerprint(model_settings or {}),
+                        'schema_fingerprint': schemas[-1]['fingerprint'], 'usage': response_usage(response),
+                        'finish_reason': response.finish_reason if response is not None else None})
         selected_model = SchemaAuditModel(selected_model)
         tools = [tool for tool in backend.agent_tools() if tool.name in ALLOWED_TOOLS]
-        agent = Agent(selected_model, instructions=execution_instructions(root)+'\n'+RESEARCH_INSTRUCTIONS,
-            tools=tools, retries=2)
+        instructions = execution_instructions(root)+'\n'+RESEARCH_INSTRUCTIONS
+        agent = Agent(selected_model, instructions=instructions, tools=tools, retries=2)
         agent.instructions(backend.active_workflow_context)
         def validate(output: str) -> str:
             attempts.append(output)
@@ -283,7 +347,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         agent.output_validator(validate)
         try:
             result = agent.run_sync(fixture['prompt'], message_history=history, usage=usage,
-                model_settings={'max_tokens': 1400, 'openai_reasoning_effort': 'medium', 'timeout': 45},
+                model_settings=settings,
                 usage_limits=UsageLimits(request_limit=request_limit, total_tokens_limit=token_limit))
             answer = result.output
         except TimeoutError as failure:
@@ -311,13 +375,13 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                 # Real-model recovery keeps the same real model; the fixture
                 # reference adapter alone receives a deterministic continuation.
                 recovery_model = selected_model if model is not None or model_factory is not None else SchemaAuditModel(FunctionModel(resume))
-                resumed_agent = Agent(recovery_model, instructions=execution_instructions(root),
+                resumed_agent = Agent(recovery_model, instructions=instructions,
                     tools=[tool for tool in backend.agent_tools() if tool.name in ALLOWED_TOOLS], retries=2)
                 resumed_agent.instructions(backend.active_workflow_context)
                 resumed_agent.output_validator(validate)
                 try:
                     result = resumed_agent.run_sync('Reprends après perte du résultat. Relis les fichiers actuels. '+fixture['prompt'],
-                        usage=usage, model_settings={'max_tokens': 1400, 'openai_reasoning_effort': 'medium', 'timeout': 45},
+                        usage=usage, model_settings=settings,
                         usage_limits=UsageLimits(request_limit=request_limit, total_tokens_limit=token_limit))
                     answer = result.output
                 except Exception as failure:
@@ -369,21 +433,36 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         'input_tokens': usage.input_tokens, 'output_tokens': usage.output_tokens,
         'tool_calls': usage.tool_calls, 'fixture_fingerprint': fixture['fingerprint'],
         'disk_source_fingerprint_at_case': case_source,
+        'prompt_analysis': analysis, 'routing_domain': backend.routing_domain(fixture['prompt'], analysis),
+        'production_complex_task': backend.is_complex_task(fixture['prompt'], analysis),
+        'prompt_fingerprint': sha(fixture['prompt']),
+        # Temporary workspace names vary between runs. Normalize that one path
+        # for comparison while retaining the exact instructions hash as evidence.
+        'instructions_fingerprint': sha(instructions),
+        'normalized_instructions_fingerprint': sha(instructions.replace(str(root), '<FIXTURE_ROOT>')),
+        'generation_settings': settings, 'settings_fingerprint': json_fingerprint(settings),
+        'settings_source': 'production_generation_settings_with_explicit_overrides' if model_id else 'offline_reference_adapter',
         'compacted': compacted, 'race_triggered': fixture['race_triggered'],
         'interruption_triggered': fixture['interruption_triggered'], 'human_interventions': 0,
-        'schemas': schemas, 'events': events}
+        'schemas': schemas, 'model_requests': model_requests,
+        'optional_usage': optional_usage_summary(model_requests), 'events': events}
     backend.TASK_ENGINE = backend.VERIFICATION_GUARD = None
     return row
 
 
 def run_campaign(*, seed=20261019, cases=None, real_model=None,
                  request_limit=180, token_limit=300000, max_cost_eur=0.25,
-                 output=None, model_factory=None, eager_tools=False):
+                 output=None, model_factory=None, eager_tools=False,
+                 reasoning_effort=None, max_output_tokens=None):
     cases = tuple(cases) if cases is not None else TASK_CASES if real_model else TASK_CASES+GUARD_CASES
     if real_model and set(cases) & set(GUARD_CASES):
         raise ValueError('Scripted adversarial guard cases are offline-only; live runs measure task cases')
     if request_limit < 1 or token_limit < 1 or not 0 < max_cost_eur <= 25:
         raise ValueError('Positive bounded request/token/cost limits required')
+    if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS:
+        raise ValueError('Unknown reasoning effort')
+    if max_output_tokens is not None and (type(max_output_tokens) is not int or max_output_tokens < 1):
+        raise ValueError('max_output_tokens must be a positive integer')
     if not cases or len(cases) > 20 or len(set(cases)) != len(cases) or set(cases)-set(TASK_CASES+GUARD_CASES):
         raise ValueError('Unknown, duplicate or empty cases')
     if output and Path(output).exists():
@@ -392,12 +471,15 @@ def run_campaign(*, seed=20261019, cases=None, real_model=None,
         'source_fingerprint': source_fingerprint(), 'mode': 'real_model' if real_model else 'offline_function_model',
         'model': real_model, 'model_performance_measured': bool(real_model), 'complete': False,
         'tool_visibility': 'eager_fixture_tools' if eager_tools else 'progressive',
+        'settings_overrides': {'reasoning_effort': reasoning_effort, 'max_output_tokens': max_output_tokens},
         'limits': {'requests': request_limit, 'tokens': token_limit, 'cost_eur': max_cost_eur},
         'requested_cases': list(cases), 'scenarios': [], 'passed': False,
         'limitations': ['Seeded temporary fixtures do not establish market ranking or general autonomy.',
             'The evaluator hides its file oracle; known fixture source is not a sealed external benchmark.',
             'No model shell/network/service tools are exposed; only the configured immutable fixture check executes.',
             'Claim/refusal text metrics are conservative heuristics; the file oracle decides success.',
+            'Request latency includes provider/budget wrappers; non-streaming runs do not measure time to first token.',
+            'Absent optional usage counters are null, not zero; partial sums include their request coverage.',
             'Observed token limits can be crossed by the final provider response; hard cost reservations and request limits prevent subsequent calls.']}
     if output:
         atomic_report(output, report)
@@ -439,7 +521,8 @@ def run_campaign(*, seed=20261019, cases=None, real_model=None,
                 break
             row = run_case(backend, base, name, seed=seed, model=model,
                 request_limit=min(18, request_limit-used_requests), token_limit=min(50000, token_limit-used_tokens),
-                model_factory=model_factory, eager_tools=eager_tools)
+                model_factory=model_factory, eager_tools=eager_tools, model_id=real_model,
+                reasoning_effort=reasoning_effort, max_output_tokens=max_output_tokens)
             if ledger:
                 row['observed_token_cost_eur'] = (row['input_tokens']*float(card['input_per_million'])
                     +row['output_tokens']*float(card['output_per_million']))/1000000
@@ -469,6 +552,9 @@ def run_campaign(*, seed=20261019, cases=None, real_model=None,
             'schema_definitions_sent': sum(schema['count'] for row in rows for schema in row['schemas']),
             'input_tokens': sum(row['input_tokens'] for row in rows), 'output_tokens': sum(row['output_tokens'] for row in rows),
             'latency_ms': sum(row['latency_ms'] for row in rows),
+            'request_latency_ms': sum(item['latency_ms'] for row in rows for item in row['model_requests']),
+            'request_latency_scope': 'wrapped_request_including_budget_checks_and_accounting',
+            'optional_usage': optional_usage_summary([item for row in rows for item in row['model_requests']]),
             'cost_eur': sum(row.get('observed_token_cost_eur', 0) for row in rows),
             'budget_accounted_eur': ledger.status()['periods']['monthly']['spent'] if ledger else 0,
             'cost_scope': 'Catalogue estimate for observed provider tokens; budget accounting may additionally include conservative unknown-response charges.',
@@ -486,13 +572,18 @@ def main():
     parser.add_argument('--cases', help='Comma-separated cases; default: all tasks plus offline-only adversarial guard probes')
     parser.add_argument('--eager-tools', action='store_true', help='A/B comparison: expose all permitted fixture tool schemas from the first call')
     parser.add_argument('--real-model', help='Explicit opt-in; credentials are read from configured environment only')
+    parser.add_argument('--reasoning-effort', choices=REASONING_EFFORTS,
+                        help='Explicit A/B override; omitted uses production generation_settings')
+    parser.add_argument('--max-output-tokens', type=int,
+                        help='Explicit per-response token override; omitted uses production generation_settings')
     parser.add_argument('--request-limit', type=int, default=180)
     parser.add_argument('--token-limit', type=int, default=300000)
     parser.add_argument('--max-cost-eur', type=float, default=0.25)
     parser.add_argument('--output', type=Path, required=True, help='New report path, saved after every case')
     args = parser.parse_args()
     report = run_campaign(seed=args.seed, cases=tuple(args.cases.split(',')) if args.cases else None, real_model=args.real_model,
-        request_limit=args.request_limit, token_limit=args.token_limit, max_cost_eur=args.max_cost_eur, output=args.output, eager_tools=args.eager_tools)
+        request_limit=args.request_limit, token_limit=args.token_limit, max_cost_eur=args.max_cost_eur, output=args.output,
+        eager_tools=args.eager_tools, reasoning_effort=args.reasoning_effort, max_output_tokens=args.max_output_tokens)
     print(json.dumps({key: value for key, value in report.items() if key != 'scenarios'}, ensure_ascii=False, indent=2))
     return 0 if report['passed'] else 1
 

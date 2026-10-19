@@ -161,6 +161,23 @@ assert a.model_capabilities('New-Model')['response_formats'] == ['json_schema']
 a.index_discovery_catalog([])
 print('PASS: discovery IDs/aliases, availability, explicit false capabilities and supported reasoning values')
 
+# Cold Qwen requests must use the freshly discovered API, not stale GPT-style
+# defaults. Reasoning support is distinct from adjustable reasoning effort.
+qwen_card = {'id': 'Qwen3.6-27B', 'catalog_source': a.DISCOVERY_API_URL,
+             'supports_tools': True, 'supports_reasoning': True,
+             'supports_streaming': True, 'reasoning_efforts': [],
+             'context_length': 262144, 'max_completion_tokens': 32768}
+def fresh_qwen_catalog():
+    a.install_catalog_capabilities([qwen_card])
+    return [qwen_card]
+with patch.dict(a.MODEL_CAPABILITIES, clear=True), patch.object(a, 'fetch_model_catalog', side_effect=fresh_qwen_catalog):
+    for prompt in ['Bonjour', 'Audit sécurité Docker']:
+        assert 'openai_reasoning_effort' not in a.generation_settings(qwen_card['id'], prompt)
+    qwen_card = {**qwen_card, 'id': 'Qwen3.8-27B', 'reasoning_efforts': ['none', 'low', 'medium', 'xhigh']}
+    assert a.generation_settings(qwen_card['id'], 'Bonjour')['openai_reasoning_effort'] == 'low'
+    assert a.generation_settings(qwen_card['id'], 'Audit sécurité Docker')['openai_reasoning_effort'] == 'medium'
+print('PASS: cold Qwen discovery before generation and no invented effort for explicit empty capabilities')
+
 # Completed cyber evidence outranks size/cheapness, while single/manual choices remain available.
 cyber_cards = [a.normalise_model({'id': mid, 'context_length': 262144,
                'pricing': {'currency_unit': 'EUR', 'prompt': '0.000001', 'completion': '0.000001'}})

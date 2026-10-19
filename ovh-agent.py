@@ -2106,11 +2106,15 @@ def generation_settings(model_id: str, prompt: str, analysis: dict | None = None
     """Apply only parameters advertised by each model’s OVH API schema."""
     complex_task = is_complex_task(prompt, analysis)
     settings = {"max_tokens": COMPLEX_OUTPUT_TOKENS if complex_task else OUTPUT_TOKENS}
+    # Refresh/install discovered capabilities before choosing settings, including
+    # on the first request. Qwen 3.5/3.6 expose reasoning but no effort controls;
+    # an explicit empty list must not inherit GPT's low/medium knob.
+    card = next((item for item in fetch_model_catalog() if item["id"] == model_id), {})
     capabilities = model_capabilities(model_id)
     if capabilities["reasoning"]:
         effort = "medium" if complex_task else "low"
-        supported = capabilities.get("reasoning_efforts", [])
-        if not supported or effort in supported:
+        supported = capabilities.get("reasoning_efforts")
+        if supported is None or effort in supported:
             settings["openai_reasoning_effort"] = effort
     if not complex_task and capabilities["reasoning"]:
         tested = measured_settings(model_id, load_evidence(DATA_ROOT, AI_API_BASE_URL),
@@ -2118,7 +2122,6 @@ def generation_settings(model_id: str, prompt: str, analysis: dict | None = None
         effort = tested.get("reasoning_effort")
         if effort in capabilities.get("reasoning_efforts", []):
             settings["openai_reasoning_effort"] = effort
-    card = next((item for item in fetch_model_catalog() if item["id"] == model_id), {})
     # Preserve room for instructions and usable input, including unknown models.
     settings["max_tokens"] = output_token_budget(card, complex_task, context_overhead())
     if settings["max_tokens"] < 256:
@@ -2476,11 +2479,11 @@ async def manage_model_context(ctx: RunContext, messages: list) -> list:
         if generated < 256:
             raise ValueError("Source trop grande pour le modèle de résumé")
         settings = {"max_tokens": generated}
-        efforts = caps.get("reasoning_efforts", [])
+        efforts = caps.get("reasoning_efforts")
         if caps.get("reasoning"):
-            if "none" in efforts:
+            if efforts is not None and "none" in efforts:
                 settings["openai_reasoning_effort"] = "none"
-            elif not efforts or "low" in efforts:
+            elif efforts is None or "low" in efforts:
                 settings["openai_reasoning_effort"] = "low"
         emit({"type": "status", "text": f"Compression de l’historique : résumé par modèle (délai {SUMMARY_TIMEOUT_SECONDS:g} s), puis secours local si nécessaire…"})
         summary_started = time.monotonic()

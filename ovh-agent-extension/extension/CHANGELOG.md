@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.2 — 2026-10-19
+
+- Apply discovered Qwen capabilities before the first request; distinguish reasoning support from adjustable effort.
+- Exclude old thinking blocks from compaction summaries while preserving complete archives and reasoning in active tool rounds.
+- Measure model settings, reasoning/cache usage and request latency explicitly in the bounded evaluation runner.
+
 ## 1.15.1 — 2026-10-19
 
 - Reject global repository scans consistently on hosts where `/home/coder` does not exist, while retaining strict validation of actual project paths.
