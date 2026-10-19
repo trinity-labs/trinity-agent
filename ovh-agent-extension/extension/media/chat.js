@@ -257,6 +257,7 @@ function beginArchiveLoading(item, source, title, color) {
   if (/^#[a-f0-9]{6}$/i.test(color || "")) messages.style.setProperty("--archive-loading-color", color);
   else messages.style.removeProperty("--archive-loading-color");
   archiveRevision = ""; archiveModelRestored = false;
+  archiveLoadingModelRevision = modelSelectionRevision;
   window.clearTimeout(snapshotTimer);
   window.clearTimeout(viewStateTimer);
   if (currentRun) window.clearInterval(currentRun.timer);
@@ -313,10 +314,15 @@ function resumeArchive(id) {
   vscode.postMessage({ type: "resumeArchive", id });
 }
 let currentRun = null;
+let pendingQuestionnaire = null;
 let fullAccess = saved?.fullAccess !== false;
 let selectedModel = saved?.model || "auto-balanced";
 let lastRoutedModel = saved?.lastRoutedModel || "";
 let modelCatalog = [];
+let modelPanelActive = false;
+let modelSelectionChanged = false;
+let modelSelectionRevision = 0;
+let archiveLoadingModelRevision = 0;
 let backendReady = false;
 let creatingConversation = false;
 let selectedArchiveForDeletion = null;
@@ -466,10 +472,11 @@ function renderModels() {
     if (model.selectable) {
       row.addEventListener("click", () => {
         selectedModel = model.id;
+        modelSelectionChanged = true;
+        modelSelectionRevision += 1;
         if (selectedModel !== "auto-balanced") lastRoutedModel = "";
         updateModelButton();
         renderModels();
-        modelPanel.hidden = true;
         setStatus(t("Modèle sélectionné : {0}", selectedModel));
         vscode.postMessage({ type: "selectModel", model: selectedModel });
         persist();
@@ -1279,6 +1286,65 @@ function ensureRun() {
   return currentRun || createAssistantRun();
 }
 
+function renderQuestionnaire(data) {
+  const questions = Array.isArray(data?.questions) ? data.questions.slice(0, 3) : [];
+  if (!questions.length) return;
+  const article = [...messages.querySelectorAll(".message.assistant")].at(-1);
+  const content = article?.querySelector(".content");
+  if (!content) return;
+  const form = document.createElement("form");
+  form.className = "questionnaire";
+  questions.forEach((item, questionIndex) => {
+    const fieldset = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = String(item.question || "");
+    fieldset.appendChild(legend);
+    const name = `qcm-${data.id || "questionnaire"}-${questionIndex}`;
+    (Array.isArray(item.options) ? item.options.slice(0, 3) : []).forEach((option, optionIndex) => {
+      const label = document.createElement("label");
+      label.className = "questionnaire-option";
+      const radio = document.createElement("input");
+      radio.type = "radio"; radio.name = name; radio.value = String(option.label || "");
+      if (optionIndex === 0) radio.checked = true;
+      const text = document.createElement("span");
+      const title = document.createElement("strong"); title.textContent = radio.value;
+      text.appendChild(title);
+      if (option.description) { const description = document.createElement("small"); description.textContent = String(option.description); text.appendChild(description); }
+      label.append(radio, text); fieldset.appendChild(label);
+    });
+    const customLabel = document.createElement("label");
+    customLabel.className = "questionnaire-option questionnaire-custom";
+    const customRadio = document.createElement("input"); customRadio.type = "radio"; customRadio.name = name; customRadio.value = "__custom__";
+    const customInput = document.createElement("input"); customInput.type = "text"; customInput.maxLength = 1000; customInput.placeholder = t("Réponse personnelle…");
+    customInput.addEventListener("focus", () => { customRadio.checked = true; });
+    customLabel.append(customRadio, customInput); fieldset.appendChild(customLabel);
+    form.appendChild(fieldset);
+  });
+  const submitButton = document.createElement("button"); submitButton.type = "submit"; submitButton.textContent = t("Envoyer mes réponses"); form.appendChild(submitButton);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const answers = [];
+    for (const [index, item] of questions.entries()) {
+      const selected = form.querySelector(`input[name="qcm-${data.id || "questionnaire"}-${index}"]:checked`);
+      if (!selected) { setStatus(t("Choisis une réponse pour chaque question."), "warning"); return; }
+      let value = selected.value;
+      if (value === "__custom__") {
+        value = selected.closest("label").querySelector('input[type="text"]').value.trim();
+        if (!value) { setStatus(t("Renseigne la réponse personnelle sélectionnée."), "warning"); return; }
+      }
+      answers.push(`- ${String(item.question || "Question")} : ${value}`);
+    }
+    form.querySelectorAll("input,button").forEach(control => { control.disabled = true; });
+    resetFollowupInteraction();
+    editingFollowup = null;
+    pendingFollowup = null;
+    prompt.value = `${t("Réponses au questionnaire :")}\n${answers.join("\n")}`;
+    submit();
+  });
+  content.appendChild(form);
+  persist(); scrollToBottom();
+}
+
 function updateRunSummary(run, state = "") {
   const count = run.actions;
   const actionLabel = t("{0} action{1}", count, count === 1 ? "" : "s");
@@ -2073,6 +2139,7 @@ billing.addEventListener("click", () => {
   vscode.postMessage({ type: "billing" });
 });
 history.addEventListener("click", () => {
+  modelPanelActive = false;
   modelPanel.hidden = true;
   setArchiveVisible(true);
   hideSelectionQuote();
@@ -2084,12 +2151,13 @@ closeHistory?.addEventListener("click", () => {
 modelPicker.addEventListener("click", () => {
   setArchiveVisible(false);
   modelPanel.hidden = !modelPanel.hidden;
+  modelPanelActive = !modelPanel.hidden;
   if (!modelPanel.hidden) {
     modelSearch.focus();
     vscode.postMessage({ type: "listModels" });
   }
 });
-closeModels.addEventListener("click", () => { modelPanel.hidden = true; });
+closeModels.addEventListener("click", () => { modelPanelActive = false; modelPanel.hidden = true; });
 refreshModels.addEventListener("click", () => {
   setStatus(t("Actualisation du catalogue OVHcloud…"));
   vscode.postMessage({ type: "listModels", refresh: true });
@@ -2353,6 +2421,7 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "approval") addApproval(data);
   if (data.type === "approval_result") resolveApproval(data);
+  if (data.type === "questionnaire") pendingQuestionnaire = data;
   if (data.type === "delta") setMarkdown(data.html);
   if (data.type === "response") {
     resumableArchives.delete(activeArchiveId);
@@ -2360,6 +2429,7 @@ window.addEventListener("message", ({ data }) => {
     if (data.verification) showVerification(data.verification);
     finishRun("done");
     setBusy(false, "");
+    if (pendingQuestionnaire) { const questionnaire = pendingQuestionnaire; pendingQuestionnaire = null; renderQuestionnaire(questionnaire); }
   }
   if (data.type === "error") {
     if (performancePicker) performancePicker.disabled = false;
@@ -2462,7 +2532,7 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "models") {
     modelCatalog = data.items || [];
     // A delayed catalogue reply describes global preference, not the opened archive.
-    if (data.selected && !loadingArchive && !archiveModelRestored) selectedModel = data.selected;
+    if (data.selected && !loadingArchive && !archiveModelRestored && !modelSelectionChanged) selectedModel = data.selected;
     updateModelButton();
     renderModels();
     if (pendingImages.length) ensureVisionModel();
@@ -2470,6 +2540,7 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "model_selected") {
     selectedModel = data.model;
+    modelSelectionChanged = true;
     if (selectedModel !== "auto-balanced") lastRoutedModel = "";
     updateModelButton();
   }
@@ -2479,11 +2550,12 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "archive_loaded") {
     loadingArchive = null;
     setArchiveVisible(false);
-    modelPanel.hidden = true;
+    modelPanel.hidden = !modelPanelActive;
     activeArchiveId = data.id || activeArchiveId;
     followups = [];
     followupCommand("list");
-    restoreArchiveModel(data);
+    if (modelSelectionRevision === archiveLoadingModelRevision) restoreArchiveModel(data);
+    else { archiveModelRestored = true; updateModelButton(); }
     renderArchiveMessages(data.messages);
     if (data.resumable) resumableArchives.add(activeArchiveId);
     endArchiveLoading(true);
@@ -2492,12 +2564,20 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "snapshot_loaded") {
     loadingArchive = null;
     setArchiveVisible(false);
-    modelPanel.hidden = true;
+    modelPanel.hidden = !modelPanelActive;
     activeArchiveId = data.id || activeArchiveId;
     if (data.resumable) resumableArchives.add(activeArchiveId);
     followups = [];
     followupCommand("list");
+    const preserveModel = modelSelectionRevision !== archiveLoadingModelRevision
+      ? { selectedModel, lastRoutedModel } : null;
     applySnapshot(data);
+    if (preserveModel) {
+      selectedModel = preserveModel.selectedModel;
+      lastRoutedModel = preserveModel.lastRoutedModel;
+      archiveModelRestored = true;
+      updateModelButton();
+    }
     endArchiveLoading(true);
     setBusy(false, t("Conversation restaurée"));
   }

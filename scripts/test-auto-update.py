@@ -24,7 +24,7 @@ class Validation(unittest.TestCase):
         backend = next(ast.literal_eval(value) for value in lists if 'ovh-agent.py' in value)
         self.assertEqual(set(backend), u.BACKEND_FILES)
 
-    def test_branding_survives_replacement_and_missing_assets_defer(self):
+    def test_only_explicit_branding_survives_replacement(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             old = root / 'trinity.ovh-agent-1.0.0'
@@ -36,10 +36,13 @@ class Validation(unittest.TestCase):
             stage.mkdir()
             with patch.dict(u.os.environ, {}, clear=True):
                 env = u.branding_environment(stage, root)
-                self.assertEqual(env['OVH_AGENT_NAME'], 'Customer Agent')
-                self.assertEqual(env['OVH_AGENT_PUBLISHER_NAME'], 'Customer')
-                (old / 'logo.svg').unlink()
+                self.assertEqual(env['OVH_AGENT_NAME'], 'TRINITY Agent')
+                self.assertEqual(env['OVH_AGENT_PUBLISHER_NAME'], 'TRINITY')
+                self.assertEqual(env['OVH_AGENT_APP_ICON'], '')
+            with patch.dict(u.os.environ, {'OVH_AGENT_APP_ICON': str(old / 'logo.svg')}, clear=True):
+                env = u.branding_environment(stage, root)
                 self.assertEqual(Path(env['OVH_AGENT_APP_ICON']).read_text(), '<svg/>')
+                (old / 'logo.svg').unlink()
                 with self.assertRaisesRegex(ValueError, 'deferred'):
                     u.branding_environment(stage, root)
 

@@ -32,7 +32,7 @@ READ_ONLY_TOOLS = frozenset({'read_file', 'list_files', 'search_text', 'read_mem
     'search_project_memory', 'read_project_memory', 'inspect_repository', 'workflow_status',
     'inspect_task_execution', 'verify_task_acceptance', 'discover_tools', 'search_web', 'read_webpage',
     'inspect_styles', 'inspect_json', 'inspect_conversation_archives', 'inspect_environment', 'read_local_skill',
-    'verification_plan'})
+    'verification_plan', 'ask_user_questions'})
 
 
 def read_only_policy(prompt, previous=False):

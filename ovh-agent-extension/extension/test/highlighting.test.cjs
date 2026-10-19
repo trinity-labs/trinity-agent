@@ -333,6 +333,32 @@ test('restored execution survives delayed global model replies and snapshots ech
   } finally {dom.window.close();}
 });
 
+test('model catalogue stays open during archive completion and keeps the chosen model active',()=>{
+  const {dom,w,emit,posted}=browser();
+  try {
+    emit({type:'archives',items:[{id:'a',title:'A'}]});
+    w.document.querySelector('[data-archive-id="a"] .archive-open').click();
+    w.document.getElementById('model-picker').click();
+    emit({type:'models',selected:'auto-balanced',items:[
+      {id:'auto-balanced',kind:'auto',selectable:true},
+      {id:'gpt-oss-120b',kind:'chat',selectable:true}
+    ]});
+    const panel=w.document.getElementById('model-panel');
+    assert.equal(panel.hidden,false);
+    [...w.document.querySelectorAll('.model-item')].find(item=>item.textContent.includes('gpt-oss-120b')).click();
+    assert.equal(panel.hidden,false);
+    emit({type:'models',selected:'auto-balanced',items:[
+      {id:'auto-balanced',kind:'auto',selectable:true},
+      {id:'gpt-oss-120b',kind:'chat',selectable:true}
+    ]});
+    emit({type:'archive_loaded',id:'a',messages:[]});
+    assert.equal(panel.hidden,false);
+    assert.equal(w.document.getElementById('selected-model').textContent,'gpt-oss-120b');
+    assert.match(w.document.querySelector('.model-item.selected').textContent,/gpt-oss-120b/);
+    assert(posted.some(message=>message.type==='selectModel' && message.model==='gpt-oss-120b'));
+  } finally {dom.window.close();}
+});
+
 
 test('reopening interrupted conversation restores actions, partial text and resume control',()=>{
   const {dom,w,emit}=browser();

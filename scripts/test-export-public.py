@@ -42,7 +42,10 @@ class PublicExport(unittest.TestCase):
                 'services:\n  ide:\n    environment:\n'
                 '      OVH_AGENT_BUDGET_DAILY_EUR: "${OVH_AGENT_BUDGET_DAILY_EUR:-2}"\n'
                 '      OVH_AGENT_BUDGET_WEEKLY_EUR: "${OVH_AGENT_BUDGET_WEEKLY_EUR:-15}"\n'
-                '      OVH_AGENT_BUDGET_MONTHLY_EUR: "${OVH_AGENT_BUDGET_MONTHLY_EUR:-60}"\n')
+                '      OVH_AGENT_BUDGET_MONTHLY_EUR: "${OVH_AGENT_BUDGET_MONTHLY_EUR:-60}"\n'
+                '      #OVH_AGENT_NAME: "Local Agent"\n'
+                '      #OVH_AGENT_PRIMARY_COLOR: "#000000"\n'
+                '      #OVH_AGENT_APP_ICON: "./branding/ovh/app.svg"\n')
             index = (source / '.git/index').read_bytes()
             result = subprocess.run([sys.executable, str(source / 'scripts/export-public.py')],
                 env={**os.environ, 'TRINITY_AGENT_PUBLIC_ROOT':str(target)},
@@ -61,6 +64,9 @@ class PublicExport(unittest.TestCase):
             for period, amount in [('DAILY',2),('WEEKLY',15),('MONTHLY',60)]:
                 self.assertIn(f'OVH_AGENT_BUDGET_{period}_EUR:-{amount}', compose)
             self.assertNotIn('200', compose)
+            self.assertIn('OVH_AGENT_NAME:-TRINITY Agent', compose)
+            self.assertIn('OVH_AGENT_PRIMARY_COLOR:-#3e3aab', compose)
+            self.assertNotIn('./branding/ovh/', compose)
 
 
 if __name__ == '__main__':

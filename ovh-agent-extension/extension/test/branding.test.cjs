@@ -45,24 +45,27 @@ test('custom icons, safe SVG, cache refresh and default reset', () => {
   }
 });
 
-test('updates preserve existing branding when no override is provided', () => {
+test('missing overrides restore bundled branding and preserve localization keys', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'branding-preserve-'));
   const saved = {...process.env};
   try {
     for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_PUBLISHER_NAME']) delete process.env[key];
     fs.mkdirSync(path.join(root, 'media'));
+    fs.copyFileSync(path.resolve(__dirname, '../media/ovh-agent.svg'), path.join(root, 'media/ovh-agent.svg'));
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json')));
     pkg.icon = 'media/customer.svg';
     pkg.__metadata = {publisherDisplayName: 'Customer'};
     pkg.contributes.viewsContainers.activitybar[0].icon = 'media/customer-menu.svg';
     const file = path.join(root, 'package.json');
     fs.writeFileSync(file, JSON.stringify(pkg));
+    fs.writeFileSync(path.join(root, 'package.nls.fr.json'), JSON.stringify({'ovhAgent.performanceMode.auto': 'Auto'}));
     applyManifest(file, 'Customer Agent');
     const result = JSON.parse(fs.readFileSync(file));
     assert.equal(result.displayName, 'Customer Agent');
-    assert.equal(result.icon, pkg.icon);
-    assert.equal(result.__metadata.publisherDisplayName, 'Customer');
-    assert.equal(result.contributes.viewsContainers.activitybar[0].icon, 'media/customer-menu.svg');
+    assert.match(result.icon, /^media\/ovh-agent-brand-/);
+    assert.equal(result.__metadata.publisherDisplayName, 'TRINITY');
+    assert.equal(result.contributes.viewsContainers.activitybar[0].icon, 'media/ovh-activity.svg');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.nls.fr.json')))['ovhAgent.performanceMode.auto'], 'Auto');
     process.env.OVH_AGENT_APP_ICON = '/missing/logo.svg';
     process.env.OVH_AGENT_BRANDING_STRICT = 'true';
     assert.throws(() => applyManifest(file, 'Customer Agent'));

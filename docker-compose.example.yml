@@ -61,14 +61,14 @@ services:
       # false: masquer entièrement la bannière Conversations / Mount Point
       OVH_AGENT_SHOW_MOUNT_POINT: "${OVH_AGENT_SHOW_MOUNT_POINT:-true}"
       # auto: langue locale ; fr, de, en ou es pour imposer une langue
-      OVH_AGENT_LANG: "${OVH_AGENT_LANG:-auto}"
+      # OVH_AGENT_LANG: "${OVH_AGENT_LANG:-auto}"
       # agent name
-      OVH_AGENT_NAME: "${OVH_AGENT_NAME:-OVH Agent}"
+      # OVH_AGENT_NAME: "${OVH_AGENT_NAME:-TRINITY Agent}"
       # Branding color
-      OVH_AGENT_PRIMARY_COLOR: "${OVH_AGENT_PRIMARY_COLOR:-#3e3aab}"
+      # OVH_AGENT_PRIMARY_COLOR: "${OVH_AGENT_PRIMARY_COLOR:-#3e3aab}"
       # Local paths inside the container; empty = default icon
-      OVH_AGENT_APP_ICON: "${OVH_AGENT_APP_ICON:-}"
-      OVH_AGENT_MENU_ICON: "${OVH_AGENT_MENU_ICON:-}"
+      # OVH_AGENT_APP_ICON: "${OVH_AGENT_APP_ICON:-}"
+      # OVH_AGENT_MENU_ICON: "${OVH_AGENT_MENU_ICON:-}"
     volumes:
       - ./config:/root/.config
       - ./docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.15.4 — 2026-10-19
+
+- Keep the model catalogue open across delayed conversation loads and preserve a newer explicit model selection.
+- Use light, transparent catalogue controls while retaining a visible active-model state.
+- Restore bundled TRINITY branding when local overrides are absent and merge branding translations without deleting unrelated labels.
+- Add bounded interactive multiple-choice questions, including a free-text choice, when the agent genuinely needs user input.
+
 ## 1.15.3 — 2026-10-19
 
 - Handle a process disappearing during the cleanup test’s `/proc` read; retain failures for unrelated access errors.

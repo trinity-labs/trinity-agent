@@ -308,7 +308,7 @@ def update_metadata(*, first_message: str = "", **changes: object) -> bool:
 def archive_event(payload: dict[str, object]) -> None:
     if payload.get("type") not in {
         "user", "response", "error", "tool_start", "tool_end", "approval", "approval_result", "file_change",
-        "model_active", "model_routed", "vision_reading", "context_compacted", "request_prepared", "usage", "verification_status", "verification_check", "task_checkpoint", "plan_updated", "steer_applied", "workflow_action", "execution_evidence",
+        "model_active", "model_routed", "vision_reading", "context_compacted", "request_prepared", "usage", "verification_status", "verification_check", "task_checkpoint", "plan_updated", "steer_applied", "workflow_action", "execution_evidence", "questionnaire",
     }:
         return
     if not CONVERSATION_ID and payload.get("type") != "user":
@@ -1931,9 +1931,9 @@ def load_infrastructure_instructions() -> str:
                 if not path.resolve().is_relative_to(ALLOWED_ROOT):
                     sections.append(f"Contexte ignoré : {path} pointe hors de {ALLOWED_ROOT}.")
                     break
-                content = read_text_cached(path, limit=24001)
-                if len(content) > 24000:
-                    sections.append(f"Contexte non chargé : {path} dépasse 24000 caractères. Signale cette limite à l’utilisateur.")
+                content = read_text_cached(path, limit=32001)
+                if len(content) > 32000:
+                    sections.append(f"Contexte non chargé : {path} dépasse 32000 caractères. Signale cette limite à l’utilisateur.")
                 else:
                     sections.append(f"Contexte fourni par l’utilisateur - {path} :\n{content}")
             except (OSError, UnicodeError) as error:
@@ -2208,6 +2208,34 @@ def discover_tools(query: str = '') -> str:
     return json.dumps(ACTIVE_TOOLS.discover(query) if ACTIVE_TOOLS else {'status': 'inactive'}, ensure_ascii=False)
 
 
+def ask_user_questions(questions: list[dict]) -> str:
+    """Affiche un QCM interactif si une réponse est nécessaire : une à trois questions et deux ou trois choix chacune. L’interface ajoute toujours le champ de saisie personnelle en dernier."""
+    if not isinstance(questions, list) or not 1 <= len(questions) <= 3:
+        raise ModelRetry("Le QCM doit contenir entre une et trois questions.")
+    cleaned = []
+    for index, item in enumerate(questions, 1):
+        if not isinstance(item, dict):
+            raise ModelRetry("Chaque question doit être un objet.")
+        question = str(item.get("question", "")).strip()
+        options = item.get("options")
+        if not question or len(question) > 500 or not isinstance(options, list) or not 2 <= len(options) <= 3:
+            raise ModelRetry("Chaque question doit avoir un texte et deux ou trois choix.")
+        choices = []
+        for option in options:
+            if not isinstance(option, dict):
+                raise ModelRetry("Chaque choix doit être un objet.")
+            label = str(option.get("label", "")).strip()
+            description = str(option.get("description", "")).strip()
+            if not label or len(label) > 120 or len(description) > 300:
+                raise ModelRetry("Libellé de choix vide ou trop long.")
+            choices.append({"label": label, "description": description})
+        cleaned.append({"id": str(item.get("id") or f"question_{index}")[:64],
+                        "question": question, "options": choices})
+    emit({"type": "questionnaire", "id": uuid.uuid4().hex, "questions": cleaned})
+    return ("Le QCM interactif est affiché. Termine brièvement en indiquant que tu attends "
+            "les choix de l’utilisateur et n’exécute aucune action qui dépend de sa réponse.")
+
+
 async def prepare_tool_for_request(ctx: RunContext, definition):
     """Task-local schema visibility; permission checks remain on every execution."""
     if ACTIVE_TOOLS is not None:
@@ -2245,7 +2273,7 @@ def agent_tools() -> list[Tool]:
              list_files, read_file, search_text, edit_file, write_file,
              run_command, run_host_command, verification_plan, verify_changes,
              remember_context, search_project_memory, read_project_memory, inspect_environment, install_tools, inspect_repository, workflow_status,
-             verify_task_acceptance, execute_operation, reconcile_operation, discover_tools]]
+             verify_task_acceptance, execute_operation, reconcile_operation, discover_tools, ask_user_questions]]
 
 
 def get_budgeted_model(model_id):

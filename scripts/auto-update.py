@@ -63,26 +63,20 @@ def current():
 
 
 def branding_environment(directory, extensions=EXTENSIONS):
-    """Save installed branding before replacement; configured assets must remain available."""
+    """Stage explicit branding assets; absent variables restore bundled TRINITY defaults."""
     env = dict(os.environ)
     entry = next(e for e in json.loads((extensions / 'extensions.json').read_text())
                  if e['identifier']['id'] == 'trinity.ovh-agent')
     installed = extensions / Path(entry['relativeLocation']).name
-    manifest = json.loads((installed / 'package.json').read_text())
-    env.setdefault('OVH_AGENT_NAME', manifest['displayName'])
-    env.setdefault('OVH_AGENT_PUBLISHER_NAME', entry.get('metadata', {}).get('publisherDisplayName', 'TRINITY'))
-    icons = {'OVH_AGENT_APP_ICON': manifest.get('icon'),
-             'OVH_AGENT_MENU_ICON': manifest.get('contributes', {}).get('viewsContainers', {}).get('activitybar', [{}])[0].get('icon')}
-    for key, relative in icons.items():
+    env.setdefault('OVH_AGENT_NAME', 'TRINITY Agent')
+    env.setdefault('OVH_AGENT_PUBLISHER_NAME', 'TRINITY')
+    for key in ('OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON'):
         configured = env.get(key)
         if configured:
             source = Path(configured)
-        elif key not in env and relative:
-            source = installed / relative
-            if not source.resolve().is_relative_to(installed.resolve()):
-                raise ValueError('Unsafe installed branding path')
         else:
-            continue  # Explicit empty value requests the bundled default.
+            env[key] = ''
+            continue
         if not source.is_file() or source.stat().st_size > 1024 * 1024:
             raise ValueError('Update deferred: branding asset missing or too large: ' + key)
         copy = Path(directory) / (key + source.suffix)

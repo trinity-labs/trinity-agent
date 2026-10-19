@@ -75,5 +75,19 @@ test('composer queues/steers without duplicate runs, edits safely and renders te
     emit({type:'idle'});
     assert.equal(doc.getElementById('stop').hidden,false);
     assert(box.textContent.includes('Exécuter la file d’attente'));
+    emit({type:'status',conversation:'test',text:'Question'});
+    emit({type:'questionnaire',id:'qcm1',questions:[{id:'mode',question:'Quel mode ?',options:[
+      {label:'Automatique',description:'Recommandé'},{label:'Manuel',description:'Choix explicite'}]}]});
+    emit({type:'response',text:'Je te laisse choisir.',html:'<p>Je te laisse choisir.</p>'});
+    const form=doc.querySelector('.questionnaire');
+    assert(form);assert.equal(form.querySelectorAll('fieldset').length,1);
+    assert.equal(form.querySelectorAll('input[type=radio]').length,3);
+    const custom=form.querySelector('.questionnaire-custom');
+    assert.equal(form.querySelector('fieldset').lastElementChild,custom);
+    custom.querySelector('input[type=text]').value='Mon propre mode';
+    custom.querySelector('input[type=radio]').checked=true;
+    form.querySelector('button[type=submit]').click();
+    command=sent.at(-1);assert.equal(command.type,'prompt');
+    assert.match(command.text,/Quel mode \? : Mon propre mode/);
   } finally {dom.window.close();}
 });

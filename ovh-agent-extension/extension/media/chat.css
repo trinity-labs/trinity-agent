@@ -13,6 +13,15 @@ body {
   font: 13px/1.5 var(--vscode-font-family);
 }
 button { font: inherit; }
+.questionnaire { display: grid; gap: 12px; margin-top: 14px; }
+.questionnaire fieldset { display: grid; gap: 6px; min-width: 0; padding: 10px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; }
+.questionnaire legend { padding: 0 4px; font-weight: 600; }
+.questionnaire-option { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border-radius: 4px; cursor: pointer; }
+.questionnaire-option:hover { background: var(--vscode-list-hoverBackground); }
+.questionnaire-option span { display: grid; gap: 2px; }
+.questionnaire-option small { color: var(--vscode-descriptionForeground); }
+.questionnaire-custom input[type="text"] { flex: 1; min-width: 0; padding: 5px 7px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); }
+.questionnaire > button { justify-self: start; padding: 6px 12px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 4px; cursor: pointer; }
 button:focus-visible, textarea:focus-visible, summary:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
@@ -152,10 +161,11 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   text-align: left;
   cursor: pointer;
 }
-.model-item:hover { background: var(--ovh-primary-pastel); }
+.model-item:hover { border-color: color-mix(in srgb, var(--ovh-primary) 45%, transparent); background: transparent; }
 .model-item.selected {
   border-color: var(--vscode-focusBorder);
-  background: var(--vscode-list-inactiveSelectionBackground);
+  color: var(--ovh-primary-text);
+  background: transparent;
 }
 .model-item:disabled { opacity: .68; cursor: default; }
 .model-item:disabled:hover { background: transparent; }
@@ -169,11 +179,12 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   opacity: 0.66;
   padding: 3px 8px;
   border-radius: 4px;
-  color: #fff;
-  background: var(--ovh-primary);
+  border: 1px solid color-mix(in srgb, var(--ovh-primary) 45%, transparent);
+  color: var(--ovh-primary-text);
+  background: transparent;
   font-size: 8px;
 }
-.model-item.selected .model-title span { color: #fff; }
+.model-item.selected .model-title span { border-color: var(--ovh-primary); color: var(--ovh-primary-text); }
 .model-price { margin-top: 5px; color: var(--ovh-primary-text); font-size: 10px; }
 .model-meta { margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 9px; }
 .model-empty { padding: 18px 10px; color: var(--vscode-descriptionForeground); text-align: center; }
@@ -762,9 +773,9 @@ header {
 .back-history { color: var(--ovh-primary); }
 .model-item.selected {
   border-color: var(--ovh-primary);
-  background: var(--ovh-primary-selected);
+  background: transparent;
 }
-.model-item.selected .model-title span { background: var(--ovh-primary); color: #fff; }
+.model-item.selected .model-title span { background: transparent; color: var(--ovh-primary-text); }
 .composer:focus-within { border-color: var(--ovh-primary); }
 .run-spinner { border-top-color: var(--ovh-primary); }
 .selection-quote { border-color: var(--ovh-primary); }
