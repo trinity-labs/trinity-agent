@@ -366,10 +366,12 @@ def repository_map(workspace: Path, query: str = '', paths: list[str] | None = N
     if paths is not None and (not isinstance(paths, list) or len(paths) > 64 or
                               any(not isinstance(path, str) or len(path) > 4096 or '\x00' in path for path in paths)):
         raise ValueError('paths must contain at most 64 strings of at most 4096 characters')
-    root = Path(workspace).resolve(strict=True)
+    # Reject broad scopes consistently even on hosts without /home/coder.
+    root = Path(workspace).resolve()
     broad = {Path('/'), Path('/home'), Path('/home/coder'), Path('/root'), Path.home()}
     if root in broad and not paths:
         raise ValueError('Choose a project or explicit source paths; global home/system scans are disabled')
+    root = root.resolve(strict=True)
     reasons, requested = set(), []
     for raw in paths or []:
         relative = _relative(root, raw)

@@ -230,6 +230,8 @@ class RepositoryMapTests(unittest.TestCase):
         with patch.object(repository.os, 'scandir', side_effect=AssertionError('global traversal')):
             with self.assertRaises(ValueError):
                 repository.repository_map(Path('/home/coder'))
+        with self.assertRaises(FileNotFoundError):
+            repository.repository_map(self.root / 'missing-project')
         for parameters in ({'max_files': 0}, {'max_chars': 10}, {'paths': ['x'] * 65}, {'query': 'q' * 4001}):
             with self.subTest(parameters=parameters), self.assertRaises(ValueError):
                 repository.repository_map(self.root, **parameters)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.1 — 2026-10-19
+
+- Reject global repository scans consistently on hosts where `/home/coder` does not exist, while retaining strict validation of actual project paths.
+- Includes the 1.15.0 changes below. CI stopped that candidate before Marketplace publication; its tag is retained for audit.
+
 ## 1.15.0 — 2026-10-19
 
 - Separate command completion, fresh check receipts and independently verified task criteria; show their scope in live and restored conversations.
