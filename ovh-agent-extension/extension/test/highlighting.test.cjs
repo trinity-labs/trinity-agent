@@ -289,18 +289,18 @@ test('archive header restores its own routed model and clears stale routes', () 
 test('manual model changes render and restore an inline conversation divider',()=>{
   const {dom,w,emit}=browser();
   try {
-    emit({type:'model_changed',from_model:'GPT-6 Astra',to_model:'GPT-5.6 Sol'});
+    emit({type:'model_changed',from_model:'gpt-oss-120b',to_model:'Qwen3.8-27B'});
     let divider=w.document.querySelector('.model-change');
-    assert(divider);assert.match(divider.textContent,/GPT-6 Astra/);assert.match(divider.textContent,/GPT-5\.6 Sol/);
+    assert(divider);assert.match(divider.textContent,/gpt-oss-120b/);assert.match(divider.textContent,/Qwen3\.8-27B/);
     assert.equal(divider.querySelectorAll('.model-change-line').length,2);
     assert.match(divider.querySelector('.model-change-info').title,/context|contexte/i);
     emit({type:'archive_loaded',id:'model-history',messages:[
       {type:'user',text:'Avant'},
-      {type:'model_changed',from_model:'Auto équilibré',to_model:'Qwen'},
+      {type:'model_changed',from_model:'auto-balanced',to_model:'Qwen3.6-27B'},
       {type:'user',text:'Après'}
     ]});
     divider=w.document.querySelector('.model-change');
-    assert(divider);assert.match(divider.textContent,/Qwen/);
+    assert(divider);assert.match(divider.textContent,/Qwen3\.6-27B/);
     const children=[...w.document.getElementById('messages').children];
     assert(children.indexOf(divider)>children.findIndex(node=>node.textContent.includes('Avant')));
     assert(children.indexOf(divider)<children.findIndex(node=>node.textContent.includes('Après')));

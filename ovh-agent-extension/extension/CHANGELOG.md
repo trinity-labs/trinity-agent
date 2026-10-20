@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.3 — 2026-10-20
+
+- Confirm that model-change dividers display the exact OVH Agent catalogue identifiers selected by the user, such as `gpt-oss-120b` and `Qwen3.8-27B`; Codex product names are never substituted.
+
 ## 1.17.2 — 2026-10-20
 
 - Display a persistent inline divider when the user changes models during an existing conversation, including the previous and next model and a context-preservation explanation.
