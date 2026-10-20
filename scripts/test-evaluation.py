@@ -1,5 +1,7 @@
 """Offline checks for empirical routing, grading and deterministic image fixtures."""
 from datetime import datetime, timedelta, timezone
+from collections import defaultdict
+import copy
 import importlib.util
 import json
 from pathlib import Path
@@ -12,10 +14,25 @@ sys.path.insert(0,str(ROOT))
 import ovh_evaluation as e
 spec=importlib.util.spec_from_file_location('evaluation',ROOT/'scripts/evaluate-catalog.py')
 b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
+spec=importlib.util.spec_from_file_location('summary',ROOT/'scripts/summarize-evaluation.py')
+s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
+
+
+def protocol():
+    return dict(version=1,methodology_version=3,runner_sha256='a'*64,sdk_version='offline-test',
+                api='chat',streaming=True,feedback=False,retries=0,workers=1,request_limit=7)
+
+
+def comparison():
+    return {'version':1,'campaign':'offline-campaign','protocol':protocol(),
+            'cases':[{'id':name,'sha256':digest*64,
+                      'settings':{'max_tokens':1024,'timeout':30,'openai_reasoning_effort':'none'}}
+                     for name,digest in [('first','b'),('second','c')]]}
 
 
 def result(passed=2,errors=0,seconds=1):
-    return dict(samples=2,passed=passed,errors=errors,median_seconds=seconds,median_tokens=120,median_cost_eur=.0001)
+    return dict(samples=2,passed=passed,errors=errors,median_seconds=seconds,median_tokens=120,
+                median_cost_eur=.0001,comparison=comparison())
 
 
 class Evaluation(unittest.TestCase):
@@ -44,11 +61,61 @@ class Evaluation(unittest.TestCase):
             valid={'schema':1,'source':'https://example.test/v1','created_at':now.isoformat(),'models':{'x':{'domains':{'code':result()}}}}
             path.write_text(json.dumps(valid))
             self.assertTrue(e.load_evidence(temp,valid['source'],now))
+            valid['schema']=2;path.write_text(json.dumps(valid))
+            self.assertTrue(e.load_evidence(temp,valid['source'],now))
+            malformed=copy.deepcopy(valid);malformed['models']['x']['domains']['code'].pop('comparison')
+            path.write_text(json.dumps(malformed));self.assertFalse(e.load_evidence(temp,valid['source'],now))
+            path.write_text(json.dumps(valid))
             self.assertFalse(e.load_evidence(temp,'http://another.test/v1',now))
             self.assertFalse(e.load_evidence(temp,valid['source'],now+timedelta(days=15)))
             self.assertFalse(e.load_evidence(temp,valid['source'],now-timedelta(days=1)))
             valid['models']['x']['domains']['code']['median_seconds']=float('nan')
             path.write_text(json.dumps(valid));self.assertFalse(e.load_evidence(temp,valid['source'],now))
+
+    def test_different_cases_settings_protocols_and_legacy_scores_cannot_rank_models(self):
+        candidates=[{'id':'fast'},{'id':'slow'}]
+        evidence={'models':{name:{'domains':{'code':result(seconds=seconds)}} for name,seconds in [('fast',1),('slow',5)]}}
+        for change in [lambda score:score.pop('comparison'),
+                       lambda score:score['comparison'].update(campaign='another-run'),
+                       lambda score:score['comparison']['protocol'].update(streaming=False),
+                       lambda score:score['comparison']['protocol'].update(feedback=True),
+                       lambda score:score['comparison']['protocol'].update(runner_sha256='d'*64),
+                       lambda score:score['comparison']['cases'][0].update(sha256='e'*64),
+                       lambda score:score['comparison']['cases'][0]['settings'].update(max_tokens=512),
+                       lambda score:score['comparison']['cases'][0]['settings'].update(openai_reasoning_effort='high')]:
+            altered=copy.deepcopy(evidence);change(altered['models']['fast']['domains']['code'])
+            self.assertEqual(e.prefer_evaluated(candidates,altered,'code'),(candidates,False))
+        legacy=result();legacy.pop('comparison')
+        old={'models':{'fast':{'domains':{'code':legacy}}}}
+        self.assertEqual(e.prefer_evaluated(candidates,old,'code'),(candidates,False))
+        self.assertEqual(e.measured_latency(candidates[0],old,'code'),float('inf'))
+        self.assertEqual(e.measured_settings('fast',old,'code'),{})
+
+    def test_summary_uses_common_campaign_without_selecting_each_models_best_profile(self):
+        cases=b.CASES[:2]
+        def report(run):
+            return {'run_id':run,'date':'2026-10-20T19:00:00Z','completed_at':'2026-10-20T19:01:00Z',
+                    'methodology_version':3,'routing_protocol':protocol(),
+                    'cases':[{'id':c[0],'domain':c[1],'prompt':c[2],'expected':c[3]} for c in cases]}
+        common=report('common');fast_only=report('fast-only')
+        grouped=defaultdict(list)
+        for run,model,seconds in [('common','fast',3),('common','slow',5),('fast-only','fast',.1)]:
+            for case in cases:
+                grouped[(model,'code',run)].append({'model':model,'domain':'code','case':case[0],
+                    'case_sha256':b.case_digest(case),'settings':{'max_tokens':1024,'timeout':30},
+                    'status':'passed','passed':True,'first_passed':True,'seconds':seconds})
+        selected=s.comparable_scores([common,fast_only],grouped)
+        self.assertEqual(set(selected),{('fast','code'),('slow','code')})
+        self.assertEqual(selected[('fast','code')][0]['median_seconds'],3)
+        self.assertEqual(e.comparison_key(selected[('fast','code')][0]),e.comparison_key(selected[('slow','code')][0]))
+        # Different effective settings, even in one campaign, are not comparable.
+        grouped[('slow','code','common')][0]['settings']['max_tokens']=512
+        self.assertEqual(s.comparable_scores([common,fast_only],grouped),{})
+        grouped[('slow','code','common')][0]['settings']['max_tokens']=1024
+        grouped[('slow','code','common')][0]['case_sha256']='f'*64
+        self.assertEqual(s.comparable_scores([common,fast_only],grouped),{})
+        legacy=copy.deepcopy(common);legacy.pop('routing_protocol');legacy['methodology_version']=2
+        self.assertEqual(s.comparable_scores([legacy,fast_only],grouped),{})
 
     def test_grading_accepts_equivalent_readonly_commands_but_not_fabricated_outputs(self):
         cases={c[0]:c for c in b.CASES}
@@ -95,6 +162,18 @@ class Evaluation(unittest.TestCase):
         self.assertTrue(b.grade(injection,answer,[{'name':'read_fixture','ok':True}])[0])
         self.assertFalse(b.grade(basic[0],'[]',[])[0])
 
+    def test_report_protocol_and_case_fingerprints_capture_real_inputs_without_model_calls(self):
+        from types import SimpleNamespace
+        args=SimpleNamespace(api='chat',no_stream=False,feedback=False,retries=0,workers=3)
+        recorded=b.routing_protocol(args)
+        self.assertEqual(recorded['methodology_version'],3)
+        self.assertEqual(len(recorded['runner_sha256']),64)
+        self.assertTrue(recorded['sdk_version'])
+        case=b.CASES[0]
+        self.assertEqual(b.case_digest(case),b.case_digest(case))
+        self.assertNotEqual(b.case_digest(case),b.case_digest((case[0],case[1],case[2]+' Extra constraint.',case[3])))
+        self.assertNotEqual(b.case_digest(b.CASES[-1]),b.case_digest(b.CASES[-2]))
+
     def test_readonly_path_recovery_is_explicit_and_does_not_change_write_resolution(self):
         from unittest.mock import patch
         with patch.object(sys,'argv',['test','--billing-status']):
@@ -114,6 +193,8 @@ class Evaluation(unittest.TestCase):
         evidence={'models':{'x':{'domains':{'vision':result()},'settings':{'reasoning_effort':'none','reasoning_domains':['vision'],'timeout':999,'base_url':'evil'}}}}
         self.assertEqual(e.measured_settings('x',evidence,'vision'),{'reasoning_effort':'none'})
         self.assertEqual(e.measured_settings('x',evidence,'network_security'),{})
+        evidence['models']['x']['domains']['vision']['comparison']['cases'][0]['settings']['openai_reasoning_effort']='high'
+        self.assertEqual(e.measured_settings('x',evidence,'vision'),{})
 
 
 if __name__=='__main__': unittest.main()

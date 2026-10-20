@@ -58,7 +58,7 @@ with patch.object(a, 'context_overhead', return_value=8000):
         assert reserved <= window // 3 and budget >= 4096
         assert reserved + budget + 8000 + a.CONTEXT_RESERVE_TOKENS <= window
     assert a.CONTEXT_TOKEN_CAP == 262144
-    assert a.auto_model_card()['context_length'] == a.CONTEXT_TOKEN_CAP
+    assert a.auto_model_card()['context_length'] is None
     assert budget > 200000  # The largest window is no longer held to the old 98304 cap.
     assert a.output_token_budget({'context_length': 4096}, True, 8000) == 0
 with patch.dict(os.environ, {'OVH_AGENT_TEST_BUDGET': 'bad'}):

@@ -15,6 +15,12 @@ def positive_env(name, default):
         return default
 
 
+def memory_index_limits():
+    """Dynamic index/document ceilings from the same cgroup-aware RAM policy."""
+    profile = resource_profile(CACHE.bytes)
+    return profile.index_cache_mb * 1024 * 1024, profile.index_build_bytes, profile.memory_document_chars
+
+
 class MemoryCache:
     def __init__(self, max_bytes, max_entries=512, adaptive=False):
         self.max_bytes = max_bytes

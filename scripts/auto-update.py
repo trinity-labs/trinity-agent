@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXTENSIONS = Path.home() / '.local/share/code-server/extensions'
 API = 'https://api.github.com/repos/trinity-labs/trinity-agent/releases/latest'
 PREFIX = 'https://github.com/trinity-labs/trinity-agent/releases/download/'
-BACKEND_FILES = {'ovh-agent.py', 'ovh_memory.py', 'ovh_workspace.py', 'ovh_project_memory.py', 'ovh_context.py', 'ovh_vision.py', 'ovh_cache.py', 'ovh_resources.py', 'ovh_request.py', 'ovh_budget.py', 'ovh_budget_model.py', 'ovh_evaluation.py', 'ovh_verification.py', 'ovh_instructions.py', 'ovh_task_engine.py', 'ovh_acceptance.py', 'ovh_repository.py', 'ovh_execution.py', 'ovh_operations.py', 'ovh_tools.py', 'ovh_process.py', 'ovh-agent.sh'}
+BACKEND_FILES = {'ovh-agent.py', 'ovh_memory.py', 'ovh_workspace.py', 'ovh_project_memory.py', 'ovh_context.py', 'ovh_vision.py', 'ovh_cache.py', 'ovh_resources.py', 'ovh_limits.py', 'ovh_request.py', 'ovh_budget.py', 'ovh_budget_model.py', 'ovh_evaluation.py', 'ovh_verification.py', 'ovh_instructions.py', 'ovh_task_engine.py', 'ovh_acceptance.py', 'ovh_repository.py', 'ovh_execution.py', 'ovh_operations.py', 'ovh_tools.py', 'ovh_process.py', 'ovh-agent.sh'}
 
 
 def version(value):

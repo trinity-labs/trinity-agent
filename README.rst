@@ -419,10 +419,11 @@ Adjustable limits (restart the backend/extension after changing environment):
   limits and current usage. A numeric value is an optional upper bound. Cache
   access reevaluates its limits periodically and evicts LRU entries when they
   shrink. Memory is allocated as entries are cached, not reserved at startup.
-* ``OVH_AGENT_INDEX_CACHE_MB=32``: maximum serialized derived index size per
-  conversation on disk; larger indexes remain searchable without this snapshot.
-* ``OVH_AGENT_ARCHIVE_CACHE_MB=16``: estimated metadata cache memory per extension
-  archive store, with at most 512 entries.
+* ``OVH_AGENT_INDEX_CACHE_MB=auto``: serialized index and transient construction
+  budgets follow available memory. Partial indexing is identified; exact source
+  documents remain explicitly readable.
+* ``OVH_AGENT_ARCHIVE_CACHE_MB=auto``: metadata-cache allowance follows available
+  memory and container limits, with periodic eviction when the allowance shrinks.
 
 In Auto mode, setting a limit to zero disables that cache. Limits account for retained cache
 data, not total process RSS or temporary allocations during indexing. Existing
@@ -455,7 +456,7 @@ outside the workspace are excluded from automatic retrieval. This filename
 filter is not a content-level secret detector. Excerpts are labelled partial,
 untrusted data; normal file-reading tools remain available for full inspection.
 
-* ``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=24000``: total automatic file-excerpt
+* ``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=auto``: total automatic file-excerpt
   allowance, including labels; zero disables automatic file retrieval.
 * ``OVH_AGENT_PREFLIGHT_TIMEOUT_MS=2500``: maximum wait for the file-retrieval
   worker. A slow SSHFS mount returns a partial preparation result so the model
@@ -468,9 +469,9 @@ index or semantic understanding. The activity log reports the selected-file coun
 time. No additional inference call is made to perform this preparation;
 selected excerpts do contribute to the subsequent model's input tokens.
 
-The local tuning pass keeps the existing EUR limits (2/day, 15/week, 60/month)
-and API settings. It does not publish a Marketplace release. Local experimental
-settings must not be copied into public release defaults.
+Automatic sizing does not change the operator’s EUR policy. Compose supplies
+example defaults (2/day, 15/week, 60/month); an existing budget policy remains
+authoritative. Local experimental settings must not become public release defaults.
 
 Context management and long tasks
 ---------------------------------
@@ -481,9 +482,10 @@ replayed as labelled text, with the original protocol archived first.
 It no longer discards history after two turns. Before every model request,
 including requests inside a tool loop, it estimates the context size and reserves
 space for the model output, infrastructure instructions and tool definitions.
-The active input budget is capped at 262144 estimated tokens (256k) by default; set
-``OVH_AGENT_CONTEXT_TOKENS`` to change this cap. The actual model context window
-still bounds it. Token estimates use UTF-8 bytes and a conservative image
+With ``OVH_AGENT_CONTEXT_TOKENS=auto``, the active input budget follows the
+selected model’s advertised window after reserving output, instructions, tools
+and the estimation margin. An integer adds an explicit ceiling. Unknown model
+metadata uses a conservative, labelled fallback rather than an unlimited window. Token estimates use UTF-8 bytes and a conservative image
 allowance, not each model's exact tokenizer; provider validation remains final.
 
 When necessary, completed older tool rounds are archived and replaced by a
@@ -491,7 +493,7 @@ short semantic summary using the selected model without tools. Recent protocol
 messages, the latest user input and system instructions are retained. Summaries
 are lossy and are explicitly labelled historical. A failed, oversized or
 truncated summary falls back to exact excerpts with archive references. The
-summary call has a 90-second application timeout and its usage is billed and
+summary call has a 15-second application timeout and its usage is billed and
 reported separately. A cancelled or failed HTTP call may still have consumed
 provider tokens that are not available in a returned usage record.
 
@@ -501,31 +503,34 @@ Compose environment or its ``.env`` file. Recreate the ``vscode`` container to
 apply changed environment variables; reloading the VS Code window alone does
 not update the environment of an existing container.
 
-* ``OVH_AGENT_CONTEXT_TOKENS=262144``: maximum estimated active history tokens.
-* ``OVH_AGENT_CONTEXT_RESERVE_TOKENS=4096``: model-window margin for token
-  estimation error; replaces the previous fixed 10% reservation.
-* ``OVH_AGENT_OUTPUT_TOKENS=16384``: ordinary completion token ceiling.
-* ``OVH_AGENT_COMPLEX_OUTPUT_TOKENS=32768``: complex completion token ceiling.
-* ``OVH_AGENT_SUMMARY_TOKENS=4096``: summary allowance, including reference overhead;
-  also bounded to one fifth of the active context budget.
-* ``OVH_AGENT_SUMMARY_SOURCE_CHARS=96000``: summary source character ceiling;
-  also bounded according to the active context budget.
-* ``OVH_AGENT_SUMMARY_GENERATION_TOKENS=8192``: minimum output allocation requested
-  for reasoning-model summaries, subject to the provider and context limits.
-* ``OVH_AGENT_SUMMARY_TIMEOUT_SECONDS=90``: summary application timeout.
-* ``OVH_AGENT_TOOL_OUTPUT_CHARS=24000``: threshold for archiving a long tool result
-  and replacing it with head/tail excerpts and an exact-source reference.
-* ``OVH_AGENT_MEMORY_CHARS=8000``: retrieved memory character budget.
-* ``OVH_AGENT_REQUEST_LIMIT=200``: model steps per agent run, increased from 50;
-  separate summary calls and transport retries are not counted in this limit.
+* ``OVH_AGENT_CONTEXT_TOKENS=auto``: active-history allowance derived from the model window.
+* ``OVH_AGENT_CONTEXT_RESERVE_TOKENS=4096``: explicit margin for token-estimation error.
+* ``OVH_AGENT_OUTPUT_TOKENS=auto`` and ``OVH_AGENT_COMPLEX_OUTPUT_TOKENS=auto``:
+  completion allowances based on model capacities and task complexity.
+* ``OVH_AGENT_SUMMARY_TOKENS=auto``, ``OVH_AGENT_SUMMARY_SOURCE_CHARS=auto`` and
+  ``OVH_AGENT_SUMMARY_GENERATION_TOKENS=auto``: compaction allowances derived from
+  the usable context and completion limits.
+* ``OVH_AGENT_TOOL_OUTPUT_CHARS=auto``: allowance before archiving a long result
+  and returning head/tail excerpts with an exact-source reference.
+* ``OVH_AGENT_MEMORY_CHARS=auto`` and ``OVH_AGENT_SHARED_MEMORY_CHARS=auto``:
+  retrieval allowances derived from the context, not from the machine’s RAM.
+* ``OVH_AGENT_SUMMARY_TIMEOUT_SECONDS=15``: explicit summary timeout.
+* ``OVH_AGENT_REQUEST_LIMIT=200``: explicit upper bound on model steps per run;
+  separate summary calls and transport retries are not counted in this bound.
 
-Output reservations are capped by the provider completion limit, one third of
-the model window, and space remaining after instructions plus at least 4096
-input tokens. Input, output and instructions share the advertised window minus
-the configurable token reserve. The 262144 input and 32768 output ceilings are
-not both available on a 262144-token model. Smaller models retain their own
-limits. Larger ceilings allow longer or more
-expensive runs; they do not force the model to generate that many tokens.
+For adaptive allowances, ``auto`` or an omitted value computes a finite budget;
+an integer supplies an optional lower ceiling. Unknown or malformed explicit
+settings do not silently turn into an unlimited allocation. These computed
+values are ceilings, not a request to fill the entire context or produce a long
+answer. Provider validation and the account’s monetary limits still apply.
+
+The local deployment launcher reloads its supported ``.env`` overrides when a
+backend process starts. It accepts the same adaptive values and can replace
+stale inherited container limits. A process already running keeps its existing
+configuration: finish its task before restarting or reloading its IDE window.
+The general Docker deployment still requires container recreation to change its
+environment. Numeric execution deadlines, step limits and financial authorizations
+are separate policies; they do not represent hardware capacity.
 
 Histories already truncated by older versions cannot reconstruct tool protocol
 that was never saved; the existing text archives remain searchable.
@@ -568,13 +573,17 @@ a reusable pool of readers; it does not add model calls.
 
 Retrieval defaults to ``auto`` for ``OVH_AGENT_PREFLIGHT_WORKERS``,
 ``OVH_AGENT_PREFLIGHT_MAX_FILES`` and ``OVH_AGENT_PREFLIGHT_FILE_CHARS``, as do
-``OVH_AGENT_RAM_CACHE_MB`` and ``OVH_AGENT_RAM_CACHE_ENTRIES``. Sizing uses CPU
+``OVH_AGENT_RAM_CACHE_MB`` and ``OVH_AGENT_RAM_CACHE_ENTRIES``. Derived indexes,
+archive metadata caches and indexed document sizes also support ``auto`` through
+``OVH_AGENT_INDEX_CACHE_MB``, ``OVH_AGENT_ARCHIVE_CACHE_MB`` and
+``OVH_AGENT_MEMORY_DOCUMENT_CHARS``. Their explicit ceilings (including zero
+for caches) remain effective in both Auto and Max. Sizing uses CPU
 affinity, cgroup v1/v2 quotas and parent limits, total memory and available memory.
 Hardware observations refresh on demand every 30 seconds. Numeric values remain
 optional upper bounds; omitted or empty values also select automatic sizing.
 The reusable reader pool adjusts concurrency without accumulating pools on slow
 mounts. Selected context remains bounded by
-``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=24000``. Inspect the current calculated
+``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=auto``. Inspect the current calculated
 profile with ``python ovh_resources.py`` using the backend's environment.
 
 Local Auto / Max performance modes
@@ -631,6 +640,10 @@ Snapshots and per-model OpenAPI schemas provide fallback information.
 All models marked available are considered for automatic routing if their tools,
 vision and estimated context fit. Unavailable models are not routed automatically.
 The catalog estimate does not replace provider-side context validation.
+Measured routing preferences require at least two eligible models from the same
+evaluation campaign, with matching cases, protocol and effective settings.
+Historical aggregates without this provenance remain readable but do not rank
+models or provide a measured-latency claim. Evidence expires after 14 days.
 For cyber tasks, completed laboratory evidence takes precedence over price and
 size when at least three cases were reviewed and at least two passed. Within the
 best observed group, cost and size break ties. These rules are heuristic and the
@@ -639,8 +652,8 @@ Model size is a heuristic, not a guarantee of speed or quality. API clients do
 not load or change the model weights or quantization deployed by OVH.
 
 Reasoning controls are model-specific: low for short tasks and medium for complex
-ones, only if supported. Completion budgets are 16384 / 32768, bounded by the
-model limit. Manual model selection remains explicit.
+ones, only if supported. Completion budgets adapt to the model window and advertised output limit;
+explicit numeric ceilings remain supported. Manual model selection remains explicit.
 
 Documentation audit (2026-10-16):
 
@@ -774,6 +787,12 @@ n'est pas ajouté aux résultats finaux. Une modification des fichiers suivis
 invalide la preuve ; les dépendances non observées ne sont pas couvertes.
 
 Le tableau final est généré par le backend et conservé dans la conversation.
+La syntaxe est distinguée des tests fonctionnels : chaque fichier modifié porte
+un reçu sur son contenu final ou un statut de contrôle indisponible. Un format
+sans validateur, comme CSS par défaut, ne peut pas être annoncé « syntaxe vérifiée ».
+Une commande de validation syntaxique existante peut être déclarée avec
+``kind: "syntax"`` dans ``.ovh-agent-checks.json`` ; elle reste soumise aux mêmes
+protections et exigences de fraîcheur que les autres contrôles.
 Les totaux explicites non justifiés et certaines conclusions absolues sont
 refusés par le validateur. Cette détection textuelle reste limitée : elle ne
 prouve pas la véracité de toute phrase du modèle. Le tableau des résultats fait
@@ -807,6 +826,11 @@ leur date, leur résultat et leur périmètre ; un contrôle réussi est marqué
 ``verified_at_execution``, sans certifier l’état futur du projet.
 Les préférences utilisateur explicitement exprimées peuvent être
 partagées partout ; les décisions techniques et archives restent dans le projet.
+L’injection automatique conserve uniquement les préférences ``user/declared``
+sourcées et les reçus structurés de contrôles exécutés. Elle exclut les anciennes
+réponses du modèle, les hypothèses et les transcriptions, même si elles contiennent
+une affirmation de réussite. Les préférences restent disponibles pendant une
+modification ; les reçus historiques ne prouvent pas l’état actuel.
 ``search_memory`` recherche aussi les conversations voisines, et
 ``read_project_memory`` permet de relire la source exacte dans le projet actif.
 La suppression d’une conversation supprime également ses notes partagées :
@@ -823,7 +847,8 @@ Les archives d’évaluation et les métadonnées invalides sont exclues de ces 
 et des notes partagées ; une archive d’évaluation reste consultable explicitement.
 Les souvenirs sont
 des données historiques, pas des instructions prioritaires ni une preuve actuelle.
-``OVH_AGENT_SHARED_MEMORY_CHARS=4000`` limite les extraits partagés, zéro les désactive.
+``OVH_AGENT_SHARED_MEMORY_CHARS=auto`` adapte les extraits partagés au contexte ;
+un entier ajoute un plafond, zéro les désactive.
 
 L’inventaire local décrit OS, noyau, architecture, libc, UID, conteneur probable,
 écriture du dossier, exécutables et outils installés dans le projet. Il n’exécute
@@ -894,11 +919,12 @@ Une écriture par l'agent invalide immédiatement l'index. Les modifications
 manuelles sont découvertes au prochain balayage ; un extrait dont la source a
 changé ou disparu est écarté dès sa prochaine lecture, même avant ce balayage.
 
-``OVH_AGENT_INDEX_CACHE_MB`` borne l'index dérivé (32 Mio par projet ; zéro
+``OVH_AGENT_INDEX_CACHE_MB=auto`` dimensionne l’index dérivé selon la mémoire
+disponible ; un entier ajoute un plafond en Mio (zéro
 supprime sa persistance disque). Le cache RAM reste borné globalement par
 ``OVH_AGENT_RAM_CACHE_MB``. Les notes passent avant les transcriptions ; au
-maximum 262 144 caractères sont indexés par document
-(``OVH_AGENT_MEMORY_DOCUMENT_CHARS``) et la recherche renvoie
+la taille indexée par document s’adapte au budget disponible
+(``OVH_AGENT_MEMORY_DOCUMENT_CHARS=auto``, entier = plafond) et la recherche renvoie
 cinq extraits. Une limite atteinte est signalée comme partielle. Les outils de
 relecture et de recherche paginée donnent accès aux sources complètes. Le
 lecteur partagé conserve son délai d'attente de 1,1 seconde ; une première

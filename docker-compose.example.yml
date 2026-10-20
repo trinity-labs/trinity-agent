@@ -17,41 +17,43 @@ services:
       OVH_AGENT_UPDATE_INTERVAL: "${OVH_AGENT_UPDATE_INTERVAL:-21600}"
       # OVH API url (or other provider)
       OVH_AI_BASE_URL: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
-      # Contexte : plafond 256k ; entrée, sortie et instructions partagent la fenêtre du modèle
-      OVH_AGENT_CONTEXT_TOKENS: "${OVH_AGENT_CONTEXT_TOKENS:-262144}"
+      # Budgets auto calculés depuis les capacités du modèle ; entier = plafond explicite
+      OVH_AGENT_CONTEXT_TOKENS: "${OVH_AGENT_CONTEXT_TOKENS:-auto}"
+      # Marge de sécurité pour l’estimation des tokens ; ce n’est pas une allocation
       OVH_AGENT_CONTEXT_RESERVE_TOKENS: "${OVH_AGENT_CONTEXT_RESERVE_TOKENS:-4096}"
-      OVH_AGENT_OUTPUT_TOKENS: "${OVH_AGENT_OUTPUT_TOKENS:-16384}"
-      OVH_AGENT_COMPLEX_OUTPUT_TOKENS: "${OVH_AGENT_COMPLEX_OUTPUT_TOKENS:-32768}"
+      OVH_AGENT_OUTPUT_TOKENS: "${OVH_AGENT_OUTPUT_TOKENS:-auto}"
+      OVH_AGENT_COMPLEX_OUTPUT_TOKENS: "${OVH_AGENT_COMPLEX_OUTPUT_TOKENS:-auto}"
       # Emojis: 0 aucun, 1 ✅➡️, 2 tous avec parcimonie, 3 expressif
       OVH_AGENT_EMOJI_MODE: "${OVH_AGENT_EMOJI_MODE:-1}"
+      # Délais et nombre maximal d’étapes : protections explicites de l’exécution
       OVH_AGENT_TASK_CHECKPOINT_SECONDS: "${OVH_AGENT_TASK_CHECKPOINT_SECONDS:-300}"
       OVH_AGENT_REQUEST_LIMIT: "${OVH_AGENT_REQUEST_LIMIT:-200}"
-      # Compaction, mémoire et résultats d’outils
-      OVH_AGENT_SUMMARY_TOKENS: "${OVH_AGENT_SUMMARY_TOKENS:-4096}"
-      OVH_AGENT_SUMMARY_SOURCE_CHARS: "${OVH_AGENT_SUMMARY_SOURCE_CHARS:-96000}"
-      OVH_AGENT_SUMMARY_GENERATION_TOKENS: "${OVH_AGENT_SUMMARY_GENERATION_TOKENS:-8192}"
+      # Compaction, mémoire et résultats d’outils : budgets adaptatifs
+      OVH_AGENT_SUMMARY_TOKENS: "${OVH_AGENT_SUMMARY_TOKENS:-auto}"
+      OVH_AGENT_SUMMARY_SOURCE_CHARS: "${OVH_AGENT_SUMMARY_SOURCE_CHARS:-auto}"
+      OVH_AGENT_SUMMARY_GENERATION_TOKENS: "${OVH_AGENT_SUMMARY_GENERATION_TOKENS:-auto}"
       OVH_AGENT_SUMMARY_TIMEOUT_SECONDS: "${OVH_AGENT_SUMMARY_TIMEOUT_SECONDS:-15}"
-      OVH_AGENT_TOOL_OUTPUT_CHARS: "${OVH_AGENT_TOOL_OUTPUT_CHARS:-24000}"
+      OVH_AGENT_TOOL_OUTPUT_CHARS: "${OVH_AGENT_TOOL_OUTPUT_CHARS:-auto}"
       OVH_AGENT_AUTO_INSTALL: "${OVH_AGENT_AUTO_INSTALL:-project}"
       OVH_AGENT_INVENTORY_TTL_SECONDS: "${OVH_AGENT_INVENTORY_TTL_SECONDS:-300}"
       OVH_AGENT_MEMORY_INDEX_DIR: "${OVH_AGENT_MEMORY_INDEX_DIR:-/root/.cache/ovh-agent/project-memory}"
-      OVH_AGENT_MEMORY_DOCUMENT_CHARS: "${OVH_AGENT_MEMORY_DOCUMENT_CHARS:-262144}"
+      OVH_AGENT_MEMORY_DOCUMENT_CHARS: "${OVH_AGENT_MEMORY_DOCUMENT_CHARS:-auto}"
       OVH_AGENT_MEMORY_SCAN_SECONDS: "${OVH_AGENT_MEMORY_SCAN_SECONDS:-5}"
-      OVH_AGENT_SHARED_MEMORY_CHARS: "${OVH_AGENT_SHARED_MEMORY_CHARS:-4000}"
-      OVH_AGENT_MEMORY_CHARS: "${OVH_AGENT_MEMORY_CHARS:-8000}"
+      OVH_AGENT_SHARED_MEMORY_CHARS: "${OVH_AGENT_SHARED_MEMORY_CHARS:-auto}"
+      OVH_AGENT_MEMORY_CHARS: "${OVH_AGENT_MEMORY_CHARS:-auto}"
       # Préparation locale sans appel LLM ; 0 désactive la recherche de fichiers
-      OVH_AGENT_PREFLIGHT_CONTEXT_CHARS: "${OVH_AGENT_PREFLIGHT_CONTEXT_CHARS:-24000}"
+      OVH_AGENT_PREFLIGHT_CONTEXT_CHARS: "${OVH_AGENT_PREFLIGHT_CONTEXT_CHARS:-auto}"
       OVH_AGENT_PREFLIGHT_TIMEOUT_MS: "${OVH_AGENT_PREFLIGHT_TIMEOUT_MS:-2500}"
       # auto : CPU/affinité/quotas et mémoire disponible ; entier : plafond facultatif
       OVH_AGENT_PERFORMANCE_MODE: "${OVH_AGENT_PERFORMANCE_MODE:-auto}"
       OVH_AGENT_PREFLIGHT_WORKERS: "${OVH_AGENT_PREFLIGHT_WORKERS:-auto}"
       OVH_AGENT_PREFLIGHT_MAX_FILES: "${OVH_AGENT_PREFLIGHT_MAX_FILES:-auto}"
       OVH_AGENT_PREFLIGHT_FILE_CHARS: "${OVH_AGENT_PREFLIGHT_FILE_CHARS:-auto}"
-      # Caches : Mio, 0 pour désactiver ; disque dans le montage /root/.ovh-agent
+      # Caches auto selon mémoire disponible/cgroups ; entier = plafond en Mio, 0 = désactivé
       OVH_AGENT_RAM_CACHE_MB: "${OVH_AGENT_RAM_CACHE_MB:-auto}"
       OVH_AGENT_RAM_CACHE_ENTRIES: "${OVH_AGENT_RAM_CACHE_ENTRIES:-auto}"
-      OVH_AGENT_INDEX_CACHE_MB: "${OVH_AGENT_INDEX_CACHE_MB:-32}"
-      OVH_AGENT_ARCHIVE_CACHE_MB: "${OVH_AGENT_ARCHIVE_CACHE_MB:-16}"
+      OVH_AGENT_INDEX_CACHE_MB: "${OVH_AGENT_INDEX_CACHE_MB:-auto}"
+      OVH_AGENT_ARCHIVE_CACHE_MB: "${OVH_AGENT_ARCHIVE_CACHE_MB:-auto}"
       # Solde estimé : crédit OVH moins consommation courante, affichage au centime
       OVH_AGENT_BILLING_CACHE_SECONDS: "${OVH_AGENT_BILLING_CACHE_SECONDS:-60}"
       # Budgets de toute l’installation, périodes calendaires UTC ; 0 = illimité

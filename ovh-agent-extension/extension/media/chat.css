@@ -944,11 +944,11 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 
 .history-brand { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; color: var(--ovh-primary); }
 /* Keep opacity on the parent so original and branded logos share both themes. */
-.history-brand .header-app-logo { width: 23px; height: 23px; object-fit: contain; display: block; }
+.history-brand .header-app-logo { width: 28px; height: 28px; object-fit: contain; display: block; }
 #history[hidden], #history-brand[hidden] { display: none; }
 
 #configure .icon-key { transform: rotate(135deg) scaleY(-1); transform-origin: center; }
-.history-brand { opacity: .25; }
+.history-brand { opacity: .5; }
 /* The dark header needs a lighter brand accent, especially for its logo. */
 body.vscode-dark header, body.vscode-high-contrast header {
   --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
@@ -960,7 +960,6 @@ body.vscode-dark header .back-history, body.vscode-high-contrast header .back-hi
 body.vscode-dark header .history-brand, body.vscode-high-contrast header .history-brand {
   color: var(--ovh-primary-text);
 }
-body.vscode-dark header .history-brand, body.vscode-high-contrast header .history-brand { opacity: .75; }
 
 
 #close-history svg.agent-icon { width: 8.5px; height: 8.5px; }

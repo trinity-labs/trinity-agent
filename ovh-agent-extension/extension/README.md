@@ -99,10 +99,11 @@ l'état actuel. Les fichiers du projet restent leurs propres sources de vérité
 
 ### Project memory before inference
 
-Before retrieving other workspace files or calling the model, the agent searches
-project-root Markdown, durable notes and archived conversations. Relevant project
-sources take precedence over global preferences. Historical results remain dated
-sources, not proof that today's code still passes its checks.
+Before calling the model, automatic memory retrieval selects sourced user preferences
+and dated execution receipts. Previous assistant answers, transcripts and hypotheses
+remain available through explicit memory searches but are not injected automatically.
+Current project instructions and source files are loaded separately. Historical receipts
+are not proof that today's code still passes its checks.
 
 An exact, standalone informational question matching a Markdown heading in a root
 `.md` file or the project's `NOTES.md` can be answered locally. For example:

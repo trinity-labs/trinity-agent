@@ -19,7 +19,8 @@ import ovh_resources as r
 from ovh_cache import MemoryCache
 from ovh_request import ChunkReaders, refresh_reader_limits
 
-KEYS = ['RAM_CACHE_MB', 'RAM_CACHE_ENTRIES', 'PREFLIGHT_WORKERS', 'PREFLIGHT_MAX_FILES', 'PREFLIGHT_FILE_CHARS']
+KEYS = ['RAM_CACHE_MB', 'RAM_CACHE_ENTRIES', 'PREFLIGHT_WORKERS', 'PREFLIGHT_MAX_FILES', 'PREFLIGHT_FILE_CHARS',
+        'INDEX_CACHE_MB', 'ARCHIVE_CACHE_MB', 'MEMORY_DOCUMENT_CHARS']
 
 
 class Resources(unittest.TestCase):
@@ -151,6 +152,25 @@ class Resources(unittest.TestCase):
             with patch.dict(os.environ, {'OVH_AGENT_' + key:value for key in KEYS}):
                 self.assertEqual(policy.profile(),expected)
 
+    def test_index_archive_and_document_budgets_follow_memory_and_explicit_ceilings(self):
+        large=r.ResourcePolicy(lambda:r.Hardware(6,24*1024*r.MIB,20*1024*r.MIB)).profile()
+        small=r.ResourcePolicy(lambda:r.Hardware(1,512*r.MIB,256*r.MIB)).profile()
+        for name in ('index_cache_mb','index_build_bytes','archive_cache_mb','memory_document_chars'):
+            self.assertGreater(getattr(large,name),getattr(small,name))
+        self.assertLessEqual(large.index_build_bytes*8,20*1024*r.MIB//16)
+        policy=r.ResourcePolicy(lambda:r.Hardware(6,24*1024*r.MIB,20*1024*r.MIB))
+        with patch.dict(os.environ,{'OVH_AGENT_INDEX_CACHE_MB':'2','OVH_AGENT_ARCHIVE_CACHE_MB':'1',
+                                    'OVH_AGENT_MEMORY_DOCUMENT_CHARS':'12000'}):
+            profile=policy.profile()
+            self.assertEqual((profile.index_cache_mb,profile.archive_cache_mb,profile.memory_document_chars),(2,1,12000))
+            self.assertLessEqual(profile.index_build_bytes,2*r.MIB)
+        with patch.dict(os.environ,{'OVH_AGENT_INDEX_CACHE_MB':'0','OVH_AGENT_ARCHIVE_CACHE_MB':'0'}):
+            profile=policy.profile()
+            self.assertEqual((profile.index_cache_mb,profile.archive_cache_mb),(0,0))
+            self.assertGreater(profile.index_build_bytes,0,'Disabled snapshots must not disable transient search')
+        empty=r.ResourcePolicy(lambda:r.Hardware(1,512*r.MIB,0)).profile()
+        self.assertEqual((empty.index_cache_mb,empty.archive_cache_mb,empty.index_build_bytes,empty.memory_document_chars),(0,0,0,0))
+
     def test_periodic_snapshot_reacts_to_pressure_and_recovers(self):
         clock = [0]
         hardware = [r.Hardware(8,16*1024*r.MIB,12*1024*r.MIB)]
@@ -165,6 +185,7 @@ class Resources(unittest.TestCase):
             clock[0]=31
             small = policy.profile(retained_bytes=1024*r.MIB)
             self.assertLessEqual(small.cache_mb,4)
+            self.assertLessEqual(small.index_build_bytes,hardware[0].memory_bytes//128)
             self.assertEqual(small.workers,1)
             hardware[0]=r.Hardware(8,16*1024*r.MIB,12*1024*r.MIB)
             clock[0]=62

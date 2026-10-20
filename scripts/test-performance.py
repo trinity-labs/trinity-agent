@@ -20,7 +20,7 @@ def reference_drop(messages,budget):
     while kept:
         tail=[m for u in kept for m in u]
         pinned=[user] if user and not any(m is latest for m in tail) else []
-        if c.estimate_tokens(prefix+pinned+tail)+min(c.SUMMARY_TOKENS,budget//5)<=int(budget*.7):break
+        if c.estimate_tokens(prefix+pinned+tail)+min(c.context_limits(budget).summary_tokens,budget//5)<=int(budget*.7):break
         kept.pop(0);count+=1
     return count
 

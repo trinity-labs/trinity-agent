@@ -1865,6 +1865,12 @@
     "de": "Bis zu {0}k je nach Modell",
     "es": "Hasta {0}k según el modelo"
   },
+  "Contexte selon le modèle choisi": {
+    "fr": "Contexte selon le modèle choisi",
+    "en": "Context depends on the selected model",
+    "de": "Kontext je nach gewähltem Modell",
+    "es": "Contexto según el modelo elegido"
+  },
   "Avant modification": {
     "fr": "Avant modification",
     "en": "Before modification",

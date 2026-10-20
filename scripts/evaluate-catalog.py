@@ -10,6 +10,7 @@ import concurrent.futures
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
+import importlib.metadata
 import ipaddress
 import json
 import os
@@ -175,6 +176,27 @@ def png_fixture(layout=False):
     return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!2I5B',width,height,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(b''.join(b'\0'+bytes(r) for r in rows)))+chunk(b'IEND',b'')
 
 
+def case_digest(case):
+    payload = {'case': case}
+    if case[1] == 'vision':
+        payload['image_sha256'] = hashlib.sha256(png_fixture(case[0] == 'vision_layout')).hexdigest()
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def routing_protocol(args):
+    # Include the driver, backend settings and grading source. A later change
+    # invalidates comparability without deleting earlier human-readable reports.
+    sources = [Path(__file__), ROOT/'ovh-agent.py', ROOT/'ovh_budget_model.py',
+               ROOT/'scripts/summarize-evaluation.py']
+    digest = hashlib.sha256()
+    for source in sources:
+        digest.update(source.name.encode() + b'\0' + source.read_bytes())
+    return {'version':1,'methodology_version':3,'runner_sha256':digest.hexdigest(),
+            'sdk_version':importlib.metadata.version('pydantic-ai-slim'),
+            'api':args.api,'streaming':not args.no_stream,'feedback':args.feedback,
+            'retries':args.retries,'workers':max(1,min(args.workers,4)),'request_limit':7}
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
@@ -230,7 +252,7 @@ def main():
     # Web tools retain downloaded material in this run's scratch conversation.
     a.CONVERSATION_ID='eval-'+run_id+'-sources'
     lock=threading.Lock()
-    report={'schema':1,'methodology_version':2,'run_id':run_id,'source':a.AI_API_BASE_URL,'date':a.now_iso(),'catalog':catalog,'max_tokens':args.max_tokens,'timeout_seconds':args.timeout,'workers':args.workers,'reasoning':args.reasoning,'retries':args.retries,'scope':'Synthetic bounded tasks; no system commands run; no Codex baseline. Strict automatic grades require human review before broad quality claims.','cases':[{'id':c[0],'domain':c[1],'prompt':c[2],'expected':c[3]} for c in cases],'results':[]}
+    report={'schema':1,'methodology_version':3,'routing_protocol':routing_protocol(args),'run_id':run_id,'source':a.AI_API_BASE_URL,'date':a.now_iso(),'catalog':catalog,'max_tokens':args.max_tokens,'timeout_seconds':args.timeout,'workers':args.workers,'reasoning':args.reasoning,'retries':args.retries,'scope':'Synthetic bounded tasks; no system commands run; no Codex baseline. Strict automatic grades require human review before broad quality claims.','cases':[{'id':c[0],'domain':c[1],'prompt':c[2],'expected':c[3]} for c in cases],'results':[]}
     report.update(level=args.level,seed=args.seed,feedback=args.feedback,sampling=args.sampling,streaming=not args.no_stream,api=args.api)
     args.output.parent.mkdir(parents=True,exist_ok=True)
     def archive(card,rows):
@@ -259,7 +281,7 @@ def main():
         mid=card['id']
         for case in cases:
             name,domain,prompt,_=case
-            row={'model':mid,'case':name,'domain':domain,'timestamp':a.now_iso()}
+            row={'model':mid,'case':name,'case_sha256':case_digest(case),'domain':domain,'timestamp':a.now_iso()}
             if domain=='vision' and not card.get('vision'):
                 save({**row,'status':'skipped','reason':'Catalogue: entrée image non prise en charge'},card);continue
             if (domain=='web' or name in {'code_tools','context_stale','context_injection'}) and not card.get('supports_tools'):

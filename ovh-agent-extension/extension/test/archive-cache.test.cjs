@@ -3,7 +3,41 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {ArchiveStore} = require('../archive-store');
+const {ArchiveStore,archiveCacheBudget} = require('../archive-store');
+
+test('archive cache auto follows cgroup allowance and current pressure instead of host RAM',()=>{
+  const mib=1024*1024;
+  const system={totalmem:()=>64*1024*mib,freemem:()=>48*1024*mib};
+  const environment={OVH_AGENT_ARCHIVE_CACHE_MB:'auto'};
+  const runtime={constrainedMemory:()=>512*mib,availableMemory:()=>256*mib};
+  const small=archiveCacheBudget({environment,system,runtime});
+  const large=archiveCacheBudget({environment,system,runtime:{constrainedMemory:()=>16*1024*mib,availableMemory:()=>12*1024*mib}});
+  assert(small>0&&small<=4*mib);assert(large>small);
+  assert.equal(archiveCacheBudget({environment,system,runtime:{...runtime,availableMemory:()=>0}}),0);
+  assert.equal(archiveCacheBudget({environment:{OVH_AGENT_ARCHIVE_CACHE_MB:'1'},system,runtime}),mib);
+  assert.equal(archiveCacheBudget({environment:{OVH_AGENT_ARCHIVE_CACHE_MB:'0'},system,runtime}),0);
+  const fallback=archiveCacheBudget({environment,system,runtime:{}});
+  assert(fallback<=2*mib,'Unavailable cgroup-aware APIs must not allocate from host-sized RAM');
+});
+
+test('archive cache reapplies an explicit zero on a warm read without losing source data',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'archive-pressure-'));
+  const before=process.env.OVH_AGENT_ARCHIVE_CACHE_MB;
+  try {
+    process.env.OVH_AGENT_ARCHIVE_CACHE_MB='auto';
+    const store=new ArchiveStore(root,root), folder=path.join(store.root,'one');
+    fs.mkdirSync(folder,{recursive:true});
+    const file=path.join(folder,'meta.json');fs.writeFileSync(file,'{"title":"preserved"}');
+    assert.equal(store.readCached(file).title,'preserved');assert(store.cache.size>0);
+    process.env.OVH_AGENT_ARCHIVE_CACHE_MB='0';store.nextCacheRefresh=0;
+    assert.equal(store.readCached(file).title,'preserved');
+    assert.equal(store.cacheLimit,0);assert.equal(store.cacheBytes,0);assert.equal(store.cache.size,0);
+    assert(fs.existsSync(file));
+  } finally {
+    if(before===undefined)delete process.env.OVH_AGENT_ARCHIVE_CACHE_MB;else process.env.OVH_AGENT_ARCHIVE_CACHE_MB=before;
+    fs.rmSync(root,{recursive:true,force:true});
+  }
+});
 
 test('archive metadata cache reuses reads and invalidates edited, replaced and deleted state', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'archive-cache-'));

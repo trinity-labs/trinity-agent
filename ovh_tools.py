@@ -10,7 +10,8 @@ import threading
 import unicodedata
 
 CORE = frozenset({'read_file','list_files','search_text','edit_file','write_file',
-                  'run_command','verification_plan','verify_changes','discover_tools'})
+                  'run_command','verification_plan','verify_changes','discover_tools',
+                  'search_memory','read_memory'})
 GROUPS = {
     'web': {'search_web','read_webpage'},
     'memory': {'search_memory','read_memory','search_project_memory','read_project_memory','remember_context','inspect_json','inspect_conversation_archives'},
@@ -38,23 +39,34 @@ class ToolSelection:
         self.catalog={}
         self.schema_sizes={}
         self.enabled=set(CORE)
+        self.hinted_names=set()
         self.hint(prompt)
 
     def hint(self,prompt):
         # Explicit capabilities are cheap to infer; ambiguous requests retain a
         # generic core and can discover anything without an extra planning call.
         tokens=words(prompt)
-        for group,names in GROUPS.items():
-            if group in tokens or any(words(alias)<=tokens for alias,value in ALIASES.items() if value==group):
-                self.enabled.update(names)
-        if re.search(r'https?://|\b(?:documentation|sources|recherche web|internet)\b',prompt,re.I):
-            self.enabled.update(GROUPS['web'])
-        if re.search(r'\b(?:refactor|audit|architecture|plusieurs|multi.file|autonomie)\w*',prompt,re.I):
-            self.enabled.update(GROUPS['repository']|GROUPS['recovery'])
+        with self.lock:
+            # A tool explicitly requested by the user or by task-local guidance
+            # must be callable immediately, including tools registered later.
+            self.hinted_names.update(tokens)
+            known=set(CORE).union(*GROUPS.values(),self.catalog)
+            self.enabled.update(tokens & known)
+            for group,names in GROUPS.items():
+                if group in tokens or any(words(alias)<=tokens for alias,value in ALIASES.items() if value==group):
+                    self.enabled.update(names)
+            if tokens & {'logo','logos','header','opacity','opacite','couleur','background','spinner','loading','chargement','style','styles'}:
+                self.enabled.update(GROUPS['styles'])
+            if re.search(r'https?://|\b(?:documentation|sources|recherche web|internet)\b',prompt,re.I):
+                self.enabled.update(GROUPS['web'])
+            if re.search(r'\b(?:refactor|audit|architecture|plusieurs|multi.file|autonomie)\w*',prompt,re.I):
+                self.enabled.update(GROUPS['repository']|GROUPS['recovery'])
 
     def register(self, name, description, schema=None):
         with self.lock:
             self.catalog[name]=str(description or '').split('\n')[0][:260]
+            if name in self.hinted_names:
+                self.enabled.add(name)
             if schema is not None:
                 self.schema_sizes[name] = len(json.dumps(schema, ensure_ascii=False).encode()) + len(str(description or '').encode()) + len(name) + 128
 

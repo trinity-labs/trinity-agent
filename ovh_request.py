@@ -128,9 +128,20 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     # Describing previous modifications is not a request to perform new ones.
     actionable = re.sub(r'\b(?:modifications?|changements?|creations?|suppressions?|ameliorations?|transformations?|optimisations?)\b', '', actionable)
     action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|deploi\w*|redemarr\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|diminu\w*|augment\w*|agrand\w*|elargi\w*|retreci\w*|fix|add|remove|refactor\w*|build|restart)\b', actionable)) and not question
+    # Applying a requested value is an edit. Keep this imperative bounded so
+    # "l'application", "j'ai appliqué" and "comment appliquer" stay descriptive.
+    apply_action = bool(re.match(
+        r"\s*(?:(?:ok|oui|yes|maintenant|now|please|s['’]il te plait)[\s,!:.]+)*"
+        r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you|veuillez)\s+)?"
+        r"(?:applique(?:r|z|s)?|apply)\b", actionable))
+    action = action or (apply_action and not question)
     # "Passe les boutons en ..." is an edit, while "passe en revue" is inspection.
     action = action or (not question and not readonly and bool(re.search(
         r'\b(?:passe|rends?)\s+(?:les?|la|ces?|cette)\s+[^.!?\n]{1,120}\s+(?:en|sans|transparent\w*|non[- ]fill)\b', actionable)))
+    # Global read-only instructions also govern an affirmative verb elsewhere
+    # in the request; exclusions concerning a named file keep their own scope.
+    if re.search(r'\b(?:lecture seule|aucune modification|sans rien modifier|read.only|ne modifie pas (?:les fichiers|le projet|le code)|do not (?:modify|edit) (?:any )?files)\b', current):
+        action = False
     web_allowed = not bool(re.search(r"\b(?:sans (?:internet|web|recherche (?:web|internet))|hors ligne|offline|no (?:web|internet)|do not browse|(?:pas de|aucune|ni) recherche (?:web|internet)|n['’]utilise pas (?:internet|le web)|ne (?:cherche|recherche|consulte|va) pas (?:sur )?(?:internet|le web))\b", current))
     contested = bool(re.search(r'\b(?:dout\w*|tromp\w*|mensong\w*|hallucin\w*|inexact\w*|incorrect\w*|faux|fausse\w*|contradict\w*|wrong|mistak\w*|doubt\w*|mislead\w*|lied|lying)\b', current)
                      or re.search(r"\b(?:tu es|t['’]es|es.tu)\s+(?:bien |vraiment )?sur\b|\b(?:are you sure|is that (?:correct|true)|est.ce (?:vrai|normal)|tu (?:inventes|mens|confonds)|ce n['’]est pas vrai|c['’]est pas vrai|(?:tu as|t['’]as) vraiment (?:lu|verifie)|tu confirmes\s*\?)", current))
@@ -517,13 +528,14 @@ def retrieve_context(analysis, recent_paths, workspace, allowed_root, max_chars=
                           'resources': asdict(profile)}}
 
 
-def prepare_request(prompt, history, workspace, allowed_root, image_count=0, *, navigation_root=None):
+def prepare_request(prompt, history, workspace, allowed_root, image_count=0, *, navigation_root=None, context_card=None):
     global _worker
     started = time.monotonic()
     prompts, paths = recent_context(history)
     analysis = analyze_request(prompt, prompts, image_count)
     result = {'context': '', 'sources': [], 'files_scanned': 0, 'partial': False}
-    max_chars = positive_env('OVH_AGENT_PREFLIGHT_CONTEXT_CHARS', 24000)
+    from ovh_limits import resolve_limits
+    max_chars = resolve_limits(context_card, complex_task=analysis.complexity=='complex').preflight_context_chars
     timeout = positive_env('OVH_AGENT_PREFLIGHT_TIMEOUT_MS', 2500) / 1000
     if analysis.needs_workspace and max_chars and timeout:
         output = queue.Queue(maxsize=1)

@@ -469,7 +469,9 @@ function renderModels() {
     const size = model.parameters_b ? `${model.parameters_b}B` : "";
     const active = model.active_parameters_b ? t("{0}B actifs", model.active_parameters_b) : "";
     const contextLabel = model.id === "auto-balanced"
-      ? t("Jusqu’à {0}k selon le modèle", Math.round(model.context_length / 1024))
+      ? (Number.isFinite(model.context_length) && model.context_length > 0
+        ? t("Jusqu’à {0}k selon le modèle", Math.round(model.context_length / 1024))
+        : t("Contexte selon le modèle choisi"))
       : compactTokens(model.context_length);
     meta.textContent = [model.owner, size, active, model.quantization, contextLabel].filter(Boolean).join(" · ");
     if (model.parameters_b) meta.title = t("Taille documentée du modèle ; ne garantit ni sa vitesse ni sa qualité.");

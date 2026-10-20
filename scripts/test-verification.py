@@ -171,6 +171,125 @@ class Verification(unittest.TestCase):
             guard.require_verified()
         self.assertEqual(guard.rollback()['conflicts'], [str(target)])
 
+    def basic_guard(self, name='logo.css', text='.logo { opacity: .5; }\n'):
+        workspace = self.root / 'syntax-project'
+        workspace.mkdir(exist_ok=True)
+        guard = ChangeGuard(workspace, self.root / 'syntax-receipts')
+        target = workspace / name
+        guard.write(target, None, text)
+        return guard, target
+
+    def test_css_content_receipt_does_not_claim_unavailable_syntax(self):
+        guard, target = self.basic_guard()
+        report = guard.require_verified()
+        self.assertEqual(report['status'], 'passed')
+        self.assertFalse(guard.state['changes'][str(target)]['syntax_available'])
+        self.assertEqual(report['syntax_unavailable'], [str(target)])
+        self.assertEqual(report['syntax_checks'][0]['status'], 'unavailable')
+        self.assertIsNone(report['syntax_checks'][0]['validator'])
+        for text in ['Contrôle de syntaxe : ✅ passé', '**Contrôle de syntaxe** : ✅ passé',
+                     'Contrôle de syntaxe :\n✅ passé', 'CSS syntax check passed.',
+                     'La syntaxe de `logo.css` est vérifiée.',
+                     'Syntaxe vérifiée sans tests fonctionnels.',
+                     'Syntax check passed without functional tests.',
+                     'J’ai vérifié la syntaxe.']:
+            with self.subTest(text=text), self.assertRaisesRegex(VerificationError, 'sans preuve'):
+                guard.validate_summary(text)
+        for text in ['La syntaxe CSS n’a pas été vérifiée.', 'Syntaxe non vérifiée.',
+                     'No syntax check passed.', 'Syntaxe CSS : contrôle non disponible.',
+                     'Je n’ai pas vérifié la syntaxe.',
+                     'Aucune modification effectuée. Je n’ai pas vérifié la syntaxe.',
+                     'La syntaxe sera vérifiée après votre confirmation.',
+                     'En CSS, la syntaxe valide est `opacity: 0.5;`.',
+                     'Exemple de texte : `Syntaxe vérifiée`.']:
+            output = guard.validate_summary(text)
+            self.assertIn('Syntaxe non vérifiée pour ces fichiers : `logo.css`.', output)
+            self.assertEqual(guard.validate_summary(output), output)
+
+    def test_prewrite_syntax_is_not_a_final_receipt_and_external_edits_invalidate_it(self):
+        guard, target = self.basic_guard('app.py', 'VALUE = 1\n')
+        self.assertTrue(guard.state['changes'][str(target)]['syntax_available'])
+        with self.assertRaisesRegex(VerificationError, 'sans preuve'):
+            guard.validate_summary('Contrôle de syntaxe : ✅ passé')
+        report = guard.require_verified()
+        self.assertEqual(report['syntax_checks'][0]['status'], 'passed')
+        self.assertEqual(report['syntax_checks'][0]['fingerprint'], guard.state['changes'][str(target)]['written'])
+        output = guard.validate_summary('Contrôle de syntaxe : ✅ passé')
+        self.assertIn('Syntaxe vérifiée sur le contenu final', output)
+        self.assertEqual(guard.validate_summary(output), output)
+        for text in ['La syntaxe de missing.js a été vérifiée.',
+                     'La syntaxe de /missing/app.py a été vérifiée.']:
+            with self.subTest(text=text), self.assertRaisesRegex(VerificationError, 'sans preuve'):
+                guard.validate_summary(text)
+        target.write_text('VALUE = 2\n')
+        with self.assertRaisesRegex(VerificationError, 'sans preuve'):
+            guard.validate_summary('La syntaxe de app.py est vérifiée.')
+
+    def test_syntax_claims_preserve_exact_filenames_and_generated_footer_is_idempotent(self):
+        guard, target = self.basic_guard('my_module.py', 'VALUE = 1\n')
+        for name in ['__init__.py', 'my module.py', 'café.py', 'app.test.py']:
+            guard.write(target.parent / name, None, 'VERSION = 1\n')
+        guard.require_verified()
+        for text in ['La syntaxe de my_module.py est vérifiée.',
+                     'La syntaxe de `__init__.py` a été vérifiée.',
+                     'La syntaxe de `my module.py` est vérifiée.', 'Terminé.']:
+            with self.subTest(text=text):
+                output = guard.validate_summary(text)
+                self.assertIn('`my_module.py`', output)
+                self.assertIn('`__init__.py`', output)
+                self.assertEqual(guard.validate_summary(output), output)
+
+    def test_mixed_formats_need_evidence_for_each_claimed_file(self):
+        guard, css = self.basic_guard()
+        script = css.parent / 'app.js'
+        guard.write(script, None, 'const opacity = .5;\n')
+        guard.require_verified()
+        for text in ['Contrôle de syntaxe : ✅ passé', 'Syntaxe CSS vérifiée.',
+                     'Syntaxe JavaScript de logo.css vérifiée.']:
+            with self.subTest(text=text), self.assertRaisesRegex(VerificationError, 'sans preuve'):
+                guard.validate_summary(text)
+        output = guard.validate_summary('Syntaxe JavaScript vérifiée. Syntaxe CSS non vérifiée.')
+        self.assertIn('Syntaxe vérifiée sur le contenu final : `app.js`.', output)
+        self.assertIn('Syntaxe non vérifiée pour ces fichiers : `logo.css`.', output)
+        self.assertEqual(guard.validate_summary(output), output)
+
+    def test_configured_css_syntax_check_requires_explicit_kind_and_fresh_receipt(self):
+        for kind in ['functional', 'syntax']:
+            with self.subTest(kind=kind):
+                work = self.root / kind
+                work.mkdir()
+                css = work / 'logo.css'
+                css.write_text('.logo { opacity: 1; }\n')
+                checker = work / 'check.py'
+                checker.write_text("from pathlib import Path\nassert Path('logo.css').read_text() == '.logo { opacity: .5; }\\n'\n")
+                policy = {'version': 1, 'checks': [{'name': 'CSS final', 'kind': kind,
+                    'argv': ['{python}', 'check.py'], 'paths': ['logo.css'], 'protect': ['check.py']}]}
+                (work / '.ovh-agent-checks.json').write_text(json.dumps(policy))
+                guard = ChangeGuard(work, self.root / (kind + '-receipts'))
+                guard.write(css, css.read_text(), '.logo { opacity: .5; }\n')
+                report = guard.require_verified()
+                self.assertTrue(report['checks'][0]['passed'])
+                self.assertEqual(report['checks'][0]['kind'], kind)
+                if kind == 'functional':
+                    with self.assertRaisesRegex(VerificationError, 'sans preuve'):
+                        guard.validate_summary('Syntaxe CSS vérifiée.')
+                    self.assertEqual(report['syntax_unavailable'], [str(css)])
+                else:
+                    self.assertFalse(report['syntax_unavailable'])
+                    self.assertEqual(report['syntax_checks'][0]['validator'], 'CSS final')
+                    guard.validate_summary('Syntaxe CSS vérifiée.')
+                    self.assertEqual(report['functional_coverage_missing'], [str(css)])
+                    checker.write_text("print('weakened')\n")
+                    with self.assertRaisesRegex(VerificationError, 'sans preuve'):
+                        guard.validate_summary('Syntaxe CSS vérifiée.')
+
+    def test_configured_syntax_kind_rejects_unknown_or_malformed_values(self):
+        for kind in ['invented', [], None]:
+            self.policy.write_text(json.dumps({'version': 1, 'checks': [
+                {'argv': ['{python}', 'check.py'], 'kind': kind}]}))
+            with self.assertRaisesRegex(VerificationError, 'kind'):
+                self.guard.observe(self.file)
+
     def test_new_uncovered_script_is_rejected_before_any_write(self):
         target = self.workspace / 'manual-test.py'
         with self.assertRaisesRegex(VerificationError, 'verification_plan'):

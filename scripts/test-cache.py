@@ -83,8 +83,55 @@ with tempfile.TemporaryDirectory() as directory:
     other.put('independent memory')
     assert other.search('calyx') == ''
     assert other.search('independent')
-    with patch('ovh_memory.INDEX_CACHE_BYTES', 1):
+    with patch.dict(os.environ, {'OVH_AGENT_INDEX_CACHE_MB':'0'}):
         other.put('another document')
         assert other.search('another')
         assert not (other.root / 'cache' / 'search-v1.json').exists()
+    # Index construction and document reads also shrink with available RAM;
+    # disabling its disk cache alone must not leave unbounded transient work.
+    bounded = ConversationMemory(root / 'bounded')
+    for number in range(10):
+        bounded.put(f'calyx {number} ' + 'long archive ' * 200)
+    bounded.bootstrap()
+    with patch('ovh_memory.memory_index_limits', return_value=(0, 4096, 100)), \
+         patch('ovh_memory.read_text_cached', wraps=read_text_cached) as reads:
+        entries, _, partial = bounded.search_index()
+        assert partial and entries and max(len(entry['text']) for entry in entries) <= 100
+        assert len(json.dumps(entries).encode()) <= 4096
+        assert reads.call_args_list and all(call.kwargs['limit'] <= 101 for call in reads.call_args_list)
+        assert 'Recherche mémoire partielle' in bounded.search('absent')
+    # Resource changes invalidate a warm index. A zero budget must not read
+    # documents, and a partial lookup must not claim the archive was empty.
+    with patch('ovh_memory.memory_index_limits', return_value=(0, 0, 0)), \
+         patch('ovh_memory.read_text_cached', side_effect=AssertionError('zero budget read')):
+        assert bounded.search_index() == ([], {}, True)
+        assert 'Recherche mémoire partielle' in bounded.search('calyx')
+        assert len(bounded.search('calyx', budget=30)) <= 30
+        assert bounded.search('calyx', budget=0) == ''
+    assert 'long archive' in bounded.read(entries[0]['reference'])
+    with patch('ovh_memory.memory_index_limits', return_value=(0, 8192, 1000)):
+        grown, _, _ = bounded.search_index()
+        assert max(len(entry['text']) for entry in grown) > 100
+    # A truncated document cannot acquire the authority of a complete receipt.
+    receipt = {'type':'verification_check','check':'calyx verification','passed':True,'exit_code':0,
+               'timestamp':'2026-10-20T19:00:00Z'}
+    receipt_text = json.dumps(receipt)
+    tail = ConversationMemory(root / 'truncated-receipt')
+    tail.put(receipt_text + ' untrusted suffix')
+    (tail.folder / 'events.jsonl').write_text(receipt_text + '\n')
+    with patch('ovh_memory.memory_index_limits', return_value=(0, 4096, len(receipt_text))):
+        assert all(not entry['execution_evidence'] for entry in tail.search_index()[0])
+    # Bootstrap old event-only archives without losing executed receipts or
+    # turning the accompanying assistant conclusion into automatic evidence.
+    archived = root / 'event-only'
+    archived.mkdir()
+    (archived / 'events.jsonl').write_text('\n'.join(json.dumps(event) for event in [
+        {'type':'response','text':'Logo agrandi à 36px et contrôlé.'},
+        {'type':'verification_check','check':'logo CSS','passed':False,'exit_code':1,
+         'timestamp':'2026-10-20T19:00:00Z'},
+    ]))
+    imported = ConversationMemory(archived)
+    evidence = imported.search('logo', automatic=True)
+    assert 'verification_check' in evidence and '36px' not in evidence
+    assert '36px' in imported.search('36px')
 print('PASS: bounded LRU, authoritative Markdown edits/replacement/deletion, stale legacy rejection, RAM/disk reuse, corruption recovery, conversation isolation')

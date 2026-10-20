@@ -55,7 +55,7 @@ class Sessions(unittest.TestCase):
         def run_model(prompt, **kwargs):
             calls.append(prompt)
             raise RuntimeError('fixture model failure')
-        def preparation(*args):
+        def preparation(*args, **kwargs):
             if prepare:
                 prepare(channels['requests'])
             return [], {}
@@ -313,7 +313,7 @@ class Sessions(unittest.TestCase):
         def input_messages(requests):
             requests.put({'type': 'prompt', 'text': '  Vérifie\n  la configuration DNS  '})
             requests.put({'type': 'shutdown'})
-        def prepare_context(*args):
+        def prepare_context(*args, **kwargs):
             metadata = json.loads(self.meta.read_text())
             self.assertEqual(metadata['title'], 'Vérifie la configuration DNS')
             self.assertEqual(metadata['created_at'], '2025-01-01T00:00:00+00:00')
@@ -383,7 +383,7 @@ class Sessions(unittest.TestCase):
                 def inputs(requests):
                     requests.put({'type': 'resume_archive', 'id': 'conversation', **preferences})
                     requests.put({'type': 'shutdown'})
-                def prepare(*args):
+                def prepare(*args, **kwargs):
                     observed.append(a.FULL_ACCESS)
                     raise ValueError('fixture stops before model')
                 with ExitStack() as stack:

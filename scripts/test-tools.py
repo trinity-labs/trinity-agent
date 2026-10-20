@@ -45,6 +45,40 @@ class Discovery(unittest.TestCase):
         self.assertEqual(b.discover('ssh')['activated'][0]['name'],'run_host_command')
         self.assertFalse(ToolSelection().visible('run_host_command'))
 
+    def test_visual_requests_expose_required_styles_without_discovery(self):
+        for prompt in ('Agrandis le logo', 'Applique une opacity de 0.5',
+                       'Corrige l’opacité du header', 'Change la couleur du titre'):
+            with self.subTest(prompt=prompt):
+                selection=ToolSelection(prompt)
+                self.assertTrue(selection.visible('inspect_styles'))
+                self.assertTrue(selection.visible('edit_file_batch'))
+                self.assertFalse(selection.visible('run_host_command'))
+
+    def test_explicit_tools_are_visible_even_when_registered_after_hint(self):
+        selection=ToolSelection('Utilise search_web puis read_webpage.')
+        self.assertTrue(selection.visible('search_web'))
+        self.assertTrue(selection.visible('read_webpage'))
+        self.assertFalse(ToolSelection().visible('read_webpage'))
+        selection.hint('Utilise inspect_widget pour le composant.')
+        selection.register('inspect_widget','Reads widget state.')
+        self.assertTrue(selection.visible('inspect_widget'))
+        self.assertFalse(ToolSelection().visible('inspect_widget'))
+
+    def test_sdk_exposes_memory_on_first_round_without_prompt_hints(self):
+        selection=ToolSelection('Lis un fichier.')
+        async def prepare(ctx,definition):
+            selection.register(definition.name,definition.description)
+            return definition if selection.visible(definition.name) else None
+        def search_memory(query:str)->str:
+            return 'fixture'
+        def read_memory(path:str)->str:
+            return 'fixture'
+        def model(messages,info):
+            self.assertEqual({tool.name for tool in info.function_tools},{'search_memory','read_memory'})
+            return ModelResponse(parts=[TextPart('done')])
+        agent=Agent(FunctionModel(model),tools=[Tool(fn,prepare=prepare) for fn in (search_memory,read_memory)])
+        self.assertEqual(agent.run_sync('Reprise').output,'done')
+
     def test_full_catalogue_remains_discoverable_and_bounded(self):
         a=ToolSelection()
         for i in range(40):a.register(f'tool_{i}','metadata '*100)

@@ -232,7 +232,8 @@ class WorkflowController:
                     {'before': arguments['old_text'], 'after': arguments['new_text']}]
                 updated = source
                 for change in replacements:
-                    old, new = change.get('before'), change.get('after')
+                    old = change.get('old_text', change.get('before'))
+                    new = change.get('new_text', change.get('after'))
                     if not isinstance(old, str) or not old or not isinstance(new, str) or updated.count(old) != 1:
                         return {'path': str(path), 'before': before, 'expected': before, 'valid': False}
                     updated = updated.replace(old, new, 1)

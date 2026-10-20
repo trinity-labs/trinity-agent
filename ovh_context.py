@@ -10,6 +10,7 @@ from pydantic_ai.messages import (
     SystemPromptPart, UserPromptPart, TextPart, ThinkingPart, ToolCallPart, ToolReturnPart, RetryPromptPart,
 )
 from ovh_memory import ConversationMemory, atomic_write
+from ovh_limits import limit_setting, resolve_limits
 
 SUMMARY_PREFIX = '[OVH_CONTEXT_SUMMARY]\n'
 SUMMARY_VERSION = 'Mémoire non vérifiée v2. '
@@ -30,9 +31,16 @@ def budget_setting(name, default, minimum=1):
         return default
 
 
-TOOL_OUTPUT_CHARS = budget_setting('OVH_AGENT_TOOL_OUTPUT_CHARS', 24000, 1000)
-SUMMARY_TOKENS = budget_setting('OVH_AGENT_SUMMARY_TOKENS', 4096, 512)
-SUMMARY_SOURCE_CHARS = budget_setting('OVH_AGENT_SUMMARY_SOURCE_CHARS', 96000, 3000)
+TOOL_OUTPUT_CHARS = limit_setting('OVH_AGENT_TOOL_OUTPUT_CHARS')
+SUMMARY_TOKENS = limit_setting('OVH_AGENT_SUMMARY_TOKENS')
+SUMMARY_SOURCE_CHARS = limit_setting('OVH_AGENT_SUMMARY_SOURCE_CHARS')
+
+
+def context_limits(budget=None):
+    return resolve_limits(context_budget=budget, settings={
+        'OVH_AGENT_TOOL_OUTPUT_CHARS': TOOL_OUTPUT_CHARS,
+        'OVH_AGENT_SUMMARY_TOKENS': SUMMARY_TOKENS,
+        'OVH_AGENT_SUMMARY_SOURCE_CHARS': SUMMARY_SOURCE_CHARS})
 
 
 def text_tokens(text):
@@ -74,8 +82,9 @@ def transcript(messages, include_thinking=True):
     return '\n'.join(lines)
 
 
-def bound_tool_outputs(messages, memory, limit=TOOL_OUTPUT_CHARS):
+def bound_tool_outputs(messages, memory, limit=None):
     """Archive full results before replacing large results; never alter tool IDs."""
+    limit = max(0, context_limits().tool_output_chars if limit is None else limit)
     bounded = []
     for message in messages:
         parts = []
@@ -88,7 +97,7 @@ def bound_tool_outputs(messages, memory, limit=TOOL_OUTPUT_CHARS):
                     head = limit // 2
                     tail = limit // 3
                     text = (text[:head] + f'\n[Résultat partiel ; source exacte : read_memory("{reference}", offset={head}). '
-                            'Le contenu omis ne constitue pas un succès ni un échec.]\n' + text[-tail:])
+                            'Le contenu omis ne constitue pas un succès ni un échec.]\n' + (text[-tail:] if tail else ''))
                     part = replace(part, content=text)
             parts.append(part)
         bounded.append(replace(message, parts=parts))
@@ -157,7 +166,7 @@ def separate_system(messages):
     return system, body, previous
 
 
-async def compact_context(messages, memory, budget, summarize=None):
+async def compact_context(messages, memory, budget, summarize=None, *, limits=None):
     """Keep recent protocol units and latest user input, summarize older evidence.
 
     summarize(source, output_token_budget) may call a tool-free model. On failure,
@@ -165,7 +174,8 @@ async def compact_context(messages, memory, budget, summarize=None):
     """
     before = estimate_tokens(messages)
     original = messages
-    messages = bound_tool_outputs(messages, memory)
+    limits = limits or context_limits(budget)
+    messages = bound_tool_outputs(messages, memory, limits.tool_output_chars)
     system, body, previous = separate_system(messages)
     units = split_units(body)
     stats = dict(before_tokens=before, estimated_tokens=estimate_tokens(messages), budget_tokens=budget,
@@ -180,7 +190,7 @@ async def compact_context(messages, memory, budget, summarize=None):
     latest_user = next((m for m in reversed(body) if any(isinstance(p, UserPromptPart) for p in m.parts)), None)
     user_only = replace(latest_user, parts=[p for p in latest_user.parts if isinstance(p, UserPromptPart)]) if latest_user else None
     prefix = [ModelRequest(parts=system)] if system else []
-    summary_allowance = min(SUMMARY_TOKENS, budget // 5)
+    summary_allowance = min(limits.summary_tokens, budget // 5)
     target = int(budget * .70)
     # Token estimates are additive: count each protocol unit once rather than
     # rescanning the shrinking history for every removed unit (quadratic).
@@ -225,15 +235,16 @@ async def compact_context(messages, memory, budget, summarize=None):
         '[Raisonnement ancien omis du résumé ; archive complète disponible.]\n' if thoughts else ''
     ) + transcript(removed, include_thinking=False)
     # Bound the summarizer itself. Never hide that the source is only excerpts.
-    source_budget = min(SUMMARY_SOURCE_CHARS, max(3000, budget * 2))
+    source_budget = min(limits.summary_source_chars, max(0, budget * 2))
     summary_input = source if len(source) <= source_budget else (
-        source[:source_budget//2] + '\n[EXTRAITS : partie médiane archivée, ne pas la deviner]\n' + source[-source_budget//2:])
+        source[:source_budget//2] + '\n[EXTRAITS : partie médiane archivée, ne pas la deviner]\n'
+        + (source[-source_budget//2:] if source_budget else ''))
     stats.update(summary_source_tokens=text_tokens(summary_input),
                  summary_thinking_omitted_tokens=sum(text_tokens(p.content) for p in thoughts),
                  summary_thinking_omitted_parts=len(thoughts))
     result = None
     mode = 'extractive'
-    if summarize:
+    if summarize and summary_allowance >= 512 and source_budget > 0:
         try:
             result = await summarize(summary_input, max(256, summary_allowance - 300))
             if valid_summary(result) and text_tokens(result) <= summary_allowance - 200:

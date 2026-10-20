@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.17.0 — 2026-10-20
+
+- Size context, completion, summary and retrieval budgets from the selected model; size caches from available resources. Support explicit numeric ceilings and preserve monetary and execution limits. Show a dynamic Auto context label.
+- Recognize French action requests such as “applique” and preserve explicit user preferences while excluding unverified conversation prose from automatic memory retrieval. Full history remains explicitly searchable.
+- Activate tools named in task guidance immediately; discover style tools for logo and opacity requests.
+- Require fresh syntax evidence for syntax-success claims and report unavailable validators explicitly, including CSS.
+- Use comparable evaluation cohorts for measured routing preferences, with matched cases, protocol and settings.
+- Preserve the requested 28 px header logo and apply effective 0.5 opacity consistently across themes.
+- Extend backend and interface regressions. Deploy the companion backend with this client.
+
 ## 1.16.0 — 2026-10-20
 
 - Preserve pending prompts during backend restoration; reconcile stopped follow-ups without duplicate execution, and wait for new-conversation acknowledgement before accepting another prompt.

@@ -1,9 +1,11 @@
 """Local resource sizing, including container limits; no subprocess or network.
 
-Auto honors numeric environment ceilings. Max replaces these ceilings with
-hardware budgets. Refreshing does not allocate the cache.
+Auto honors numeric environment ceilings. Max replaces the original RAM cache
+and workspace reader ceilings with hardware budgets. Explicit archive, index
+and memory document ceilings remain in force in both modes. Refreshing does
+not allocate the cache.
 """
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import os
 import math
 from pathlib import Path
@@ -162,6 +164,28 @@ class ResourceProfile:
     retrieval_mb: int = 0
     scan_files: int = 2000
     refresh_seconds: int = 30
+    index_cache_mb: int = 0
+    index_build_bytes: int = 0
+    archive_cache_mb: int = 0
+    memory_document_chars: int = 0
+
+
+def _memory_budgets(profile, headroom):
+    # A serialized search index expands into strings, dictionaries and postings.
+    # Give its live representation at most 1/16 of usable memory, allowing an
+    # 8x expansion. These are ceilings; no space is allocated here.
+    index_build = max(0, headroom // 128)
+    configured = _number(os.environ.get('OVH_AGENT_INDEX_CACHE_MB', '').strip())
+    if configured:
+        index_build = min(index_build, configured * MIB)
+    index_cache = _ceiling('OVH_AGENT_INDEX_CACHE_MB', index_build // MIB)
+    # Zero disables the disk snapshot, while bounded transient search remains
+    # possible. Document parsing also shares memory with concurrent readers.
+    document_chars = _ceiling('OVH_AGENT_MEMORY_DOCUMENT_CHARS',
+        min(index_build // 4, max(0, headroom) // (512 * max(1, profile.workers))))
+    return replace(profile, index_cache_mb=index_cache, index_build_bytes=index_build,
+                   archive_cache_mb=_ceiling('OVH_AGENT_ARCHIVE_CACHE_MB', max(0, headroom) // (64 * MIB)),
+                   memory_document_chars=document_chars)
 
 
 class ResourcePolicy:
@@ -205,12 +229,13 @@ class ResourcePolicy:
             # concurrent parsers (text, tokens, dictionaries and temporary copies).
             chars = working // (2 * workers * 64)
             files = usable // (128 * 1024)
-            return ResourceProfile(round(hw.cpus, 3), hw.memory_bytes // MIB,
+            profile = ResourceProfile(round(hw.cpus, 3), hw.memory_bytes // MIB,
                                    hw.available_bytes // MIB, cache_mb, cache_mb * 1024,
                                    workers, files, chars, mode, working // MIB, files, interval)
+            return _memory_budgets(profile, usable)
         reserve = min(256 * MIB, hw.memory_bytes // 10)
         # Account for our existing cache to avoid shrinking just because it filled.
-        headroom = max(0, hw.available_bytes + retained - reserve)
+        headroom = max(0, min(hw.memory_bytes, hw.available_bytes + retained) - reserve)
         cache = min(hw.memory_bytes // 5, headroom // 4)
         if hw.available_bytes < reserve:
             cache = min(cache, hw.available_bytes // 8)
@@ -222,8 +247,9 @@ class ResourcePolicy:
         memory_mb = cache // MIB
         files = _ceiling('OVH_AGENT_PREFLIGHT_MAX_FILES', min(2000, workers * 120, max(20, memory_mb * 2)))
         chars = _ceiling('OVH_AGENT_PREFLIGHT_FILE_CHARS', min(524288, 65536 * max(1, memory_mb // 128)))
-        return ResourceProfile(round(hw.cpus, 3), hw.memory_bytes // MIB,
+        profile = ResourceProfile(round(hw.cpus, 3), hw.memory_bytes // MIB,
                                hw.available_bytes // MIB, cache_mb, entries, workers, files, chars)
+        return _memory_budgets(profile, headroom)
 
 
 POLICY = ResourcePolicy()

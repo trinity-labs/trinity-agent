@@ -370,6 +370,28 @@ test('model catalogue stays open during archive completion and keeps the chosen 
   } finally {dom.window.close();}
 });
 
+test('automatic model context remains descriptive until a provider limit is known',()=>{
+  const {dom,w,emit}=browser();
+  try {
+    w.OvhI18n.setLanguage('fr');
+    for(const context_length of [null,undefined,0,NaN]) {
+      emit({type:'models',selected:'auto-balanced',items:[
+        {id:'auto-balanced',kind:'auto',selectable:true,context_length}
+      ]});
+      const label=w.document.querySelector('.model-item .model-meta').textContent;
+      assert.match(label,/Contexte selon le modèle choisi/);
+      assert.doesNotMatch(label,/0k|NaN/);
+    }
+    emit({type:'models',selected:'auto-balanced',items:[
+      {id:'auto-balanced',kind:'auto',selectable:true,context_length:262144},
+      {id:'provider-model',kind:'chat',selectable:true,context_length:131072}
+    ]});
+    const labels=[...w.document.querySelectorAll('.model-item .model-meta')].map(node=>node.textContent);
+    assert(labels.some(label=>label.includes('Jusqu’à 256k selon le modèle')));
+    assert(labels.some(label=>label.includes('128k contexte')));
+  } finally {dom.window.close();}
+});
+
 
 test('reopening interrupted conversation restores actions, partial text and resume control',()=>{
   const {dom,w,emit}=browser();
@@ -393,9 +415,18 @@ test('reopening interrupted conversation restores actions, partial text and resu
 test('header background stays transparent after the full cascade in every theme', () => {
   const css = fs.readFileSync(path.resolve(__dirname, '../media/chat.css'), 'utf8');
   for (const theme of ['vscode-light', 'vscode-dark', 'vscode-high-contrast']) {
-    const dom = new JSDOM(`<style>${css}</style><body class="${theme}"><header><span class="history-brand"></span></header></body>`);
+    const dom = new JSDOM(`<style>${css}</style><body class="${theme}"><header><span class="history-brand"><img class="header-app-logo" src="logo.svg"></span></header></body>`);
     assert.equal(dom.window.getComputedStyle(dom.window.document.querySelector('header')).backgroundColor, 'rgba(0, 0, 0, 0)', theme);
-    assert.equal(dom.window.getComputedStyle(dom.window.document.querySelector('.history-brand')).opacity, theme === 'vscode-light' ? '0.25' : '0.75', theme);
+    const logo = dom.window.document.querySelector('.header-app-logo');
+    const computed = dom.window.getComputedStyle(logo);
+    assert.equal(computed.width, '28px', theme);
+    assert.equal(computed.height, '28px', theme);
+    let opacity = 1;
+    for (let node = logo; node; node = node.parentElement) {
+      const value = dom.window.getComputedStyle(node).opacity;
+      opacity *= value === '' ? 1 : Number(value);
+    }
+    assert.equal(opacity, 0.5, `${theme}: combined logo and ancestor opacity`);
     dom.window.close();
   }
 });

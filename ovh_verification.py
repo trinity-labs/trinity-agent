@@ -32,6 +32,9 @@ class VerificationError(RuntimeError):
     pass
 
 
+SYNTAX_UNAVAILABLE = "non disponible pour ce format"
+
+
 def digest(content: bytes | None) -> str | None:
     return hashlib.sha256(content).hexdigest() if content is not None else None
 
@@ -109,7 +112,41 @@ def check_syntax(path: Path, content: str) -> str:
             return shell
     except (SyntaxError, ValueError, OSError, subprocess.TimeoutExpired) as error:
         raise VerificationError(f"Syntaxe refusée avant écriture ({path.name}) : {error}") from error
-    return "non disponible pour ce format"
+    return SYNTAX_UNAVAILABLE
+
+
+def syntax_claims(output: str) -> list[str]:
+    """Find explicit success assertions; receipts, not prose, decide their truth.
+
+    Keep inline filenames for scope matching, but ignore quoted examples. This
+    intentionally does not pretend to classify arbitrary natural language.
+    """
+    prose = re.sub(r"```[\s\S]*?```|(?m:^>.*$)", "", output)
+    prose = re.sub(r"`([^`]*)`", lambda match: match[0] if re.fullmatch(
+        r"[^`\n]+\.[a-zA-Z][\w+-]{0,10}", match[1]) else "", prose)
+    prose = prose.replace("*", "")
+    prose = re.sub(r":\s*\n\s*", ": ", prose)
+    clauses = re.split(r"(?<=[.!?;])\s+|\n|\b(?:mais|cependant|pourtant|but|however)\b", prose, flags=re.I)
+    # Recognize completed actions and compact outcome labels, not arbitrary
+    # co-occurrence ("je n’ai pas vérifié la syntaxe", future plans or lessons).
+    target = r"(?:CSS|Python|JavaScript|JSON|TOML|shell|`[^`\n]+\.[a-zA-Z][\w+-]{0,10}`|[\w./-]+\.[a-zA-Z][\w+-]{0,10})"
+    scope = r"(?:\s+(?:(?:de|du|des|pour|of|for)\s+(?:(?:fichier|file)\s+)?)?" + target + r"){0,2}"
+    outcome = r"(?:pass[ée](?:e?s?)?|passed|r[ée]ussi(?:e?s?)?|valid(?:ée?s?|ees?)|v[ée]rifi[ée](?:e?s?)?|checked|verified|successful(?:ly)?|OK)\b"
+    label = re.compile(r"\bsyntaxe?\b" + scope
+                       + r"\s*(?:(?:(?:a|ont)\s+[ée]t[ée]|est|sont|check(?:s)?)\s+)?"
+                       + r"[:|–—-]?\s*(?:✅\s*)?(?:" + outcome + r"|✅)", re.I)
+    performed = re.compile(r"\b(?:j[’']ai|nous avons|I have|we have|I|we)\s+"
+                           + r"(?:v[ée]rifi[ée]|contr[oô]l[ée]|validated|verified|checked)\s+"
+                           + r"(?:(?:la|the)\s+)?syntaxe?\b", re.I)
+    claims = []
+    for clause in clauses:
+        action = performed.search(clause)
+        status = label.search(clause)
+        if status and re.search(r"\b(?:aucun(?:e)?|no|sans|without)\s+(?:(?:contr[oô]les?|checks?|validation)(?:\s+de|\s+of)?\s+)?$", clause[:status.start()], re.I):
+            status = None
+        if action or status:
+            claims.append(clause)
+    return claims
 
 
 def replace_checked(path: Path, data: bytes | None, expected: str | None, mode: int = 0o644) -> None:
@@ -143,6 +180,7 @@ class Check:
     patterns: list[str]
     protected: dict[str, str | None]
     timeout: int = 120
+    kind: str = "functional"
 
 
 class ChangeGuard:
@@ -235,6 +273,9 @@ class ChangeGuard:
                         timeout = definition.get("timeout", 120)
                         if type(timeout) is not int or not 1 <= timeout <= 300:
                             raise VerificationError("timeout doit être un entier entre 1 et 300 secondes.")
+                        kind = definition.get("kind", "functional")
+                        if not isinstance(kind, str) or kind not in {"functional", "syntax"}:
+                            raise VerificationError("kind doit être functional ou syntax.")
                         protected = {}
                         for pattern in [".ovh-agent-checks.json", *protections]:
                             if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
@@ -247,7 +288,7 @@ class ChangeGuard:
                         key = f"{folder}:{index}"
                         discovered[key] = Check(str(definition.get("name", key)), cwd, argv,
                                                  [str(folder / pattern) for pattern in patterns],
-                                                 protected, timeout)
+                                                 protected, timeout, kind)
                     self.checks.update(discovered)
                     self.projects.add(folder)
                     return
@@ -258,7 +299,7 @@ class ChangeGuard:
     def plan(self) -> dict:
         with self.lock:
             return {"projects": sorted(str(path) for path in self.projects),
-                    "checks": [{"name": check.name, "argv": check.argv, "cwd": str(check.root),
+                    "checks": [{"name": check.name, "argv": check.argv, "cwd": str(check.root), "kind": check.kind,
                                 "paths": check.patterns, "protected": sorted(check.protected)}
                                for check in self.checks.values()],
                     "instruction": "Utilise les contrôles existants et préserve leurs références. Une politique explicite reste obligatoire. Sans suite configurée, les écritures conservent une sauvegarde et sont vérifiées par syntaxe disponible et contenu ; cela ne prouve pas leur comportement."}
@@ -393,7 +434,74 @@ class ChangeGuard:
                   "ils ne démontrent pas l’absence de défauts dans le reste du projet."]
         return "\n".join(lines)
 
+    def syntax_summary(self) -> list[dict]:
+        """Return syntax evidence for the current bytes, never a pre-write guess."""
+        with self.lock:
+            subjects = set(self.state["changes"]) or {str(path) for path in self.observed}
+            final = {item["path"]: item for item in (self.state.get("report") or {}).get("syntax_checks", [])}
+            summary = []
+            for name in sorted(subjects):
+                current = digest(contents(Path(name)))
+                item = final.get(name, {})
+                status, validator = "not_checked", None
+                if name in self.state["changes"] and current != self.state["changes"][name]["written"]:
+                    summary.append({"path": name, "status": "stale", "validator": None, "fingerprint": current})
+                    continue
+                if (item.get("phase") == "final" and item.get("fingerprint") == current
+                        and current is not None and not item.get("receipt_id")
+                        and item.get("status") in {"passed", "unavailable"}):
+                    status, validator = item["status"], item.get("validator")
+                for receipt in reversed(self.state["receipts"]):
+                    check = self.checks.get(receipt.get("key"))
+                    if (check and check.kind == "syntax" and receipt.get("phase") in {"after", "manual"}
+                            and receipt.get("passed") and self._fresh(receipt)
+                            and current is not None and receipt.get("fingerprints", {}).get(name) == current
+                            and any(fnmatch.fnmatch(name, pattern) for pattern in check.patterns)):
+                        status, validator = "passed", check.name
+                        break
+                summary.append({"path": name, "status": status, "validator": validator,
+                                "fingerprint": current})
+            return summary
+
+    def _validate_syntax_claims(self, output: str) -> str:
+        evidence = self.syntax_summary()
+        for claim in syntax_claims(output):
+            references = set(re.findall(r"`([^`]+)`", claim))
+            unquoted = re.sub(r"`[^`]+`", "", claim)
+            references.update(re.findall(r"(?<![\w.-])(?:/?[\w.-]+/)*[\w.-]+\.[a-zA-Z][\w+-]{0,10}\b", unquoted))
+            mentioned = []
+            for reference in references:
+                matching = [item for item in evidence if
+                            (str((self.workspace / reference).resolve()) == item["path"] if '/' in reference
+                             else Path(item["path"]).name == reference)]
+                if not matching:
+                    raise VerificationError("Contrôle de syntaxe annoncé sans preuve pour le fichier cité : " + reference)
+                mentioned.extend(matching)
+            # A language-specific assertion may cover only that language in a
+            # mixed edit; a generic assertion must cover every changed file.
+            languages = {"python": {".py"}, "javascript": {".js", ".cjs", ".mjs"},
+                         "json": {".json"}, "toml": {".toml"}, "shell": {".sh"}, "css": {".css"}}
+            formats = {suffix for language, suffixes in languages.items()
+                       if re.search(r"\b" + language + r"\b", claim, re.I) for suffix in suffixes}
+            subjects = mentioned or ([item for item in evidence if Path(item["path"]).suffix in formats] if formats else evidence)
+            if not subjects or any(item["status"] != "passed" for item in subjects):
+                raise VerificationError("Contrôle de syntaxe annoncé sans preuve sur le contenu final. "
+                                        "Indique les formats non vérifiés ; un contenu sauvegardé ne prouve pas sa syntaxe. "
+                                        + json.dumps(evidence, ensure_ascii=False))
+        if not self.state["changes"]:
+            return output
+        passed = [Path(item["path"]).name for item in evidence if item["status"] == "passed"]
+        missing = [Path(item["path"]).name for item in evidence if item["status"] != "passed"]
+        lines = []
+        if passed:
+            lines.append("Syntaxe vérifiée sur le contenu final : " + ", ".join(f"`{name}`" for name in passed) + ".")
+        if missing:
+            lines.append("Syntaxe non vérifiée pour ces fichiers : " + ", ".join(f"`{name}`" for name in missing) + ".")
+        notice = "\n".join(lines)
+        return output if not notice or notice in output else output.rstrip() + "\n\n" + notice
+
     def validate_summary(self, output: str) -> str:
+        output = self._validate_syntax_claims(output)
         summary = self.test_summary()
         # Missing receipts mean "not executed", never "all passed". Check before
         # the old early return, including the exact false claim seen in production.
@@ -488,7 +596,7 @@ class ChangeGuard:
         else:
             result = self.runner(check.argv, check.root, check.timeout)
         receipt = {**result, **test_count(result), "id": uuid.uuid4().hex, "check": check.name, "key": key,
-                   "phase": phase, "argv": check.argv, "cwd": str(check.root),
+                   "phase": phase, "argv": check.argv, "cwd": str(check.root), "kind": check.kind,
                    "fingerprints": before, "changed_during_check": before != self._evidence_files(check),
                    "change_versions": {p: c["written"] for p, c in self.state["changes"].items()},
                    "timestamp": datetime.now(timezone.utc).isoformat()}
@@ -536,6 +644,7 @@ class ChangeGuard:
                     change = {"backup": backup, "original": digest(original), "mode": mode}
                     self.state["changes"][key] = change
                 change.update({"previous": digest(original), "written": digest(candidate), "syntax": syntax,
+                               "syntax_available": syntax != SYNTAX_UNAVAILABLE,
                                "validation": "configured_checks" if applicable else "syntax_and_content"})
                 self.state["status"] = "pending"
                 self.state["report"] = None
@@ -556,7 +665,7 @@ class ChangeGuard:
             subjects = sorted(set(changes) | {str(path) for path in self.observed})
             actual = {path: digest(contents(Path(path))) for path in subjects}
             old = self.state.get("report")
-            if (old and old.get("fingerprints") == actual
+            if (old and "syntax_checks" in old and old.get("fingerprints") == actual
                     and old.get("inspected_directories", []) == sorted(str(path) for path in self.inspected_directories)
                     and old.get("checks_available", []) == sorted(self.checks)):
                 # Changing a test cannot make a cached result valid.
@@ -575,9 +684,16 @@ class ChangeGuard:
                          and changes[path].get("validation") != "syntax_and_content"]
             problems += [f"Aucun contrôle fonctionnel configuré pour {path}" for path in uncovered]
             basic = [path for path, change in changes.items() if change.get("validation") == "syntax_and_content"]
-            for name in basic:
+            syntax_checks = []
+            for name in changes:
                 try:
-                    check_syntax(Path(name), contents(Path(name)).decode())
+                    data = contents(Path(name))
+                    validator = check_syntax(Path(name), data.decode())
+                    available = validator != SYNTAX_UNAVAILABLE
+                    syntax_checks.append({"path": name, "available": available,
+                                          "status": "passed" if available else "unavailable",
+                                          "validator": validator if available else None,
+                                          "fingerprint": digest(data), "phase": "final"})
                 except (VerificationError, UnicodeError, AttributeError) as error:
                     problems.append(f"Validation actuelle impossible pour {name} : {error}")
             inspected = list(self.observed) + [path / '_audit_scope_' for path in self.inspected_directories]
@@ -594,6 +710,14 @@ class ChangeGuard:
             after = {path: digest(contents(Path(path))) for path in subjects}
             if actual != after:
                 problems.append("Des fichiers ont changé pendant les contrôles ; résultats périmés.")
+            for item in syntax_checks:
+                for receipt in receipts:
+                    check = self.checks[receipt["key"]]
+                    if (check.kind == "syntax" and receipt.get("passed") and self._fresh(receipt)
+                            and any(fnmatch.fnmatch(item["path"], pattern) for pattern in check.patterns)):
+                        item.update(available=True, status="passed", validator=check.name,
+                                    receipt_id=receipt["id"])
+                        break
             passed = bool(receipts or basic) and all(item["passed"] for item in receipts) and not problems
             # An audit can legitimately conclude with reproduced failures. A code
             # modification, however, cannot be accepted with failing controls.
@@ -603,10 +727,14 @@ class ChangeGuard:
                       "not_configured" if limited_audit and not problems else "failed")
             report = {"status": status, "files": list(changes),
                       "checks": receipts, "problems": problems, "fingerprints": actual,
+                      "syntax_checks": syntax_checks,
+                      "syntax_unavailable": [item["path"] for item in syntax_checks if not item["available"]],
                       "inspected_directories": sorted(str(path) for path in self.inspected_directories),
                       "checks_available": sorted(self.checks),
                       "scope": "configured_local_checks" if receipts else "local_observations_only" if limited_audit else "syntax_and_content",
-                      "functional_coverage_missing": basic, "universal_correctness": False}
+                      "functional_coverage_missing": [path for path in changes if not any(
+                          check.kind == "functional" for check in self._applicable([path]).values())],
+                      "universal_correctness": False}
             self.state["report"] = report
             self.state["status"] = report["status"]
             self._save()

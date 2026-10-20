@@ -157,3 +157,6 @@
 !/scripts/evaluate-agent.py
 !/scripts/test-agent-evaluation.py
 !/scripts/test-coherence.py
+
+!/ovh_limits.py
+!/scripts/test-limits.py

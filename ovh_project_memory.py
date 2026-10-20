@@ -13,12 +13,9 @@ import tempfile
 from urllib.parse import quote
 import uuid
 from datetime import datetime, timezone
-from ovh_cache import CACHE, file_signature, read_text_cached, positive_env
-from ovh_memory import atomic_write, terms
+from ovh_cache import CACHE, file_signature, read_text_cached, positive_env, memory_index_limits
+from ovh_memory import atomic_write, terms, execution_evidence
 
-DISK_INDEX_BYTES = positive_env('OVH_AGENT_INDEX_CACHE_MB', 32) * 1024 * 1024
-MAX_INDEX = DISK_INDEX_BYTES or 32 * 1024 * 1024
-MAX_DOCUMENT_CHARS = max(1000, positive_env('OVH_AGENT_MEMORY_DOCUMENT_CHARS', 262144))
 SCAN_SECONDS = positive_env('OVH_AGENT_MEMORY_SCAN_SECONDS', 5)
 _export_lock = threading.Lock()
 
@@ -198,8 +195,9 @@ class ProjectMemory:
                     yield file,folder.name,file.stem,'archive',None
 
     def index(self,refresh=False):
+        disk_index_bytes, max_index, document_chars = memory_index_limits()
         generation=self.generation();key=('project-markdown-v4',str(self.data),self.project)
-        signature=(generation, MAX_DOCUMENT_CHARS, int(time.time()/max(1,SCAN_SECONDS)))
+        signature=(generation, document_chars, max_index, disk_index_bytes, int(time.time()/max(1,SCAN_SECONDS)))
         cached=None if refresh else CACHE.get(key,signature)
         if cached is not None: return cached
         self.cache.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -207,9 +205,9 @@ class ProjectMemory:
             fcntl.flock(lock,fcntl.LOCK_EX)
             previous={}
             try:
-                if self.index_file.stat().st_size<=MAX_INDEX:
-                    with gzip.open(self.index_file,'rt',encoding='utf-8') as stream: payload=json.loads(stream.read(MAX_INDEX+1))
-                    if isinstance(payload,dict) and payload.get('version')==4 and payload.get('document_chars')==MAX_DOCUMENT_CHARS:
+                if disk_index_bytes and self.index_file.stat().st_size<=disk_index_bytes:
+                    with gzip.open(self.index_file,'rt',encoding='utf-8') as stream: payload=json.loads(stream.read(max_index+1))
+                    if isinstance(payload,dict) and payload.get('version')==4 and payload.get('document_chars')==document_chars:
                         previous={r['path']:r for r in payload['rows']}
             except (OSError,ValueError,KeyError,TypeError,EOFError): pass
             rows=[];used=0;partial=False
@@ -221,8 +219,8 @@ class ProjectMemory:
                     valid = valid and isinstance(old['body'],str) and isinstance(old['tokens'],list) and all(isinstance(t,str) for t in old['tokens']) and isinstance(old['timestamp'],(int,float))
                     if valid and old.get('signature')==stamp: row=old
                     else:
-                        raw=read_text_cached(file,limit=MAX_DOCUMENT_CHARS+1)
-                        body=note['text'] if note else raw[:MAX_DOCUMENT_CHARS]
+                        raw=read_text_cached(file,limit=document_chars+1)
+                        body=note['text'] if note else raw[:document_chars]
                         tokens=terms(body)
                         if kind=='archive':
                             try:
@@ -230,18 +228,18 @@ class ProjectMemory:
                                 if isinstance(event,dict) and event.get('type')=='verification_check': tokens |= terms('tests régression régressions regression regressions vérification vérifications')
                             except ValueError: pass
                         row={'path':relative,'conversation':conversation,'reference':reference,'kind':kind,
-                             'body':body,'tokens':sorted(tokens),'signature':stamp,'partial':len(raw)>MAX_DOCUMENT_CHARS,
+                             'body':body,'tokens':sorted(tokens),'signature':stamp,'partial':len(raw)>document_chars,
                              'scope':note['scope'] if note else 'project','status':note['status'] if note else 'historical',
                              'timestamp':note['timestamp'] if note else file.stat().st_mtime}
                     if row['partial']: partial=True
                     size=len(json.dumps(row,ensure_ascii=False).encode())
-                    if used+size>MAX_INDEX-4096: partial=True;break
+                    if used+size>max_index-4096: partial=True;break
                     used+=size;rows.append(row)
                 except (OSError,ValueError): continue
-            payload={'version':4,'document_chars':MAX_DOCUMENT_CHARS,'generation':generation,'rows':rows,'partial':partial}
+            payload={'version':4,'document_chars':document_chars,'generation':generation,'rows':rows,'partial':partial}
             encoded=json.dumps(payload,ensure_ascii=False).encode()
             if self.generation()!=generation: return self._compile(rows,True)
-            if DISK_INDEX_BYTES:
+            if disk_index_bytes and len(encoded)<=disk_index_bytes:
                 descriptor,name=tempfile.mkstemp(prefix='.index-',dir=self.cache)
                 temporary=Path(name)
                 try:
@@ -290,6 +288,7 @@ class ProjectMemory:
                 or not re.match(r"^(?:comment|quel(?:le)?s?|où|pourquoi|what|which|where|how)\b", question, re.I)
                 or re.search(r"\b(?:actuel\w*|aujourd|maintenant|verifi\w*|confirm\w*|recent\w*|latest|current|today|check|verify|internet|web|execute|lance|puis)\b", normalized(question))):
             return None
+        _, _, document_chars = memory_index_limits()
         deadline = deadline or time.monotonic() + 0.8
         files = self.root_documents()
         manual = self.root/'NOTES.md'
@@ -304,8 +303,8 @@ class ProjectMemory:
             try:
                 if not allowed(file): return None
                 stamp = file_signature(file)
-                if file.stat().st_size > MAX_DOCUMENT_CHARS: return None
-                text = read_text_cached(file,limit=MAX_DOCUMENT_CHARS)
+                if file.stat().st_size > document_chars: return None
+                text = read_text_cached(file,limit=document_chars)
                 if not allowed(file) or file_signature(file) != stamp: return None
             except (OSError, ValueError): return None
             heading = ''; body = []; fence = None
@@ -339,7 +338,7 @@ class ProjectMemory:
                          + f" · modifiée le {match['modified']}.\nExtrait documentaire ; aucune nouvelle vérification exécutée.")
         return match
 
-    def search(self,query,budget=4000,current=''):
+    def search(self,query,budget=4000,current='',*,automatic=False):
         if budget<=0:return ''
         index=self.index();words=terms(query);inverted=index['inverted']
         candidates=set().union(*(inverted.get(word,set()) for word in words))
@@ -347,6 +346,10 @@ class ProjectMemory:
         parts=[];used=0
         for i in ranked:
             row=index['rows'][i]
+            # Automatic recall is evidence-only. User preferences are added by
+            # WorkspaceContext; other notes and transcripts require an explicit
+            # historical search, which keeps the full archive available.
+            if automatic and (row['kind']!='archive' or not execution_evidence(row['body'],self.archive/row['conversation'])):continue
             if row['conversation']==current and row['kind']=='archive':continue
             if not self.current(row):continue
             text=row['body']

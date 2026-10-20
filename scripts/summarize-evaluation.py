@@ -12,6 +12,7 @@ import sys
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from ovh_memory import atomic_write
+from ovh_evaluation import comparison_key
 spec=importlib.util.spec_from_file_location('catalog_benchmark',ROOT/'scripts/evaluate-catalog.py')
 b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
 
@@ -26,6 +27,54 @@ def metrics(rows):
             'median_seconds':round(statistics.median(times),3) if times else 0,
             'median_tokens':statistics.median([r.get('input_tokens',0)+r.get('output_tokens',0) for r in successful]) if successful else 0,
             'median_cost_eur':statistics.median([r.get('cost_eur',0) for r in successful]) if successful else 0}
+
+
+def comparison_for(report, rows):
+    """Bind every measured sample to its original exact case and settings."""
+    if (report.get('methodology_version') != 3 or not report.get('completed_at')
+            or not isinstance(report.get('routing_protocol'), dict) or not rows
+            or any(row.get('status') in {'blocked','skipped'} for row in rows)):
+        return None
+    domain = rows[0]['domain']
+    cases = {case['id']:(case['id'],case['domain'],case['prompt'],case['expected'])
+             for case in report['cases'] if case['domain'] == domain}
+    if len(rows) != len(cases) or {row['case'] for row in rows} != set(cases):
+        return None
+    fingerprints = []
+    for row in sorted(rows, key=lambda row:row['case']):
+        fingerprint = b.case_digest(cases[row['case']])
+        if row.get('case_sha256') != fingerprint or not isinstance(row.get('settings'), dict):
+            return None
+        fingerprints.append({'id':row['case'],'sha256':fingerprint,'settings':row['settings']})
+    comparison = {'version':1,'campaign':report['run_id']+'@'+report['date'],
+                  'protocol':report['routing_protocol'],'cases':fingerprints}
+    return comparison if comparison_key({'samples':len(rows),'comparison':comparison}) else None
+
+
+def comparable_scores(reports, grouped):
+    """Select a shared cohort by coverage/recency, never per-model performance."""
+    report_by_run = {report['run_id']:report for report in reports}
+    cohorts = defaultdict(lambda:defaultdict(dict))
+    for (mid,domain,run),rows in grouped.items():
+        report = report_by_run[run]
+        comparison = comparison_for(report,rows)
+        score = metrics(rows)
+        if not comparison or score['samples'] < 2:
+            continue
+        score['comparison'] = comparison
+        cohorts[domain][comparison_key(score)][mid] = (score,rows,report['date'])
+    selected = {}
+    for domain, options in cohorts.items():
+        # One tested model cannot establish a comparative preference. Keep its
+        # report archived until a common campaign actually measures its peers.
+        comparable = [(key,models) for key,models in options.items() if len(models) >= 2]
+        if not comparable:
+            continue
+        _, models = max(comparable, key=lambda item:(len(item[1]),
+                         max(value[2] for value in item[1].values()), item[0]))
+        for mid,(score,rows,_) in models.items():
+            selected[(mid,domain)] = (score,rows)
+    return selected
 
 
 def main():
@@ -72,32 +121,12 @@ def main():
             events=[json.loads(line) for line in (folder/'events.jsonl').read_text().splitlines() if line]
             events=[e for e in events if not e.get('evaluation_regrade')]+[event]
             atomic_write(folder/'events.jsonl',''.join(json.dumps(e,ensure_ascii=False)+'\n' for e in events))
-    choices=defaultdict(list)
-    expected={d:{c[0] for c in b.CASES if c[1]==d} for d in {c[1] for c in b.CASES}}
-    profiles=defaultdict(list)
-    for (mid,domain,run),rows in grouped.items():
-        if any(r['methodology_version'] < 2 for r in rows): continue
-        if any(r['profile']['sampling'] != 'default' for r in rows): continue
-        if any(not r['streaming'] for r in rows): continue
-        if any(r['api'] != 'chat' for r in rows): continue
-        if not expected[domain].issubset({r['case'] for r in rows}) or any(r['status']=='blocked' for r in rows): continue
-        profile=rows[0]['profile']
-        key=(mid,domain,profile['reasoning'],profile['max_tokens'],profile['retries'])
-        profiles[key].extend(rows)
-    for (mid,domain,*_profile),rows in profiles.items():
-        score=metrics(rows)
-        if score['samples']<2: continue
-        choices[(mid,domain)].append((score,rows))
-    evidence={'schema':1,'source':next(iter(sources)),'created_at':max(r['date'] for r in reports),'scope':'Small synthetic per-domain evaluations, not a general quality certification or a Codex comparison.','reports':[str(p.resolve()) for p in args.reports],'models':{}}
-    selected_rows=defaultdict(list)
-    for (mid,domain),options in choices.items():
-        score,rows=min(options,key=lambda item:(-item[0]['passed']/item[0]['samples'],item[0]['errors']/item[0]['samples'],item[0]['median_seconds'],item[0]['median_cost_eur']))
+    evidence={'schema':2,'source':next(iter(sources)),'created_at':min(r['date'] for r in reports),'scope':'Small synthetic per-domain evaluations from comparable campaigns; not a general quality certification or a Codex comparison.','reports':[str(p.resolve()) for p in args.reports],'models':{}}
+    for (mid,domain),(score,rows) in comparable_scores(reports,grouped).items():
         model=evidence['models'].setdefault(mid,{'domains':{},'settings':{'reasoning_domains':[]}})
         model['domains'][domain]=score
-        if domain!='vision': selected_rows[mid].extend(rows)
-        if rows[0]['profile']['reasoning']=='none' and score['passed']==score['samples'] and not score['errors']:
+        if all(row['settings'].get('openai_reasoning_effort')=='none' for row in rows) and score['passed']==score['samples'] and not score['errors']:
             model['settings']['reasoning_effort']='none';model['settings']['reasoning_domains'].append(domain)
-    for mid,rows in selected_rows.items(): evidence['models'][mid]['domains']['general']=metrics(rows)
     if args.apply:
         from ovh_evaluation import load_evidence
         target=args.data_root/'model-evaluations.json'
@@ -107,7 +136,7 @@ def main():
     text=['Évaluations du catalogue OVH — synthèse','',f"{len(all_rows)} résultats enregistrés, dont {sum(r['status']=='skipped' for r in all_rows)} non applicables et {sum(r['status']=='blocked' for r in all_rows)} bloqués avant appel par le budget.",
           'Les essais système/réseau/OS sont des cas synthétiques : aucune commande sur vos machines. Le code Python produit est testé par 6 assertions. Les tests web exigent des appels réels de recherche et lecture. Les images sont des captures synthétiques archivées.',
           'Les scores techniques acceptent des commandes équivalentes ; les réponses brutes restent consultables. Un petit nombre de cas ne certifie pas une spécialisation. Aucun chronométrage Codex comparable n’a été effectué.','',
-          'Les premiers essais (méthode 1) restent archivés mais ne règlent pas le routeur. Le routage utilise le score au premier essai ; le score après feedback est présenté séparément.', '',
+          'Les essais sans contrat de comparaison restent archivés mais ne règlent pas le routeur. Seuls les modèles mesurés dans une campagne commune, avec les mêmes cas et réglages effectifs, sont comparés. Le score au premier essai gouverne le routage ; le score après feedback est séparé.', '',
           '| Modèle | Domaine | Premier essai | Après feedback | Erreurs | Médiane s | Tokens médians (réussites) |', '|---|---|---:|---:|---:|---:|---:|']
     for mid,model in sorted(evidence['models'].items()):
         for domain,value in sorted(model['domains'].items()):

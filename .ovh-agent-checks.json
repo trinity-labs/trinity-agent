@@ -347,6 +347,23 @@
       "protect": [
         "scripts/test-coherence.py"
       ]
+    },
+    {
+      "name": "Budgets adaptatifs et capacités du modèle",
+      "paths": [
+        "ovh_limits.py",
+        "ovh-agent.py",
+        "ovh_context.py",
+        "ovh_request.py",
+        "scripts/test-limits.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-limits.py"
+      ],
+      "protect": [
+        "scripts/test-limits.py"
+      ]
     }
   ]
 }

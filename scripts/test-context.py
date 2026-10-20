@@ -14,7 +14,7 @@ from pydantic_ai.models.function import FunctionModel
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 from ovh_context import (compact_context, estimate_tokens, SUMMARY_PREFIX, bound_tool_outputs,
-                         text_only_history, TOOL_OUTPUT_CHARS, transcript, text_tokens)
+                         text_only_history, context_limits, transcript, text_tokens)
 from ovh_memory import ConversationMemory
 
 
@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory() as directory:
     result = bound_tool_outputs([ModelRequest(parts=[ToolReturnPart('lookup', output, tool_call_id='big')])], memory)
     assert output in [p.read_text() for p in memory.docs.glob('*.md')]
     assert 'prefix' in result[0].parts[0].content and 'suffix' in result[0].parts[0].content
-    assert len(result[0].parts[0].content) < TOOL_OUTPUT_CHARS
+    assert len(result[0].parts[0].content) < context_limits().tool_output_chars
     # Many tool rounds in ONE user turn can compact at a completed tool boundary.
     history = [ModelRequest(parts=[SystemPromptPart('Never edit production.'), UserPromptPart('Inspect task EXACT-42')])]
     for i in range(12):
@@ -202,6 +202,33 @@ with tempfile.TemporaryDirectory() as folder:
         assert json.loads((location/'plan.json').read_text())['current_step'] == 1
 print('PASS: real multi-tool Pydantic loop compacts mid-run, summary accounting, persistence and plan validation')
 
+# A backend-created archive reference must expose its read tools immediately,
+# including when the original user request did not mention memory at all.
+from ovh_tools import ToolSelection
+with tempfile.TemporaryDirectory() as folder:
+    selection = ToolSelection('Affiche le résultat.')
+    assert selection.visible('read_memory') and selection.visible('search_memory')
+    history = [ModelRequest(parts=[UserPromptPart('Inspecte le fichier.')]),
+               ModelResponse(parts=[ToolCallPart('read_file', {'path':'example.txt'}, tool_call_id='archive')]),
+               ModelRequest(parts=[ToolReturnPart('read_file', 'observed output\n'*5000, tool_call_id='archive')]),
+               ModelResponse(parts=[TextPart('Lecture terminée.')])]
+    def archive_model(messages, info):
+        assert {'read_memory','search_memory'} <= {tool.name for tool in info.function_tools}
+        assert any(isinstance(part,ToolReturnPart) and 'source exacte : read_memory(' in part.content
+                   for message in messages for part in message.parts)
+        return ModelResponse(parts=[TextPart('Archive accessible.')])
+    fm = FunctionModel(archive_model)
+    with patch.object(a,'conversation_dir',return_value=Path(folder)), \
+         patch.object(a,'save_history'), patch.object(a,'emit'), \
+         patch.object(a,'context_overhead',return_value=0), \
+         patch.object(a,'ACTIVE_TOOLS',selection), patch.object(a,'TASK_ENGINE',None), \
+         patch.object(a,'fetch_model_catalog',return_value=[{'id':fm.model_name,'context_length':131072}]), \
+         patch.object(a,'model_capabilities',return_value={'reasoning':False,'tools':True}):
+        memory_tools=[tool for tool in a.agent_tools() if tool.name in {'read_memory','search_memory'}]
+        agent=Agent(fm,tools=memory_tools,capabilities=[ProcessHistory(a.manage_model_context)])
+        assert agent.run_sync('Affiche le résultat.',message_history=history).output=='Archive accessible.'
+print('PASS: backend archive references expose memory tools in the first affected SDK round')
+
 # Exercise the actual deadline, cancellation and fallback without network or credits.
 from types import SimpleNamespace
 with tempfile.TemporaryDirectory() as folder:
@@ -246,14 +273,28 @@ with tempfile.TemporaryDirectory() as folder:
                 ModelResponse(parts=[ThinkingPart('Previous unsupported reasoning: catalogue missing'), TextPart('No catalogue exists.'), ToolCallPart('read_file', {'path':'chat.js'}, tool_call_id='read')]),
                 ModelRequest(parts=[ToolReturnPart('read_file', 'function renderModels() {}', tool_call_id='read')]),
                 ModelResponse(parts=[TextPart('Tests passed; catalogue missing.')])]
+    def safe_context(*args, **kwargs):
+        assert kwargs.get('automatic') is True, 'Never retrieve raw transcripts automatically'
+        return 'Préférence utilisateur déclarée : conserver le thème.'
     with patch.object(a, 'conversation_dir', return_value=location), \
-         patch.object(a.WorkspaceContext, 'search', side_effect=AssertionError('No auto historical retrieval on edits')):
+         patch.object(a.WorkspaceContext, 'search', side_effect=safe_context), \
+         patch.object(a.ConversationMemory, 'search', side_effect=safe_context):
         clean = a.history_with_memory(polluted, 'Modernise la vue', include_excerpts=False)
     validate_protocol(clean)
     assert 'No catalogue exists' not in str(clean) and 'Tests passed' not in str(clean)
     assert 'fake tool result' not in str(clean)
     assert not any(isinstance(p, ThinkingPart) for m in clean for p in m.parts)
     assert 'function renderModels()' in str(clean) and 'Keep existing layout' in str(clean)
+    assert 'conserver le thème' in str(clean), 'Explicit user preferences survive edit history isolation'
+    # Production resets tool selection after preparing memory, before the SDK call.
+    from types import SimpleNamespace
+    from ovh_tools import ToolSelection
+    selection = ToolSelection('Modernise la vue')
+    with patch.object(a, 'ACTIVE_TOOLS', selection), patch.object(a, 'TASK_ENGINE', None):
+        ctx = SimpleNamespace(prompt='Modernise la vue', messages=clean)
+        for name in ('search_memory', 'read_memory'):
+            definition = SimpleNamespace(name=name, description='memory', parameters_json_schema={})
+            assert asyncio.run(a.prepare_tool_for_request(ctx, definition)) is definition
     assert next((location/'context-checkpoints').glob('*.json')).read_bytes() == ModelMessagesTypeAdapter.dump_json(polluted)
     memory = ConversationMemory(location)
     async def fabricated_summary(source, maximum):

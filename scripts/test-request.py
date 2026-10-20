@@ -62,11 +62,40 @@ class Preparation(unittest.TestCase):
         self.assertTrue(security.needs_web)
         self.assertFalse(security.needs_workspace)
 
+    def test_apply_requests_are_edits_without_promoting_descriptions_or_prohibitions(self):
+        for prompt in ('applique une opacity 0.5 au logo', 'Applique une opacité de 50 % au logo',
+                       'ok applique la prochaine correction au logo', 'Peux-tu appliquer cette couleur au logo ?',
+                       'Veuillez appliquer cette couleur au logo', 'Please apply opacity 0.5 to the logo'):
+            with self.subTest(prompt=prompt):
+                analysis = r.analyze_request(prompt)
+                self.assertEqual((analysis.intent, analysis.domain, analysis.needs_workspace), ('edit','ui',True))
+        for prompt in ('Comment appliquer une opacity au logo ?', "J’ai appliqué une opacity au logo",
+                       "L’application du logo est terminée", "N’applique pas cette opacity au logo",
+                       'Lis le CSS sans appliquer la correction', 'Applique une opacity au logo, en lecture seule',
+                       'Applique une opacity au logo. Aucune modification.',
+                       'Corrige ton analyse, ne modifie pas les fichiers'):
+            with self.subTest(prompt=prompt):
+                self.assertNotEqual(r.analyze_request(prompt).intent, 'edit')
+
     def test_public_question_does_not_inspect_workspace(self):
         with patch.object(r, 'retrieve_context', side_effect=AssertionError('Filesystem not needed')):
             result = r.prepare_request('Explique Docker', [], self.project, self.allowed)
         self.assertFalse(result['analysis']['needs_workspace'])
         self.assertEqual(result['context'], '')
+
+    def test_preflight_budget_resolves_auto_from_selected_model_capacity(self):
+        from ovh_limits import NAMES, resolve_limits
+        cards = [{'context_length':32768, 'max_completion_tokens':8192},
+                 {'context_length':262144, 'max_completion_tokens':32768}]
+        # The same request uses the provider window without a fixed char cap.
+        with patch.dict(os.environ, {'OVH_AGENT_'+name:'auto' for name in NAMES}), \
+             patch.object(r, 'retrieve_context', return_value={'context':'', 'sources':[]}) as retrieve:
+            budgets = []
+            for card in cards:
+                r.prepare_request('Modifie `chat.css`', [], self.project, self.allowed, context_card=card)
+                budgets.append(retrieve.call_args.args[4])
+                self.assertEqual(budgets[-1], resolve_limits(card).preflight_context_chars)
+            self.assertGreater(budgets[1], budgets[0])
 
     def test_audits_and_descriptive_modifications_do_not_become_edit_requests(self):
         for prompt in (

@@ -1,18 +1,92 @@
 """Exact Markdown archives plus bounded lexical retrieval, with no LLM calls."""
 import hashlib
+import heapq
 import json
 import math
 import os
 import re
 import tempfile
 from pathlib import Path
-from ovh_cache import CACHE, file_signature, positive_env, read_text_cached
+from ovh_cache import CACHE, file_signature, read_text_cached, memory_index_limits
 
 STOP_WORDS = set('avec dans pour les des une que qui est sur pas plus cette comme mais donc tout tous fait faire peux veut veux nous vous elle elles ils aux du de le la un et en à au ce ces il on je tu se ne ou'.split())
-INDEX_CACHE_BYTES = positive_env('OVH_AGENT_INDEX_CACHE_MB', 32) * 1024 * 1024
+EVIDENCE_EVENT_BYTES = 2 * 1024 * 1024
 
 def terms(text):
     return {word for word in re.findall(r'[\w-]{3,}', text.casefold()) if word not in STOP_WORDS}
+
+def _check_payload(text):
+    try:
+        event = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    valid = (isinstance(event, dict) and event.get('type') == 'verification_check'
+            and isinstance(event.get('timestamp'), str) and bool(event['timestamp'].strip())
+            and isinstance(event.get('check'), str) and bool(event['check'].strip())
+            and type(event.get('passed')) is bool and type(event.get('exit_code')) is int
+            and event.get('executed') is not False
+            and (event['passed'] is False or event['exit_code'] == 0))
+    return event if valid else None
+
+
+def _receipt_key(event):
+    # archive_event appends these descriptive annotations to the memory copy,
+    # after writing the original controller event. They confer no authority.
+    payload = {key:value for key,value in event.items()
+               if key not in {'evidence_status','evidence_scope'}}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _event_signature(folder):
+    folder = Path(folder)
+    path = folder / 'events.jsonl'
+    try:
+        if folder.is_symlink() or path.is_symlink():
+            return None
+        return file_signature(path)
+    except OSError:
+        return None
+
+
+def controller_receipts(folder):
+    """Read actual controller events, never infer origin from document content.
+
+    The recent event tail bounds work on long archives. Older evidence remains
+    available by explicit historical tools without automatic promotion.
+    """
+    folder = Path(folder)
+    signature = _event_signature(folder)
+    if signature is None:
+        return frozenset()
+    key = ('controller-memory-receipts-v1', str(folder.absolute()))
+    cached = CACHE.get(key, signature)
+    if cached is not None:
+        return cached
+    path = folder / 'events.jsonl'
+    try:
+        with path.open('rb') as stream:
+            stream.seek(0, os.SEEK_END)
+            start = max(0, stream.tell() - EVIDENCE_EVENT_BYTES)
+            stream.seek(start)
+            if start:
+                stream.readline()  # Discard a possibly partial first event.
+            raw = stream.read(EVIDENCE_EVENT_BYTES)
+        if _event_signature(folder) != signature:
+            return frozenset()
+        recorded = frozenset(_receipt_key(event) for line in raw.decode('utf-8', errors='replace').splitlines()
+                             if (event := _check_payload(line)) is not None)
+    except OSError:
+        return frozenset()
+    CACHE.put(key, signature, recorded, 512 + len(recorded) * 160)
+    return recorded
+
+
+def execution_evidence(text, folder, recorded=None):
+    """Require both a typed check and its exact source in controller events."""
+    event = _check_payload(text)
+    if event is None:
+        return False
+    return _receipt_key(event) in (controller_receipts(folder) if recorded is None else recorded)
 
 def atomic_write(path, text):
     fd, temporary = tempfile.mkstemp(prefix='.write-', dir=path.parent)
@@ -82,7 +156,7 @@ class ConversationMemory:
                         continue
                     if event.get('type') in {'user', 'response'}:
                         self.put(str(event['type']) + ': ' + str(event.get('text', '')))
-                    elif event.get('type') in {'tool_end', 'file_change'}:
+                    elif event.get('type') in {'tool_end', 'file_change', 'verification_check'}:
                         self.put(json.dumps(event, ensure_ascii=False))
         legacy = self.folder / 'context-memory.txt'
         if legacy.exists():
@@ -120,51 +194,80 @@ class ConversationMemory:
     def search_index(self):
         # Markdown documents are authoritative. Legacy fragment indexes can
         # outlive a source edit and must never resurrect a corrected statement.
-        paths = sorted(p for p in self.docs.glob('*.md')
-                       if not p.is_symlink() and re.fullmatch(r'[a-f0-9]{64}', p.stem))
+        index_cache_bytes, max_index, document_chars = memory_index_limits()
+        max_paths = max_index // 512
+        paths = heapq.nsmallest(max_paths + 1, (p for p in self.docs.glob('*.md')
+                       if not p.is_symlink() and re.fullmatch(r'[a-f0-9]{64}', p.stem)))
+        partial = len(paths) > max_paths
+        paths = paths[:max_paths]
         stamps = []
         for path in paths:
             try:
                 stamps.append((path.name, file_signature(path)))
             except FileNotFoundError:
                 pass
-        signature = hashlib.sha256(json.dumps(['markdown-v2', stamps]).encode()).hexdigest()
-        key = ('search-index-v2', str(self.root.absolute()))
+        signature = hashlib.sha256(json.dumps(['markdown-v5', stamps, _event_signature(self.folder),
+            index_cache_bytes, max_index, document_chars, partial]).encode()).hexdigest()
+        key = ('search-index-v5', str(self.root.absolute()))
         cached = CACHE.get(key, signature)
         if cached is not None:
             return cached
         snapshot = self.root / 'cache' / 'search-v1.json'
         entries = None
         try:
-            if snapshot.stat().st_size <= INDEX_CACHE_BYTES:
+            if index_cache_bytes and snapshot.stat().st_size <= min(index_cache_bytes, max_index):
                 payload = json.loads(snapshot.read_text(encoding='utf-8'))
-                if payload['signature'] == signature:
+                if payload['signature'] == signature and type(payload.get('partial')) is bool:
                     entries = payload['entries']
                     if not isinstance(entries, list) or not all(
                         isinstance(e, dict) and isinstance(e.get('reference'), str)
                         and isinstance(e.get('offset'), int) and isinstance(e.get('text'), str)
+                        and isinstance(e.get('execution_evidence'), bool)
                         and isinstance(e.get('tokens'), list) and all(isinstance(t, str) for t in e['tokens'])
                         for e in entries):
                         entries = None
+                    else:
+                        partial = payload['partial']
         except (OSError, ValueError, KeyError, TypeError):
             pass
         if entries is None:
             entries = []
+            recorded = controller_receipts(self.folder) if document_chars and max_index else frozenset()
+            used = 256  # JSON envelope and separators.
             for path in paths:
                 try:
+                    read_limit = min(document_chars, max(0, max_index - used) // 4)
+                    if not read_limit:
+                        partial = True
+                        break
                     before = file_signature(path)
-                    text = read_text_cached(path)
+                    raw = read_text_cached(path, limit=read_limit + 1)
+                    text = raw[:read_limit]
+                    partial = partial or len(raw) > read_limit
                     if before != file_signature(path):
+                        partial = True
                         continue
+                    observed = len(raw) <= read_limit and execution_evidence(text, self.folder, recorded)
                     for offset in range(0, len(text), 1000):
                         chunk = text[offset:offset + 1200]
-                        entries.append({'reference': path.stem, 'offset': offset,
-                                        'text': chunk, 'tokens': sorted(terms(chunk))})
+                        entry = {'reference': path.stem, 'offset': offset,
+                                        'text': chunk, 'tokens': sorted(terms(chunk)),
+                                        'execution_evidence': observed}
+                        size = len(json.dumps(entry, ensure_ascii=False).encode()) + 2
+                        if used + size > max_index:
+                            partial = True
+                            break
+                        used += size
+                        entries.append(entry)
+                    else:
+                        continue
+                    break
                 except (OSError, ValueError, KeyError, TypeError):
+                    partial = True
                     continue
-            serialized = json.dumps({'signature': signature, 'entries': entries}, ensure_ascii=False)
+            serialized = json.dumps({'signature': signature, 'entries': entries, 'partial': partial}, ensure_ascii=False)
             try:
-                if len(serialized.encode()) <= INDEX_CACHE_BYTES:
+                if index_cache_bytes and len(serialized.encode()) <= min(index_cache_bytes, max_index):
                     snapshot.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                     atomic_write(snapshot, serialized)
                 else:
@@ -175,27 +278,32 @@ class ConversationMemory:
         for index, item in enumerate(entries):
             for word in item['tokens']:
                 inverted.setdefault(word, set()).add(index)
-        value = (entries, inverted)
+        value = (entries, inverted, partial)
         # Conservative accounting for strings, dicts, sets and posting integers.
         size = sum(2048 + 4 * len(e['text']) + sum(256 + 4 * len(t) for t in e['tokens']) for e in entries)
         CACHE.put(key, signature, value, size)
         return value
 
-    def search(self, query, budget=2400, limit=3):
+    def search(self, query, budget=2400, limit=3, *, automatic=False):
+        if budget <= 0:
+            return ''
         self.bootstrap()
         words = terms(query)
         if not words:
             return ''
-        docs, inverted = self.search_index()
+        docs, inverted, partial = self.search_index()
         candidates = set().union(*(inverted.get(word, set()) for word in words))
         ranked = []
         for index in candidates:
             item = docs[index]
+            if automatic and not item['execution_evidence']:
+                continue
             matched = words.intersection(item['tokens'])
             if matched:
                 score = sum(math.log(1 + len(docs) / len(inverted[w])) for w in matched)
                 ranked.append((score, item['reference'], item['offset'], item['text']))
-        result = ''
+        result = ('[Recherche mémoire partielle : limite de ressources atteinte ; '
+                  'consulter le JOURNAL.md et read_memory pour les sources omises.]\n' if partial else '')[:budget]
         seen = set()
         for _, reference, offset, text in sorted(ranked, reverse=True):
             if text in seen:

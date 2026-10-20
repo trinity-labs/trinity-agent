@@ -117,7 +117,7 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertFalse((self.data/'memory/AGGREGATE.md').exists())
     def test_partial_documents_are_explicit_and_full_source_is_preserved(self):
         ref=ConversationMemory(self.folder).put('alpha '*12000)
-        with patch('ovh_project_memory.MAX_DOCUMENT_CHARS',64000):
+        with patch.dict(os.environ,{'OVH_AGENT_MEMORY_DOCUMENT_CHARS':'64000'}):
             report=self.memory.materialize();self.assertTrue(report['partial'])
         self.assertEqual((self.folder/'memory/documents'/(ref+'.md')).stat().st_size,72000)
     def test_long_archive_is_searchable_beyond_its_first_64k_characters(self):
@@ -127,7 +127,7 @@ class MarkdownMemoryTests(unittest.TestCase):
 
     def test_zero_disk_cache_keeps_retrieval_available(self):
         ConversationMemory(self.folder).put('Décision lilas')
-        with patch('ovh_project_memory.DISK_INDEX_BYTES',0):
+        with patch.dict(os.environ,{'OVH_AGENT_INDEX_CACHE_MB':'0'}):
             self.assertIn('lilas',self.memory.search('lilas'))
             self.assertFalse(self.memory.index_file.exists())
 
@@ -164,6 +164,23 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertIn('verification_check',self.memory.search('régressions'))
         self.assertIn('échoué',self.ctx.read('project','regressions'))
 
+    def test_automatic_recall_accepts_executed_failure_but_not_claims_or_refusals(self):
+        memory=ConversationMemory(self.folder)
+        event={'type':'verification_check','check':'logo CSS',
+            'passed':False,'exit_code':1,'timestamp':'2026-10-20T19:00:00Z'}
+        (self.folder/'events.jsonl').write_text(json.dumps(event)+'\n')
+        failed=memory.put(json.dumps(event))
+        for invalid in ({'passed':True,'exit_code':1}, {'passed':True,'exit_code':True},
+                        {'passed':False,'exit_code':None}, {'passed':True,'exit_code':0,'executed':False}):
+            memory.put(json.dumps({'type':'verification_check','check':'logo invalid',
+                'timestamp':'2026-10-20T19:00:00Z',**invalid}))
+        memory.put('response: Tous les contrôles du logo réussissent à 36px.')
+        self.memory.initialise()
+        (self.memory.root/'NOTES.md').write_text('Le logo est à 36px selon une ancienne réponse.')
+        result=self.memory.search('logo',automatic=True)
+        self.assertIn(failed,result);self.assertNotIn('invalid',result);self.assertNotIn('36px',result)
+        self.assertIn('36px',self.memory.search('logo 36px'))
+
     def test_exact_documented_question_is_answered_locally_and_updated(self):
         question='Comment lancer les tests du projet ?'
         file=self.work/'SOLUTIONS.md'
@@ -185,7 +202,7 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertIsNone(self.ctx.answer(question))
         (self.work/'ONE.md').write_text('## '+question+'\nPython\n')
         self.assertIsNone(self.memory.answer(question,deadline=time.monotonic()-1))
-        with patch('ovh_project_memory.MAX_DOCUMENT_CHARS',10):self.assertIsNone(self.ctx.answer(question))
+        with patch.dict(os.environ,{'OVH_AGENT_MEMORY_DOCUMENT_CHARS':'10'}):self.assertIsNone(self.ctx.answer(question))
 
     def test_no_direct_answer_for_action_verification_or_approximate_match(self):
         for question in ['Exécute les tests ?', 'Quels tests vérifier maintenant ?', 'Pourquoi cette erreur ?',
