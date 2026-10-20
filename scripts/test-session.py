@@ -103,6 +103,14 @@ class Sessions(unittest.TestCase):
         self.assertEqual(calls, ['second'])
         self.assertEqual(a.read_followups(), [])
 
+    def test_manual_model_change_emits_a_persistent_conversation_transition(self):
+        _, outputs = self.run_failed_queue([
+            {'type': 'set_model', 'model': 'next-model'}, {'type': 'shutdown'}])
+        changed = next(event for event in outputs if event['type'] == 'model_changed')
+        self.assertEqual(changed['from_model'], 'fixture-model')
+        self.assertEqual(changed['to_model'], 'next-model')
+        self.assertEqual(outputs[-1], {'type': 'model_selected', 'model': 'next-model'})
+
     def test_followup_received_during_failed_preparation_stays_paused(self):
         def prepare(requests):
             self.assertTrue(a.FOLLOWUP_RUNNING)

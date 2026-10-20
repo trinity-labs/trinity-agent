@@ -308,6 +308,20 @@ main {
   border-radius: 7px;
   background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
 }
+.model-change {
+  display: grid;
+  grid-template-columns: minmax(20px, 1fr) auto minmax(20px, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin: 18px 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+.model-change-line { height: 1px; background: var(--vscode-panel-border); opacity: .72; }
+.model-change-content { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.model-change-icon, .model-change-info { display: inline-flex; align-items: center; justify-content: center; opacity: .82; }
+.model-change-icon .agent-icon { width: 18px; height: 18px; }
+.model-change-info { width: 13px; height: 13px; border: 1px solid currentColor; border-radius: 50%; font: 600 9px/1 var(--vscode-font-family); }
 .activity {
   margin: 2px 0 12px;
   border: 1px solid var(--vscode-panel-border);

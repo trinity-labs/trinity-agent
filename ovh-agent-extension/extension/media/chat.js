@@ -635,6 +635,38 @@ function addUserMessage(text, images = [], timestamp = undefined) {
   scrollToBottom();
 }
 
+function modelDisplayName(model) {
+  return normalizeModelSelection(model) === "auto-balanced" ? t("Auto équilibré") : String(model || "");
+}
+
+function addModelChange(data) {
+  removeWelcome();
+  const divider = document.createElement("div");
+  divider.className = "model-change";
+  divider.setAttribute("role", "status");
+  const lineBefore = document.createElement("span");
+  lineBefore.className = "model-change-line";
+  const content = document.createElement("span");
+  content.className = "model-change-content";
+  const modelIcon = document.createElement("span");
+  modelIcon.className = "model-change-icon";
+  modelIcon.innerHTML = uiIcon("model");
+  const label = document.createElement("span");
+  label.textContent = t("Modèle changé de {0} vers {1}.", modelDisplayName(data.from_model), modelDisplayName(data.to_model));
+  const info = document.createElement("span");
+  info.className = "model-change-info";
+  info.textContent = "i";
+  info.title = t("Les prochains messages utiliseront ce modèle. Le contexte de la conversation est conservé.");
+  info.setAttribute("aria-label", info.title);
+  const lineAfter = document.createElement("span");
+  lineAfter.className = "model-change-line";
+  content.append(modelIcon, label, info);
+  divider.append(lineBefore, content, lineAfter);
+  messages.appendChild(divider);
+  persist();
+  scrollToBottom();
+}
+
 function addArchivedAssistant(html, failed = false, timestamp = null) {
   removeWelcome();
   const article = document.createElement("article");
@@ -783,6 +815,7 @@ function renderArchiveMessages(items) {
   messages.innerHTML = "";
   for (const item of items || []) {
     if (item.type === "user" && !item.steering && currentRun) finishRun("stopped");
+    if (item.type === "model_changed") addModelChange(item);
     if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
     if (item.type === "tool_start") addActivity(item);
     if (item.type === "tool_end") finishActivity(item);
@@ -2386,6 +2419,7 @@ window.addEventListener("message", ({ data }) => {
     finishActivity({...data, success: data.passed === true, detail, completedOnly:true});
   }
   if (data.type === "file_change") addFileChange(data);
+  if (data.type === "model_changed") addModelChange(data);
   if (data.type === "model_active") {
     if (data.selection) selectedModel = data.selection;
     lastRoutedModel = selectedModel === "auto-balanced" ? (data.model || "") : "";

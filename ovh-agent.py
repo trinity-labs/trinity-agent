@@ -318,7 +318,7 @@ def update_metadata(*, first_message: str = "", **changes: object) -> bool:
 def archive_event(payload: dict[str, object]) -> None:
     if payload.get("type") not in {
         "user", "response", "error", "tool_start", "tool_end", "approval", "approval_result", "file_change",
-        "model_active", "model_routed", "vision_reading", "context_compacted", "request_prepared", "usage", "verification_status", "verification_check", "task_checkpoint", "plan_updated", "steer_applied", "workflow_action", "execution_evidence", "questionnaire",
+        "model_active", "model_routed", "model_changed", "vision_reading", "context_compacted", "request_prepared", "usage", "verification_status", "verification_check", "task_checkpoint", "plan_updated", "steer_applied", "workflow_action", "execution_evidence", "questionnaire",
     }:
         return
     if not CONVERSATION_ID and payload.get("type") != "user":
@@ -2877,7 +2877,7 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
                 items.append({key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose",
                               "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering") if key in event})
                 continue
-            if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "execution_evidence", "model_active", "tool_start", "tool_end"}:
+            if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "execution_evidence", "model_active", "model_changed", "tool_start", "tool_end"}:
                 if event.get("type") == "user" and isinstance(event.get("images"), list):
                     restored_images: list[dict[str, str]] = []
                     base_folder = conversation_dir(conversation_id).resolve()
@@ -3247,9 +3247,17 @@ def main_json_lines() -> None:
         if request_type == "set_model":
             requested_model = normalize_model_selection(request.get("model", ""))
             if requested_model == AUTO_MODEL or is_selectable_model(requested_model):
+                previous_model = selected_model
                 selected_model = requested_model
                 save_selected_model(selected_model)
                 update_metadata(model=selected_model)
+                try:
+                    conversation_started = any(json.loads(line).get("type") == "user"
+                        for line in (conversation_dir() / "events.jsonl").read_text(encoding="utf-8").splitlines())
+                except (OSError, ValueError, TypeError):
+                    conversation_started = False
+                if conversation_started and previous_model != selected_model:
+                    emit({"type": "model_changed", "from_model": previous_model, "to_model": selected_model})
                 emit({"type": "model_selected", "model": selected_model})
             else:
                 emit({"type": "error", "text": f"Le modèle {requested_model} n’est pas compatible avec le chat agent."})

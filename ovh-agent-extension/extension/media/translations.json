@@ -377,6 +377,18 @@
     "de": "Ausgewähltes Modell: {0}",
     "es": "Modelo seleccionado: {0}"
   },
+  "Modèle changé de {0} vers {1}.": {
+    "fr": "Modèle changé de {0} vers {1}.",
+    "en": "Model changed from {0} to {1}.",
+    "de": "Modell von {0} zu {1} gewechselt.",
+    "es": "Modelo cambiado de {0} a {1}."
+  },
+  "Les prochains messages utiliseront ce modèle. Le contexte de la conversation est conservé.": {
+    "fr": "Les prochains messages utiliseront ce modèle. Le contexte de la conversation est conservé.",
+    "en": "The next messages will use this model. The conversation context is preserved.",
+    "de": "Die nächsten Nachrichten verwenden dieses Modell. Der Gesprächskontext bleibt erhalten.",
+    "es": "Los próximos mensajes usarán este modelo. Se conserva el contexto de la conversación."
+  },
   "Accès complet": {
     "fr": "Accès complet",
     "en": "Full access",

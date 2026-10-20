@@ -286,6 +286,27 @@ test('archive header restores its own routed model and clears stale routes', () 
   } finally {dom.window.close();}
 });
 
+test('manual model changes render and restore an inline conversation divider',()=>{
+  const {dom,w,emit}=browser();
+  try {
+    emit({type:'model_changed',from_model:'GPT-6 Astra',to_model:'GPT-5.6 Sol'});
+    let divider=w.document.querySelector('.model-change');
+    assert(divider);assert.match(divider.textContent,/GPT-6 Astra/);assert.match(divider.textContent,/GPT-5\.6 Sol/);
+    assert.equal(divider.querySelectorAll('.model-change-line').length,2);
+    assert.match(divider.querySelector('.model-change-info').title,/context|contexte/i);
+    emit({type:'archive_loaded',id:'model-history',messages:[
+      {type:'user',text:'Avant'},
+      {type:'model_changed',from_model:'Auto équilibré',to_model:'Qwen'},
+      {type:'user',text:'Après'}
+    ]});
+    divider=w.document.querySelector('.model-change');
+    assert(divider);assert.match(divider.textContent,/Qwen/);
+    const children=[...w.document.getElementById('messages').children];
+    assert(children.indexOf(divider)>children.findIndex(node=>node.textContent.includes('Avant')));
+    assert(children.indexOf(divider)<children.findIndex(node=>node.textContent.includes('Après')));
+  } finally {dom.window.close();}
+});
+
 
 test('empty rollback does not claim files were restored',()=>{
   const {dom,w,emit}=browser();

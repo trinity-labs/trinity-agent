@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.2 — 2026-10-20
+
+- Display a persistent inline divider when the user changes models during an existing conversation, including the previous and next model and a context-preservation explanation.
+- Restore model-change dividers in archived conversations without treating automatic routing or initial selection as a manual switch.
+
 ## 1.17.1 — 2026-10-20
 
 - Restore automatic project Markdown recall after the 1.17.0 historical-memory filter excluded authoritative documents.
