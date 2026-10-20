@@ -28,6 +28,14 @@ with patch.dict(os.environ, {
 a.load_evidence = lambda *args, **kwargs: {}
 events = []
 a.emit = events.append
+manifest=a.deleted_paths_from_command("find /tmp/archive -type d -print | xargs -r rm -rf", "/tmp/archive/a\n/tmp/archive/b\n/tmp/archive/a\n")
+assert manifest == ['/tmp/archive/a','/tmp/archive/b']
+with patch.object(a,'VERIFICATION_GUARD',None),patch.object(a,'TASK_ENGINE',None),patch.object(a,'read_task_state',return_value={'deleted_paths':manifest}):
+    deletion_summary=a.validate_task_output('Suppression terminée.')
+assert '**Résultat de la suppression : 2 éléments supprimés**' in deletion_summary
+assert '\n- `/tmp/archive/a`\n- `/tmp/archive/b`' in deletion_summary
+assert a.deleted_paths_from_command('printf lecture', '/tmp/archive/a') == []
+assert a.deleted_paths_from_command("printf '/tmp/a\\n' | tee /tmp/deleted | xargs -r rm -rf", '/tmp/a\n') == ['/tmp/a']
 assert a.normalize_model_selection('auto') == a.AUTO_MODEL
 assert a.normalize_model_selection(a.AUTO_MODEL) == a.AUTO_MODEL
 assert a.normalize_model_selection('gpt-oss-120b') == 'gpt-oss-120b'

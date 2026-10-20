@@ -79,6 +79,21 @@ test('chat selector displays actual resource profile, waits for acknowledgement 
   assert(!picker.disabled);
 });
 
+test('backend process failures release host busy state as well as the webview',async()=>{
+  for(const event of ['error','exit']) {
+    const {provider,posted}=setup({backendPath:path.join(root,'extension.js')});
+    provider.windowLock={};provider.billingCredentials=async()=>undefined;
+    await provider.startAgent();
+    const child=provider.agent;
+    provider.busy=true;provider.clearingConversation=true;
+    child.emit(event,event==='error'?new Error('Simulated backend failure'):1);
+    assert.equal(provider.busy,false,event);
+    assert.equal(provider.clearingConversation,false,event);
+    assert.equal(provider.agent,undefined,event);
+    assert(posted.some(message=>message.type==='error'),event);
+  }
+});
+
 test('stream bursts coalesce and flush before terminal events without losing text',async()=>{
   const {provider,posted}=setup();
   provider.consumeOutput(Array.from({length:100},()=>JSON.stringify({type:'delta',text:'word '})).join('\n')+'\n');

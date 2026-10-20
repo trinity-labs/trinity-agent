@@ -118,17 +118,18 @@ class ConversationMemory:
         return text[:count] + marker.format(offset=count)
 
     def search_index(self):
-        # Validate every source's metadata, including edits made outside this process.
-        paths = sorted(p for p in self.index.glob('*.json') if not p.is_symlink())
-        documents = sorted(p.stem for p in self.docs.glob('*.md') if not p.is_symlink())
+        # Markdown documents are authoritative. Legacy fragment indexes can
+        # outlive a source edit and must never resurrect a corrected statement.
+        paths = sorted(p for p in self.docs.glob('*.md')
+                       if not p.is_symlink() and re.fullmatch(r'[a-f0-9]{64}', p.stem))
         stamps = []
         for path in paths:
             try:
                 stamps.append((path.name, file_signature(path)))
             except FileNotFoundError:
                 pass
-        signature = hashlib.sha256(json.dumps([stamps, documents]).encode()).hexdigest()
-        key = ('search-index-v1', str(self.root.absolute()))
+        signature = hashlib.sha256(json.dumps(['markdown-v2', stamps]).encode()).hexdigest()
+        key = ('search-index-v2', str(self.root.absolute()))
         cached = CACHE.get(key, signature)
         if cached is not None:
             return cached
@@ -149,14 +150,16 @@ class ConversationMemory:
             pass
         if entries is None:
             entries = []
-            available = set(documents)
             for path in paths:
                 try:
-                    payload = json.loads(read_text_cached(path))
-                    chunks = payload if isinstance(payload, list) else [payload]  # Legacy per-chunk index.
-                    for item in chunks:
-                        if item['reference'] in available and isinstance(item['text'], str) and isinstance(item['offset'], int):
-                            entries.append({**item, 'tokens': sorted(terms(item['text']))})
+                    before = file_signature(path)
+                    text = read_text_cached(path)
+                    if before != file_signature(path):
+                        continue
+                    for offset in range(0, len(text), 1000):
+                        chunk = text[offset:offset + 1200]
+                        entries.append({'reference': path.stem, 'offset': offset,
+                                        'text': chunk, 'tokens': sorted(terms(chunk))})
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
             serialized = json.dumps({'signature': signature, 'entries': entries}, ensure_ascii=False)

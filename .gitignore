@@ -156,3 +156,4 @@
 !/scripts/test-process.py
 !/scripts/evaluate-agent.py
 !/scripts/test-agent-evaluation.py
+!/scripts/test-coherence.py

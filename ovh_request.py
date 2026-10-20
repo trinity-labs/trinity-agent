@@ -123,9 +123,11 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     paths = explicit_paths(prompt)
     question = bool(re.match(r'\s*(?:pourquoi|comment|qu[\s’\']|quel\w*|est.ce|what|why|how|expliqu\w*|explain)\b', current))
     # Negated edits must not turn a read-only request into an edit or inherit one.
-    readonly = bool(re.search(r'\b(?:aucune modification|sans modifi\w*|ne modifie pas|do not (?:modify|edit)|read.only)\b', current))
-    actionable = re.sub(r'\b(?:aucune modification|sans modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', current)
-    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|deploi\w*|redemarr\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|augment\w*|fix|add|remove|refactor\w*|build|restart)\b', actionable)) and not question
+    readonly = bool(re.search(r'\b(?:lecture seule|aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit)|read.only)\b', current))
+    actionable = re.sub(r'\b(?:aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', current)
+    # Describing previous modifications is not a request to perform new ones.
+    actionable = re.sub(r'\b(?:modifications?|changements?|creations?|suppressions?|ameliorations?|transformations?|optimisations?)\b', '', actionable)
+    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|deploi\w*|redemarr\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|diminu\w*|augment\w*|agrand\w*|elargi\w*|retreci\w*|fix|add|remove|refactor\w*|build|restart)\b', actionable)) and not question
     # "Passe les boutons en ..." is an edit, while "passe en revue" is inspection.
     action = action or (not question and not readonly and bool(re.search(
         r'\b(?:passe|rends?)\s+(?:les?|la|ces?|cette)\s+[^.!?\n]{1,120}\s+(?:en|sans|transparent\w*|non[- ]fill)\b', actionable)))
@@ -138,14 +140,15 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
                                   or (error_report and (question or not action)))
     followup = bool(re.search(r'\b(?:ca|cela|celle|celui|pareil|meme|reprends?|continue|aussi|encore|it|that|same)\b', current)
                     or re.match(r'\s*(?:et|ok|oui|non|and)\b', current) or fact_check)
+    inspection = bool(re.search(r'\b(?:analys\w*|audit\w*|inspect\w*|review|passe en revue)\b', current))
     def domain_of(text):
         if re.search(r'\b(?:cve(?:-\d+)*|pentest|red.?team|vulnerabil\w*|exploit|xss|sqli|cyber\w*)\b', text):
             return 'security'
-        if re.search(r'\b(?:css|html|interface|icone?s?|boutons?|hover|survol|opacity|opacite|police|font|couleur|branding|vue|catalogue)\b', text):
+        if re.search(r'\b(?:css|html|interface|icone?s?|logos?|boutons?|hover|survol|opacity|opacite|police|font|couleur|branding|vue|catalogue)\b', text):
             return 'ui'
         if re.search(r'\b(?:docker|kubernetes|xen|dom0|domu|vm|serveur|server|ssh|deploi\w*|deploy\w*)\b', text):
             return 'operations'
-        if re.search(r'\b(?:code|fonction|function|fichier|file|bug|tests?|refactor\w*|extension|api|projet|project)\b', text):
+        if re.search(r'\b(?:code|fonction|function|fichier|file|bug|tests?|refactor\w*|extension|agent|api|projet|project)\b', text):
             return 'code'
         return 'general'
     domain = domain_of(current)
@@ -157,19 +160,25 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
             domain = previous_analysis.domain
         if not paths:
             paths = previous_analysis.paths
-    local_reference = bool(re.search(r'\b(?:notre|mon|ma|nos|ton|ce projet|cette extension|this project|our|my)\b', current))
+    local_reference = bool(re.search(r'\b(?:notre|mon|ma|nos|ton|ce projet|cette extension|ce fichier|local|locaux|this project|our|my)\b', current))
     research = bool(re.search(r'\b(?:documentation|documente|actualite|cherche sur|recherche sur|look up|latest)\b', current))
-    wide = bool(re.search(r'\b(?:architecture|migration|refactor\w*|audit|synthese|compar\w*|strategie|plusieurs fichiers|tout le projet|entire project|multi.?file)\b', current))
+    wide = bool(re.search(r'\b(?:architecture|migration|refactor\w*|audit\w*|synthese|compar\w*|strategie|plusieurs fichiers|tout le projet|entire project|multi.?file)\b', current)
+                or inspection and re.search(r'\b(?:complet\w*|entier\w*|tout|agent|projet|project)\b', current))
     intent = 'research' if research and not action else 'edit' if action else 'diagnose' if re.search(r'\b(?:bug|erreur|error|pourquoi|debug\w*|diagnosti\w*)\b', current) else 'question'
     if inherit and not question and not action and not fact_check and not readonly:
         intent = previous_analysis.intent
         wide = previous_analysis.scope == 'project'
     needs_workspace = bool(paths or local_reference or (domain != 'general' and
-                           (action or (followup and previous_analysis and previous_analysis.needs_workspace))))
+                           (action or inspection or (followup and previous_analysis and previous_analysis.needs_workspace))))
     if research and not action and not paths and not local_reference:
         needs_workspace = False
     if fact_check and not paths and not local_reference and not (previous_analysis and previous_analysis.needs_workspace):
         needs_workspace = False
+    # A local contradiction needs local evidence. Web review remains available
+    # for an explicitly documentary question, including within a code project.
+    if fact_check and needs_workspace and not research:
+        fact_check = False
+        intent = 'diagnose'
     complexity = 'complex' if wide or (domain == 'security' and intent != 'question') else 'standard'
     if not wide and len(prompt) < 700 and (domain == 'ui' or intent == 'question'):
         complexity = 'simple'
@@ -413,8 +422,10 @@ def refresh_reader_limits():
             _chunk_readers.resize(min(_chunk_readers.workers, resource_profile(CACHE.bytes).workers))
 
 
-def retrieve_context(analysis, recent_paths, workspace, allowed_root, max_chars=24000, deadline=None):
+def retrieve_context(analysis, recent_paths, workspace, allowed_root, max_chars=24000, deadline=None,
+                     *, navigation_root=None):
     workspace, allowed_root = Path(workspace).resolve(), Path(allowed_root).resolve()
+    navigation_root = Path(navigation_root).resolve() if navigation_root is not None else allowed_root
     deadline = deadline or time.monotonic() + 2.5
     if not analysis.needs_workspace or max_chars <= 0:
         return {'context': '', 'sources': [], 'files_scanned': 0, 'partial': False}
@@ -432,12 +443,12 @@ def retrieve_context(analysis, recent_paths, workspace, allowed_root, max_chars=
             candidates[path] = 100 if direct else 10
             if direct:
                 explicit.add(path)
-            root = _project_root(path, workspace, allowed_root)
-            if root is not None and root not in roots:
+            root = _project_root(path, workspace, navigation_root)
+            if root is not None and root.is_relative_to(allowed_root) and root not in roots:
                 roots.append(root)
         except OSError:
             continue
-    if not roots and workspace != allowed_root and any((workspace / marker).exists() for marker in PROJECT_MARKERS):
+    if not roots and workspace != navigation_root and any((workspace / marker).exists() for marker in PROJECT_MARKERS):
         roots.append(workspace)
     seen = 0
     for root in roots[:2]:
@@ -506,7 +517,7 @@ def retrieve_context(analysis, recent_paths, workspace, allowed_root, max_chars=
                           'resources': asdict(profile)}}
 
 
-def prepare_request(prompt, history, workspace, allowed_root, image_count=0):
+def prepare_request(prompt, history, workspace, allowed_root, image_count=0, *, navigation_root=None):
     global _worker
     started = time.monotonic()
     prompts, paths = recent_context(history)
@@ -519,7 +530,8 @@ def prepare_request(prompt, history, workspace, allowed_root, image_count=0):
         deadline = started + timeout
         def run():
             try:
-                output.put(retrieve_context(analysis, paths, workspace, allowed_root, max_chars, deadline))
+                output.put(retrieve_context(analysis, paths, workspace, allowed_root, max_chars, deadline,
+                                            navigation_root=navigation_root))
             except Exception:
                 output.put({'context': '', 'sources': [], 'files_scanned': 0, 'partial': True})
         with _worker_lock:

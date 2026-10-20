@@ -2351,6 +2351,90 @@
     "de": "Ungültiger Leistungsmodus",
     "es": "Modo de rendimiento no válido"
   },
+  "Observations locales · aucun test fonctionnel exécuté": {
+    "fr": "Observations locales · aucun test fonctionnel exécuté",
+    "en": "Local observations · no functional tests executed",
+    "de": "Lokale Beobachtungen · keine funktionalen Tests ausgeführt",
+    "es": "Observaciones locales · no se ejecutaron pruebas funcionales"
+  },
+  "Aucune suite de tests n’est configurée pour cet audit. Les observations locales ne valident pas le comportement fonctionnel.": {
+    "fr": "Aucune suite de tests n’est configurée pour cet audit. Les observations locales ne valident pas le comportement fonctionnel.",
+    "en": "No test suite is configured for this audit. Local observations do not validate functional behavior.",
+    "de": "Für diese Prüfung ist keine Testsuite konfiguriert. Lokale Beobachtungen bestätigen nicht das funktionale Verhalten.",
+    "es": "No hay una suite de pruebas configurada para esta auditoría. Las observaciones locales no validan el comportamiento funcional."
+  },
+  "Contrôles limités · couverture fonctionnelle incomplète": {
+    "fr": "Contrôles limités · couverture fonctionnelle incomplète",
+    "en": "Limited checks · incomplete functional coverage",
+    "de": "Begrenzte Prüfungen · unvollständige funktionale Abdeckung",
+    "es": "Comprobaciones limitadas · cobertura funcional incompleta"
+  },
+  "Pour les fichiers sans contrôle fonctionnel, seuls le contenu sauvegardé et la syntaxe disponible sont vérifiés. Cela ne valide pas leur comportement.": {
+    "fr": "Pour les fichiers sans contrôle fonctionnel, seuls le contenu sauvegardé et la syntaxe disponible sont vérifiés. Cela ne valide pas leur comportement.",
+    "en": "For files without functional checks, only saved content and available syntax checks are verified. This does not validate their behavior.",
+    "de": "Bei Dateien ohne funktionale Prüfungen werden nur gespeicherte Inhalte und verfügbare Syntaxprüfungen geprüft. Dies bestätigt nicht ihr Verhalten.",
+    "es": "Para archivos sin comprobaciones funcionales, solo se verifican el contenido guardado y la sintaxis disponible. Esto no valida su comportamiento."
+  },
+  "Sans contrôle fonctionnel : {0}": {
+    "fr": "Sans contrôle fonctionnel : {0}",
+    "en": "Without functional checks: {0}",
+    "de": "Ohne funktionale Prüfungen: {0}",
+    "es": "Sin comprobaciones funcionales: {0}"
+  },
+  "En cours": {
+    "fr": "En cours",
+    "en": "Current task",
+    "de": "Aktuelle Aufgabe",
+    "es": "Tarea actual"
+  },
+  "Prochaine demande": {
+    "fr": "Prochaine demande",
+    "en": "Next request",
+    "de": "Nächste Anfrage",
+    "es": "Próxima solicitud"
+  },
+  "Le choix d’accès s’applique à la prochaine demande ou reprise. Pour arrêter les actions en cours, utilise Arrêter.": {
+    "fr": "Le choix d’accès s’applique à la prochaine demande ou reprise. Pour arrêter les actions en cours, utilise Arrêter.",
+    "en": "The access choice applies to the next request or resume. Use Stop to halt current actions.",
+    "de": "Die Zugriffsauswahl gilt für die nächste Anfrage oder Fortsetzung. Mit Stopp werden laufende Aktionen angehalten.",
+    "es": "La elección de acceso se aplica a la próxima solicitud o reanudación. Usa Detener para parar las acciones actuales."
+  },
+  "Accès complet pour la prochaine demande ou reprise": {
+    "fr": "Accès complet pour la prochaine demande ou reprise",
+    "en": "Full access for the next request or resume",
+    "de": "Vollzugriff für die nächste Anfrage oder Fortsetzung",
+    "es": "Acceso completo para la próxima solicitud o reanudación"
+  },
+  "Validation pour la prochaine demande ou reprise": {
+    "fr": "Validation pour la prochaine demande ou reprise",
+    "en": "Approval required for the next request or resume",
+    "de": "Freigabe für die nächste Anfrage oder Fortsetzung erforderlich",
+    "es": "Aprobación requerida para la próxima solicitud o reanudación"
+  },
+  "Demande en cours…": {
+    "fr": "Demande en cours…",
+    "en": "Request in progress…",
+    "de": "Anfrage wird bearbeitet…",
+    "es": "Solicitud en curso…"
+  },
+  "Ce message a déjà démarré. Reprends la tâche interrompue pour continuer.": {
+    "fr": "Ce message a déjà démarré. Reprends la tâche interrompue pour continuer.",
+    "en": "This message has already started. Resume the interrupted task to continue.",
+    "de": "Diese Nachricht wurde bereits gestartet. Setze die unterbrochene Aufgabe fort.",
+    "es": "Este mensaje ya ha comenzado. Reanuda la tarea interrumpida para continuar."
+  },
+  "Ce message a déjà été traité.": {
+    "fr": "Ce message a déjà été traité.",
+    "en": "This message has already been processed.",
+    "de": "Diese Nachricht wurde bereits verarbeitet.",
+    "es": "Este mensaje ya se ha procesado."
+  },
+  "Création de conversation interrompue. Réessaie Nouvelle conversation.": {
+    "fr": "Création de conversation interrompue. Réessaie Nouvelle conversation.",
+    "en": "Conversation creation was interrupted. Try New conversation again.",
+    "de": "Die Erstellung der Unterhaltung wurde unterbrochen. Versuche erneut Neue Unterhaltung.",
+    "es": "Se interrumpió la creación de la conversación. Vuelve a intentar Nueva conversación."
+  },
   "Préparation des images en cours…": {
     "fr": "Préparation des images en cours…",
     "en": "Preparing images…",

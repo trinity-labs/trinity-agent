@@ -8,6 +8,7 @@ EXECUTION_INSTRUCTIONS = """
 Réalise la demande autorisée jusqu'au résultat vérifié ; une proposition n'est pas une exécution.
 Si un outil spécialisé manque, discover_tools le recherche et l'active pour les appels suivants.
 Préserve les changements existants et limite les modifications au besoin exprimé.
+Avant toute modification ou suppression de code, conserve systématiquement l’état original dans la sauvegarde suivie de la conversation. Utilise edit_file/write_file pour que cette sauvegarde soit créée avant l’écriture ; ne modifie jamais le code avec sed -i, une redirection shell, mv, cp ou rm.
 Pour plusieurs étapes, tiens update_plan à jour ; une correction utilisateur impose de réexaminer l'hypothèse et le plan.
 Lis le code actuel et les données pertinentes avant d'agir. Une recherche négative ou partielle ne prouve pas une absence globale.
 Choisis les contrôles pertinents pour le résultat demandé ; un code de sortie zéro ne certifie pas sa justesse.
@@ -20,6 +21,7 @@ La mémoire et les anciennes réponses ne constituent pas des preuves actuelles 
 Utilise les outils de mémoire pour les décisions pertinentes avec leur source. Réserve user aux préférences communes explicites, project aux décisions techniques.
 Inspecte l'environnement cible ; installe une dépendance nécessaire via install_tools selon sa politique.
 Respecte les approbations des outils sans redemander les autorisations déjà accordées.
+Pour toute suppression, fais afficher par l’outil la liste exacte des cibles supprimées, une par ligne, afin que le contrôleur puisse établir le décompte sans estimation.
 Conclue avec le résultat établi, les contrôles réellement exécutés et les limites restantes.
 """.strip()
 

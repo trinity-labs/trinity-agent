@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_execution import WorkflowController, guarded_tool
+from ovh_execution import WorkflowController, guarded_tool, command_is_read_only, read_only_policy
 from pydantic_ai import Agent, ModelRetry, Tool
 from pydantic_ai.messages import ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
@@ -228,7 +228,75 @@ engine.invoke(write_file, 'app.txt', 'after')
         operation = self.operations()[-1]
         self.assertEqual(operation["status"], "not_applied")
         self.assertEqual(operation["verification_status"], "verified")
+        self.assertTrue(self.engine.final_status()["incomplete"])
+
+    def test_rejected_write_is_incomplete_until_corrected_but_does_not_poison_next_task(self):
+        target = self.workspace / "app.css"
+        target.write_text("before")
+        def write_file(path: str, content: str) -> str:
+            raise ModelRetry("Inspect before modifying.")
+        with self.assertRaises(ModelRetry):
+            self.engine.invoke(write_file, "app.css", "after")
+        self.assertEqual(target.read_text(), "before")
+        self.assertTrue(self.engine.final_status()["failed_files"])
+        self.assertFalse(self.engine.journal.snapshot()["unresolved_mutations"])
+        restarted = WorkflowController(self.workspace, self.directory)
+        restarted.focus("Explain this project without editing.")
+        self.assertFalse(restarted.final_status()["incomplete"])
+
+    def test_readonly_diagnostic_failure_is_not_a_persistent_unknown_mutation(self):
+        self.engine = WorkflowController(self.workspace, self.directory, trusted_diagnostics=True)
+        def run_command(command: str) -> str:
+            return json.dumps({'exit_code': 1, 'passed': False, 'timed_out': False,
+                               'executed': True, 'profile': 'approved', 'output': ''})
+        self.engine.invoke(run_command, "grep absent app.txt")
+        self.assertEqual(self.operations()[-1]["status"], "failed")
+        self.assertFalse(self.engine.journal.snapshot()["unresolved_mutations"])
         self.assertFalse(self.engine.final_status()["incomplete"])
+        restarted = WorkflowController(self.workspace, self.directory)
+        self.assertFalse(restarted.final_status()["incomplete"])
+        for command in ("rg --pre=evil pattern .", "rg --pre evil pattern .", "grep x .; touch file",
+                        "rg --hostname-bin=evil pattern .", "rg --hostname-bin evil pattern .",
+                        "rg --search-zip pattern .", "rg -z pattern .", "rg -niz pattern .",
+                        "cat $(touch file)", "find . -delete", "python -c 'print(1)'", "env cat file"):
+            self.assertFalse(command_is_read_only(command), command)
+
+    def test_diagnostic_exemption_requires_explicit_trusted_executor_contract(self):
+        calls = []
+        def run_command(command: str) -> str:
+            calls.append(command)
+            return 'exit=1\n'
+        self.engine.focus("Lecture seule.")
+        result = json.loads(self.engine.invoke(run_command, "cat app.txt"))
+        self.assertFalse(result['executed'])
+        self.assertFalse(calls)
+        self.engine.focus("Modifie le projet.")
+        self.engine.invoke(run_command, "cat app.txt")
+        self.assertTrue(self.engine.journal.snapshot()['unresolved_mutations'])
+
+    def test_policy_and_user_refusals_are_known_nonexecution(self):
+        for error in ("approval_denied", "policy_denied", "invalid_command_target"):
+            def run_command(command: str) -> str:
+                return json.dumps({'exit_code': None, 'passed': False, 'timed_out': False,
+                                   'executed': False, 'profile': 'approved', 'error': error})
+            self.engine.invoke(run_command, "mutating-command-" + error)
+            self.assertEqual(self.operations()[-1]["status"], "not_applied")
+        self.assertFalse(self.engine.journal.snapshot()["unresolved_mutations"])
+
+    def test_explicit_polite_correction_can_lift_previous_readonly(self):
+        self.assertFalse(read_only_policy("Peux-tu maintenant corriger ce défaut ?", True))
+        self.assertTrue(read_only_policy("Analyse les modifications sans rien modifier", False))
+        self.assertTrue(read_only_policy("Continue", True))
+        for prompt in ("Corrige ton analyse, ne modifie pas les fichiers.",
+                       "Peux-tu corriger ton analyse sans modifier les fichiers ?",
+                       "Fix your explanation without modifying files."):
+            self.assertTrue(read_only_policy(prompt, True))
+            self.assertTrue(read_only_policy(prompt, False))
+        for prompt in ("Corrige app.py sans modifier les tests",
+                       "Modifie chat.css sans modifier extension.js"):
+            self.assertFalse(read_only_policy(prompt, True))
+        self.assertTrue(read_only_policy("Lis app.py sans modifier les tests", False))
+        self.assertTrue(read_only_policy("Corrige app.py sans modifier app.py", False))
 
     def test_modelretry_before_file_write_is_reconciled_before_corrected_retry(self):
         target = self.workspace / "app.css"

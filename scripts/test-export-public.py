@@ -45,7 +45,14 @@ class PublicExport(unittest.TestCase):
                 '      OVH_AGENT_BUDGET_MONTHLY_EUR: "${OVH_AGENT_BUDGET_MONTHLY_EUR:-60}"\n'
                 '      #OVH_AGENT_NAME: "Local Agent"\n'
                 '      #OVH_AGENT_PRIMARY_COLOR: "#000000"\n'
-                '      #OVH_AGENT_APP_ICON: "./branding/ovh/app.svg"\n')
+                '      #OVH_AGENT_APP_ICON: "./branding/ovh/app.svg"\n'
+                '    volumes:\n'
+                '      - type: bind\n'
+                '        source: /var/lib/trinity/agent-data/codex\n'
+                '        target: /root/.codex\n'
+                '      - type: bind\n'
+                '        source: /var/lib/trinity/agent-data/trinity-agent\n'
+                '        target: /root/.ovh-agent\n')
             index = (source / '.git/index').read_bytes()
             result = subprocess.run([sys.executable, str(source / 'scripts/export-public.py')],
                 env={**os.environ, 'TRINITY_AGENT_PUBLIC_ROOT':str(target)},
@@ -67,6 +74,9 @@ class PublicExport(unittest.TestCase):
             self.assertIn('OVH_AGENT_NAME:-TRINITY Agent', compose)
             self.assertIn('OVH_AGENT_PRIMARY_COLOR:-#3e3aab', compose)
             self.assertNotIn('./branding/ovh/', compose)
+            self.assertIn('${CODEX_DATA_DIR:-./data/codex}', compose)
+            self.assertIn('${AGENT_DATA_DIR:-./data/agent}', compose)
+            self.assertNotIn('/var/lib/trinity/agent-data/', compose)
 
 
 if __name__ == '__main__':

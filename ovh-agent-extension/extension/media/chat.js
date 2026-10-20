@@ -35,6 +35,7 @@ performancePicker?.addEventListener('change', () => {
 const followupsBox = document.getElementById("followups");
 let followups = [];
 let pendingFollowup = null;
+let retryFollowup = null;
 let editingFollowup = null;
 const followupDragType = "application/x-trinity-followup";
 let followupDrag = null;
@@ -62,6 +63,13 @@ function resetFollowupInteraction() {
   followupFocus = null;
   followupsBox.removeAttribute('aria-busy');
   endFollowupDrag();
+}
+function interruptPendingFollowup() {
+  // The backend may have persisted the item before its acknowledgement was
+  // lost. Keep its identity for a retry instead of silently enqueueing a copy.
+  if (pendingFollowup) retryFollowup = {...pendingFollowup, conversation: activeArchiveId};
+  pendingFollowup = null;
+  resetFollowupInteraction();
 }
 function scrollFollowupDrag() {
   if (!followupDrag) return;
@@ -244,6 +252,7 @@ let promptHistory = Array.isArray(saved?.promptHistory) ? saved.promptHistory.fi
 let historyIndex = promptHistory.length;
 let historyDraft = "";
 let busy = false;
+let stopping = false;
 let activeArchiveId = "";
 let loadingArchive = null;
 let archivePreviewKey = '';
@@ -307,15 +316,18 @@ function updateSendButton() {
   send.setAttribute("aria-label", send.title);
 }
 function resumeArchive(id) {
-  if (busy) return;
+  if (busy || creatingConversation || loadingArchive) return;
   activeArchiveId = id;
+  pendingSubmission = {kind:"resume", model:selectedModel};
   setArchiveVisible(false);
   setBusy(true, t("Reprise de la tâche interrompue…"));
-  vscode.postMessage({ type: "resumeArchive", id });
+  vscode.postMessage({ type: "resumeArchive", id, fullAccess, model: selectedModel });
 }
 let currentRun = null;
 let pendingQuestionnaire = null;
 let fullAccess = saved?.fullAccess !== false;
+let activeFullAccess = null;
+let pendingSubmission = null;
 const normalizeModelSelection = value => value === "auto" ? "auto-balanced" : (value || "auto-balanced");
 let selectedModel = normalizeModelSelection(saved?.model);
 let lastRoutedModel = saved?.lastRoutedModel || "";
@@ -488,12 +500,19 @@ function renderModels() {
 }
 
 function updateAccessButton() {
-  access.classList.toggle("full", fullAccess);
-  access.classList.toggle("approval", !fullAccess);
+  const effective = busy ? activeFullAccess : null;
+  access.classList.toggle("full", effective ?? fullAccess);
+  access.classList.toggle("approval", !(effective ?? fullAccess));
   access.querySelector("span").textContent = fullAccess ? t("Accès complet") : t("Demander l’accès");
-  access.title = fullAccess
+  const preference = fullAccess ? t("Accès complet") : t("Demander l’accès");
+  if (busy) {
+    const current = effective === null ? t("En attente") : effective ? t("Accès complet") : t("Demander l’accès");
+    access.querySelector("span").textContent = `${t("En cours")} : ${current} · ${t("Prochaine demande")} : ${preference}`;
+    access.title = t("Le choix d’accès s’applique à la prochaine demande ou reprise. Pour arrêter les actions en cours, utilise Arrêter.");
+  } else access.title = fullAccess
     ? t("Accès complet : les actions s’exécutent sans confirmation")
     : t("Validation demandée avant les écritures et les commandes");
+  access.setAttribute("aria-label", access.querySelector("span").textContent);
   persist();
 }
 
@@ -565,7 +584,9 @@ function setStatus(text, failed = false) {
 
 function setBusy(value, text = "", failed = false) {
   busy = value;
-  send.disabled = !!pendingFollowup || !!loadingArchive;
+  if (!value) activeFullAccess = null;
+  send.disabled = !!pendingFollowup || !!loadingArchive || creatingConversation || stopping;
+  updateAccessButton();
   renderFollowups();
   updateSendButton();
   stop.hidden = false;
@@ -758,9 +779,7 @@ function renderArchiveMessages(items) {
   activityRows.clear();
   approvalCards.clear();
   messages.innerHTML = "";
-  let evidenceArticle = null;
   for (const item of items || []) {
-    if (item.type === "user" && !item.steering) evidenceArticle = null;
     if (item.type === "user" && !item.steering && currentRun) finishRun("stopped");
     if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
     if (item.type === "tool_start") addActivity(item);
@@ -773,23 +792,7 @@ function renderArchiveMessages(items) {
     if (item.type === "user") addUserMessage(item.text || "", item.images || [], item.timestamp || null);
     if (item.type === "file_change") addArchivedFileChange(item);
     if (item.type === "response") {
-      const article = addArchivedAssistant(item.html || "", false, item.timestamp || null);
-      // Evidence usually precedes the response. Move its one compact badge to
-      // the answer rather than creating duplicate activity/answer verdicts.
-      if (evidenceArticle?.classList.contains("archived-execution")) {
-        const badge = evidenceArticle.querySelector(":scope > .execution-evidence");
-        if (badge) article.appendChild(badge);
-        evidenceArticle.remove();
-      }
-      evidenceArticle = article;
-    }
-    if (item.type === "execution_evidence") {
-      if (!evidenceArticle) {
-        evidenceArticle = document.createElement("article");
-        evidenceArticle.className = "message assistant archived-execution";
-        messages.appendChild(evidenceArticle);
-      }
-      showExecutionEvidence(item, evidenceArticle);
+      addArchivedAssistant(item.html || "", false, item.timestamp || null);
     }
     if (item.type === "error") addArchivedAssistant(item.html || "", true, item.timestamp || null);
     if (item.type === "verification_status" && item.status !== "running") {
@@ -849,6 +852,22 @@ function applySnapshot(data) {
   updateAccessButton();
   persist();
   scrollToBottom();
+}
+
+function restorePendingSubmission(submission, restoredText) {
+  // A backend launched by Send restores its archive before processing that
+  // request. Merge the optimistic prompt after authoritative history, without
+  // turning the still-pending request into an idle conversation.
+  if (submission) {
+    selectedModel = submission.model;
+    archiveModelRestored = true;
+    updateModelButton();
+    if (submission.kind === "prompt") {
+      addUserMessage(submission.text, submission.images, submission.timestamp);
+      createAssistantRun();
+    }
+    setBusy(true, t("Demande en cours…"));
+  } else setBusy(false, restoredText);
 }
 
 const archiveDragType='application/x-trinity-conversation-organizer';
@@ -1727,6 +1746,7 @@ function showVerification(data, article = ensureRun().article) {
     pending: "Modifications en attente de vérification",
     running: "Contrôles en cours",
     passed: "Contrôles configurés réussis",
+    not_configured: "Observations locales · aucun test fonctionnel exécuté",
     failed: "Validation refusée",
     observed_failure: "Audit : échecs observés dans les contrôles",
     rolled_back: "Modifications non validées restaurées",
@@ -1735,70 +1755,34 @@ function showVerification(data, article = ensureRun().article) {
   // A failed read-only task can trigger rollback with no tracked changes.
   const emptyRollback = data.status === "rolled_back" && Array.isArray(data.restored)
     && data.restored.length === 0 && !(data.conflicts || []).length;
-  badge.textContent = t(emptyRollback ? "Aucune modification à restaurer" : (labels[data.status] || "Validation refusée"));
+  const partialValidation = data.status === "passed" && (data.scope === "syntax_and_content" ||
+    (Array.isArray(data.functional_coverage_missing) && data.functional_coverage_missing.length > 0));
+  badge.textContent = t(emptyRollback ? "Aucune modification à restaurer" : partialValidation
+    ? "Contrôles limités · couverture fonctionnelle incomplète" : (labels[data.status] || "Validation refusée"));
   badge.className = `verification-status verification-${Object.hasOwn(labels, data.status) ? data.status : "failed"}`;
   const details = [...(data.problems || []), ...(data.conflicts || [])];
+  if (data.status === "not_configured") {
+    details.push(t("Aucune suite de tests n’est configurée pour cet audit. Les observations locales ne valident pas le comportement fonctionnel."));
+  }
+  if (partialValidation) {
+    details.push(t("Pour les fichiers sans contrôle fonctionnel, seuls le contenu sauvegardé et la syntaxe disponible sont vérifiés. Cela ne valide pas leur comportement."));
+    if (Array.isArray(data.functional_coverage_missing) && data.functional_coverage_missing.length) {
+      details.push(t("Sans contrôle fonctionnel : {0}", data.functional_coverage_missing.join(", ")));
+    }
+  }
   if (data.status === "passed") details.push(t("Ces contrôles couvrent leur périmètre, pas l’ensemble des affirmations du modèle."));
   badge.title = details.join("\n");
   persist();
 }
 
 function showExecutionEvidence(data, article) {
-  if (!article) return;
-  const pending = data.incomplete === true || ["unresolved", "running", "failed_checks", "failed_files"]
-    .some(key => Array.isArray(data[key]) && data[key].length > 0);
-  // A successful command or a green test alone cannot certify acceptance.
-  // No configured contract is a neutral completion state, not a task failure.
-  const verified = data.criteria_status === "passed" && data.contract_satisfied === true && !pending;
-  const noContract = data.criteria_status === "not_configured" && data.contract_satisfied == null && !pending;
-  const state = verified ? "passed" : noContract ? "no-contract" : "unverified";
-  let badge = article.querySelector(":scope > .execution-evidence");
-  if (!badge) {
-    badge = document.createElement("div");
-    badge.className = "execution-evidence";
-    badge.setAttribute("role", "status");
-    article.appendChild(badge);
-  }
-  badge.dataset.evidenceState = state;
-  badge.textContent = t(verified ? "Critères vérifiés" : noContract
-    ? "Exécution terminée · sans contrat" : "Critères non vérifiés");
-  const statusLabel = value => t(({passed:"réussis", failed:"en échec", not_run:"non exécutés",
-    not_required:"non requis", not_configured:"non configurés"})[value] || "non vérifiés");
-  badge.title = t("Commandes : {0} · tests : {1} · critères : {2}",
-    statusLabel(data.command_status), statusLabel(data.test_status), statusLabel(data.criteria_status)) + "\n" +
-    t(noContract ? "Aucun contrat de réussite n’est configuré pour cette tâche."
-      : "La validation couvre uniquement les critères configurés, pas une autonomie générale.");
+  // Execution evidence remains in the journal for the controller and archive,
+  // but it is no longer exposed as a decorative badge in the conversation.
+  article?.querySelectorAll(":scope > .execution-evidence").forEach(badge => badge.remove());
 }
 
 function restoreExecutionEvidence(root, timeline) {
-  // Older snapshots may predate the badge even though their authoritative
-  // timeline already contains evidence. Match actual responses, never tool rows.
-  const responses = [];
-  let pending = null, last = null;
-  for (const item of timeline) {
-    if (item.type === "user" && !item.steering) { pending = null; last = null; }
-    if (item.type === "execution_evidence") {
-      pending = item;
-      if (last) last.evidence = item;
-    }
-    if (item.type === "response") {
-      last = {timestamp:item.timestamp, evidence:pending};
-      responses.push(last);
-    }
-  }
-  const articles = [...root.querySelectorAll(":scope > .message.assistant")]
-    .filter(article => article.querySelector(":scope > .content")?.innerHTML.trim());
-  const timestampKey = value => {
-    const date = value ? new Date(value) : null;
-    return date && Number.isFinite(date.getTime()) ? date.toISOString() : null;
-  };
-  responses.forEach((response, index) => {
-    if (!response.evidence) return;
-    const key = timestampKey(response.timestamp);
-    const matched = key ? articles.filter(article => timestampKey(article.querySelector(":scope > .message-time")?.dateTime) === key) : [];
-    const article = matched.length === 1 ? matched[0] : articles.length === responses.length ? articles[index] : null;
-    if (article) showExecutionEvidence(response.evidence, article);
-  });
+  root.querySelectorAll(".execution-evidence").forEach(badge => badge.remove());
 }
 
 function formatModelCost(value, currency = "EUR") {
@@ -2045,15 +2029,16 @@ function submit() {
     setStatus(t("Préparation des images en cours…"));
     return;
   }
-  if (loadingArchive) return;
+  if (loadingArchive || creatingConversation || stopping) return;
   const text = prompt.value.trim();
   if ((!text && !pendingImages.length) || pendingFollowup) return;
-  if (busy || editingFollowup) {
+  const retry = retryFollowup?.conversation === activeArchiveId && retryFollowup.text === text ? retryFollowup : null;
+  if (busy || editingFollowup || retry) {
     if (!activeArchiveId) { setStatus(t("Connexion en cours…")); return; }
     if (pendingImages.length) { setStatus(t("Les messages en attente acceptent du texte uniquement."), "warning"); return; }
     if (text.length > 16000) { setStatus(t("Message limité à 16 000 caractères."), "warning"); return; }
-    const id = editingFollowup || crypto.randomUUID();
-    const action = editingFollowup ? "edit" : "add";
+    const id = editingFollowup || retry?.id || crypto.randomUUID();
+    const action = editingFollowup ? "edit" : retry?.action || "add";
     pendingFollowup = {id, text, action};
     send.disabled = true;
     followupCommand(action, {id, text, mode: "queue", fullAccess, model: selectedModel});
@@ -2062,11 +2047,13 @@ function submit() {
   ensureVisionModel();
   const images = pendingImages.slice();
   const displayText = text || t("Analyse cette image.");
+  retryFollowup = null;
+  pendingSubmission = {kind:"prompt", text:displayText, images, timestamp:new Date().toISOString(), model:selectedModel};
   if (promptHistory.at(-1) !== displayText) promptHistory.push(displayText);
   promptHistory = promptHistory.slice(-200);
   historyIndex = promptHistory.length;
   historyDraft = "";
-  addUserMessage(displayText, images);
+  addUserMessage(displayText, images, pendingSubmission.timestamp);
   createAssistantRun();
   prompt.value = "";
   updateStopIcon();
@@ -2102,12 +2089,17 @@ imageInput.addEventListener("change", async () => {
   imageInput.value = "";
 });
 stop.addEventListener("click", () => {
-  resetFollowupInteraction();
+  interruptPendingFollowup();
+  pendingSubmission = null;
+  stopping = true;
+  // Prevent a new request from racing SIGTERM; idle/error releases the composer.
+  send.disabled = true;
   vscode.postMessage({ type: "cancel" });
 });
 clear.addEventListener("click", () => {
   if (creatingConversation) return;
   creatingConversation = true;
+  stopping = false;
   archiveRevision = ""; archiveModelRestored = false;
   endArchiveLoading();
   loadingArchive = null;
@@ -2117,6 +2109,9 @@ clear.addEventListener("click", () => {
   followups = [];
   editingFollowup = null;
   pendingFollowup = null;
+  retryFollowup = null;
+  pendingSubmission = null;
+  activeFullAccess = null;
   renderFollowups();
   updateSendButton();
   setArchiveVisible(false);
@@ -2130,6 +2125,7 @@ clear.addEventListener("click", () => {
   renderPendingImages();
   persist();
   vscode.postMessage({ type: "clear" });
+  send.disabled = true;
   setStatus(t("Nouvelle conversation"));
   prompt.focus();
 });
@@ -2168,8 +2164,8 @@ access.addEventListener("click", () => {
   fullAccess = !fullAccess;
   updateAccessButton();
   setStatus(fullAccess
-    ? t("Accès complet activé")
-    : t("Validation activée pour les actions sensibles"));
+    ? t("Accès complet pour la prochaine demande ou reprise")
+    : t("Validation pour la prochaine demande ou reprise"));
 });
 prompt.addEventListener("keydown", (event) => {
   if (event.isComposing) return;
@@ -2263,9 +2259,10 @@ window.addEventListener("message", ({ data }) => {
     if (data.type === "cleared") {
       creatingConversation = false;
       clear.disabled = false;
-    } else if (data.type === "error") {
+    } else if (data.type === "error" || data.type === "idle") {
       creatingConversation = false;
       clear.disabled = false;
+      if (data.type === "idle") data = {type:"error",text:t("Création de conversation interrompue. Réessaie Nouvelle conversation.")};
     } else if (!["billing_status", "billing_configured", "budget_status", "configured"].includes(data.type)) return;
   }
   if (["status", "error", "archive_delete_failed"].includes(data.type)) data = {...data, text: OvhI18n.message(data.text)};
@@ -2285,7 +2282,7 @@ window.addEventListener("message", ({ data }) => {
     }
     backendReady = true;
     followupCommand("list");
-    if (data.model && !loadingArchive && !archiveModelRestored) selectedModel = data.model;
+    if (data.model && !loadingArchive && !archiveModelRestored && !pendingSubmission && !modelSelectionChanged) selectedModel = data.model;
     updateModelButton();
     setBusy(busy, busy ? status.textContent : t("Connecté · {0}", data.model));
     persist();
@@ -2293,6 +2290,15 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "followups" && data.conversation === activeArchiveId) {
     followups = data.items || [];
+    if (retryFollowup?.conversation === activeArchiveId &&
+        followups.some(item => item.id === retryFollowup.id && item.text === retryFollowup.text)) {
+      if (prompt.value.trim() === retryFollowup.text) prompt.value = "";
+      if (pendingFollowup?.id === retryFollowup.id) pendingFollowup = null;
+      retryFollowup = null;
+      editingFollowup = null;
+      resizePrompt();
+      send.disabled = !!loadingArchive || creatingConversation || stopping;
+    }
     if (editingFollowup && !followups.some(item => item.id === editingFollowup)) editingFollowup = null;
     updateSendButton();
     renderFollowups();
@@ -2310,18 +2316,29 @@ window.addEventListener("message", ({ data }) => {
     }
     return;
   }
-  if (data.type === "followup_ack" && pendingFollowup && pendingFollowup.id === data.id && data.action === pendingFollowup.action) {
-    if (prompt.value.trim() === pendingFollowup.text) prompt.value = "";
+  const acknowledgedFollowup = pendingFollowup || retryFollowup;
+  if (data.type === "followup_ack" && acknowledgedFollowup?.id === data.id && data.action === acknowledgedFollowup.action) {
+    if (prompt.value.trim() === acknowledgedFollowup.text) prompt.value = "";
     pendingFollowup = null;
+    retryFollowup = null;
     editingFollowup = null;
-    send.disabled = false;
+    send.disabled = !!loadingArchive || creatingConversation || stopping;
     resizePrompt();
     updateSendButton();
+    if (data.already_started) {
+      if (data.resumable) resumableArchives.add(activeArchiveId);
+      const notice = data.resumable
+        ? t("Ce message a déjà démarré. Reprends la tâche interrompue pour continuer.")
+        : t("Ce message a déjà été traité.");
+      if (data.running === false) setBusy(false, notice);
+      else setStatus(notice);
+    }
   }
   if (data.type === "followup_error") {
     if (pendingFollowup && pendingFollowup.id === data.id && (!data.action || data.action === pendingFollowup.action)) {
       pendingFollowup = null;
-      send.disabled = false;
+      retryFollowup = null;
+      send.disabled = !!loadingArchive || creatingConversation || stopping;
     }
     setStatus(t("Message non envoyé : {0}", OvhI18n.message(data.text)), true);
   }
@@ -2336,12 +2353,16 @@ window.addEventListener("message", ({ data }) => {
     addCompletedActivity("context", t("Réorientation appliquée"), data.text, data);
   }
   if (data.type === "status") {
+    pendingSubmission = null;
     if (!loadingArchive) activeArchiveId = data.conversation || activeArchiveId;
     followupCommand("list");
     ensureRun();
     setBusy(true, data.text);
   }
   if (data.type === "session_busy") {
+    stopping = false;
+    pendingSubmission = null;
+    interruptPendingFollowup();
     if (performancePicker) performancePicker.disabled = false;
     resetFollowupInteraction();
     if (currentRun) finishRun("stopped");
@@ -2425,6 +2446,7 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "questionnaire") pendingQuestionnaire = data;
   if (data.type === "delta") setMarkdown(data.html);
   if (data.type === "response") {
+    pendingSubmission = null;
     resumableArchives.delete(activeArchiveId);
     setMarkdown(data.html);
     if (data.verification) showVerification(data.verification);
@@ -2433,8 +2455,10 @@ window.addEventListener("message", ({ data }) => {
     if (pendingQuestionnaire) { const questionnaire = pendingQuestionnaire; pendingQuestionnaire = null; renderQuestionnaire(questionnaire); }
   }
   if (data.type === "error") {
+    stopping = false;
+    pendingSubmission = null;
     if (performancePicker) performancePicker.disabled = false;
-    resetFollowupInteraction();
+    interruptPendingFollowup();
     const detail = String(data.text || t("Erreur inconnue"));
     const run = ensureRun();
     const errorMessage = document.createElement("p");
@@ -2446,6 +2470,9 @@ window.addEventListener("message", ({ data }) => {
     setBusy(false, t("La requête a échoué : {0}", detail), true);
   }
   if (data.type === "idle") {
+    stopping = false;
+    pendingSubmission = null;
+    interruptPendingFollowup();
     if (performancePicker) performancePicker.disabled = false;
     vscode.postMessage({ type: "listArchives" });
     if (currentRun) finishRun("stopped");
@@ -2464,13 +2491,13 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "billing_configured") setBusy(false, t("Accès lecture seule à la facturation enregistré"));
   if (data.type === "billing_status") applyBillingStatus(data, !data.silent && !busy);
   if (data.type === "access_mode") {
-    fullAccess = Boolean(data.full_access);
+    activeFullAccess = Boolean(data.full_access);
     updateAccessButton();
   }
   if (data.type === "task_interrupted") {
     activeArchiveId = data.id || activeArchiveId;
     resumableArchives.add(activeArchiveId);
-    setBusy(false, t("Tâche interrompue - clique sur ▶ pour la reprendre."));
+    if (!pendingSubmission) setBusy(false, t("Tâche interrompue - clique sur ▶ pour la reprendre."));
     vscode.postMessage({type: "listArchives"});
   }
   if (data.type === "archive_delete_pending") {
@@ -2549,6 +2576,7 @@ window.addEventListener("message", ({ data }) => {
     archiveList.querySelectorAll('.archive-project').forEach(group=>group.classList.toggle('selected',group.dataset.projectId===data.project));
   }
   if (data.type === "archive_loaded") {
+    const submission = (data.automatic || pendingSubmission?.kind === "resume") ? pendingSubmission : null;
     loadingArchive = null;
     setArchiveVisible(false);
     modelPanel.hidden = !modelPanelActive;
@@ -2560,9 +2588,10 @@ window.addEventListener("message", ({ data }) => {
     renderArchiveMessages(data.messages);
     if (data.resumable) resumableArchives.add(activeArchiveId);
     endArchiveLoading(true);
-    setBusy(false, data.resumable ? t("Tâche interrompue - clique sur ▶ pour la reprendre.") : data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
+    restorePendingSubmission(submission, data.resumable ? t("Tâche interrompue - clique sur ▶ pour la reprendre.") : data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
   }
   if (data.type === "snapshot_loaded") {
+    const submission = (data.automatic || pendingSubmission?.kind === "resume") ? pendingSubmission : null;
     loadingArchive = null;
     setArchiveVisible(false);
     modelPanel.hidden = !modelPanelActive;
@@ -2580,7 +2609,7 @@ window.addEventListener("message", ({ data }) => {
       updateModelButton();
     }
     endArchiveLoading(true);
-    setBusy(false, t("Conversation restaurée"));
+    restorePendingSubmission(submission, t("Conversation restaurée"));
   }
   if (data.type === "diagnostic") status.title = data.text;
 });

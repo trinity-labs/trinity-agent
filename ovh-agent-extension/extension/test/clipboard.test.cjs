@@ -20,11 +20,13 @@ function setup(t) {
   w.HTMLElement.prototype.scrollIntoView=function(){};
   w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   w.Image=class {set src(value){this.naturalWidth=640;this.naturalHeight=320;setTimeout(()=>this.onload(),5);}};
-  for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js'])w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
+  for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js'])w.eval(fs.readFileSync(path.join(root,'media',name),'utf8') +
+    (name==='chat.js' ? '\nwindow.waitForImagePreparations=()=>imagePreparationQueue;' : ''));
   const input=doc.getElementById('prompt');
   const file=()=>new w.File(['png-data'],'capture.png',{type:'image/png'});
   function paste(data){const e=new w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:data});input.dispatchEvent(e);return e;}
-  const settle=()=>new Promise(resolve=>setTimeout(resolve,150));
+  // Await the decoding work itself; elapsed time depends on CI/SSHFS load.
+  const settle=()=>w.waitForImagePreparations();
   return {w,doc,sent,input,file,paste,settle};
 }
 test('screenshot DataTransferItems preserve accompanying text',async t=>{

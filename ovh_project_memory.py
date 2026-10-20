@@ -32,6 +32,27 @@ def safe_path(file, root):
         return False
 
 
+def conversation_eligible(folder):
+    """Only normal, readable archives may contribute shared knowledge.
+
+    Legacy conversations without metadata remain readable. Corrupt or symbolic
+    metadata cannot establish that an archive is outside an evaluation.
+    """
+    folder = Path(folder)
+    if folder.is_symlink():
+        return False
+    metadata = folder / 'meta.json'
+    if metadata.is_symlink():
+        return False
+    try:
+        payload = json.loads(read_text_cached(metadata, limit=16000))
+        return isinstance(payload, dict) and payload.get('evaluation') is not True
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def markdown_note(note):
     fields = {key: note[key] for key in ('id','scope','status','source','conversation','project','timestamp')}
     return '---\n' + '\n'.join(key+': '+json.dumps(value,ensure_ascii=False) for key,value in fields.items()) + '\n---\n\n' + note['text'] + '\n'
@@ -164,11 +185,8 @@ class ProjectMemory:
             if not folder.is_dir() or folder.is_symlink() or not re.fullmatch(r'[A-Za-z0-9_-]+',folder.name): continue
             # Evaluation archives intentionally contain wrong model answers.
             # Keep them browsable without promoting them into project knowledge.
-            try:
-                if json.loads(read_text_cached(folder/'meta.json',limit=16000)).get('evaluation') is True:
-                    continue
-            except (OSError, ValueError, TypeError, AttributeError):
-                pass
+            if not conversation_eligible(folder):
+                continue
             if any((folder/part).is_symlink() for part in ['memory','memory/documents','memory/notes']): continue
             folders.append(folder)
             for note in notes(folder):
@@ -252,6 +270,8 @@ class ProjectMemory:
                 return bool(self.workspace) and file.parent==Path(self.workspace) and file.suffix.lower()=='.md' and not file.is_symlink() and list(file_signature(file))==row['signature']
             if not safe_path(file,self.data): return False
             if not (file.is_relative_to(self.archive) or file == self.root/'NOTES.md'): return False
+            if file.is_relative_to(self.archive) and not conversation_eligible(self.archive / row['conversation']):
+                return False
             return list(file_signature(file))==row['signature']
         except OSError: return False
 

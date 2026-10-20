@@ -27,7 +27,9 @@ function validMessage(message) {
       return id(message.conversation) && text(message.html, 8 * 1024 * 1024)
         && (message.archive_revision === undefined || text(message.archive_revision, 128))
         && boolean(message.fullAccess) && model(message.model);
-    case "loadArchive": case "resumeArchive": return id(message.id);
+    case "loadArchive": return id(message.id);
+    case "resumeArchive": return id(message.id) && typeof message.fullAccess === "boolean"
+      && typeof message.model === "string" && model(message.model);
     case "deleteArchiveConfirmed": return id(message.id) && (message.source === undefined || projectId(message.source));
     case "openProjectDocument": return text(message.project,20) && /^[a-f0-9]{20}$/.test(message.project) && text(message.name,255) && !/[\/\\]/.test(message.name) && /\.md$/i.test(message.name) && ["root","memory"].includes(message.scope);
     case "openProject": return text(message.project,20) && /^[a-f0-9]{20}$/.test(message.project) && (message.conversation===undefined || id(message.conversation));

@@ -219,6 +219,42 @@ test('verification shows actual failed checks and restores the evidence from an 
   } finally {dom.window.close();}
 });
 
+test('syntax and content fallback discloses missing functional coverage in live and archived verification',()=>{
+  const {dom,document,emit}=browser();
+  try {
+    const verification={type:'verification_status',status:'passed',scope:'syntax_and_content',functional_coverage_missing:['app.js']};
+    emit(verification);
+    let badge=document.querySelector('.verification-status');
+    assert.match(badge.textContent,/Contrôles limités.*couverture fonctionnelle incomplète/);
+    assert.doesNotMatch(badge.textContent,/Contrôles configurés réussis/);
+    assert.match(badge.title,/syntaxe disponible.*ne valide pas leur comportement/);
+    assert.match(badge.title,/Sans contrôle fonctionnel : app\.js/);
+    emit({type:'archive_loaded',id:'mixed',messages:[{...verification,scope:'configured_local_checks'}]});
+    badge=document.querySelector('.verification-status');
+    assert.match(badge.textContent,/couverture fonctionnelle incomplète/);
+    assert.match(badge.title,/app\.js/);
+    emit({type:'verification_status',status:'passed',scope:'syntax_and_content'});
+    assert.match([...document.querySelectorAll('.verification-status')].at(-1).textContent,/couverture fonctionnelle incomplète/);
+  } finally {dom.window.close();}
+});
+
+test('audit without a configured suite displays neutral local observations in live and archived views',()=>{
+  const {dom,document,emit}=browser();
+  try {
+    const verification={type:'verification_status',status:'not_configured',scope:'local_observations_only',checks:[]};
+    const check=()=>{
+      const badge=document.querySelector('.verification-status');
+      assert.equal(badge.textContent,'Observations locales · aucun test fonctionnel exécuté');
+      assert.match(badge.title,/ne valident pas le comportement fonctionnel/);
+      assert(badge.classList.contains('verification-not_configured'));
+      assert(!badge.classList.contains('verification-failed'));
+      assert(!badge.classList.contains('verification-passed'));
+    };
+    emit(verification);check();
+    emit({type:'archive_loaded',id:'limited-audit',messages:[verification]});check();
+  } finally {dom.window.close();}
+});
+
 test('activity labels use icons without emojis while intermediate prose retains them', () => {
   const {dom,document,emit} = browser();
   try {
@@ -582,110 +618,19 @@ test('project editor saves a new path and keeps the renamed identity expanded af
  } finally {dom.window.close();}
 });
 
-test('execution evidence certifies configured criteria only and never replaces the current action',()=>{
- const {dom,document,emit}=browser();
+test('execution evidence stays internal and does not block opening another conversation',()=>{
+ const {dom,document,emit,sent}=browser();
  try {
-  emit({type:'tool_start',id:'read',tool:'read',title:'Lecture en cours'});
-  const summary=document.querySelector('.activity-summary-text').textContent;
-  const evidence={type:'execution_evidence',command_status:'passed',test_status:'passed',criteria_status:'passed',contract_satisfied:true,incomplete:false};
-  emit(evidence);emit(evidence);
-  const badge=document.querySelector('.execution-evidence');
-  assert.equal(badge.textContent,'Critères vérifiés');assert.equal(badge.dataset.evidenceState,'passed');
-  assert.equal(document.querySelectorAll('.execution-evidence').length,1);
-  assert.equal(document.querySelector('.activity-summary-text').textContent,summary);
-  assert.match(badge.title,/Commandes : réussis · tests : réussis · critères : réussis/);
-  assert.match(badge.title,/pas une autonomie générale/);
-  emit({...evidence,unresolved:['uncertain-write']});
-  assert.equal(badge.textContent,'Critères non vérifiés');assert.equal(badge.dataset.evidenceState,'unverified');
-  emit({...evidence,contract_satisfied:false});assert.equal(badge.textContent,'Critères non vérifiés');
-  emit(evidence);emit({type:'response',html:'<p>Travail terminé.</p>'});
-  assert.equal(document.querySelectorAll('.execution-evidence').length,1);
-  assert.equal(badge.textContent,'Critères vérifiés');
- } finally {dom.window.close();}
-});
-
-test('completion without a contract is neutral and survives a sanitized snapshot',()=>{
- const {dom,document,emit}=browser();
- try {
+  emit({type:'archives',items:[{id:'next',title:'Conversation suivante'}]});
   emit({type:'status',text:'Working'});
-  emit({type:'execution_evidence',command_status:'passed',test_status:'passed',criteria_status:'not_configured',contract_satisfied:null,incomplete:false});
-  emit({type:'response',html:'<p>Voici la réponse.</p>'});
-  const badge=document.querySelector('.execution-evidence');
-  assert.equal(badge.textContent,'Exécution terminée · sans contrat');
-  assert.equal(badge.dataset.evidenceState,'no-contract');assert.match(badge.title,/Aucun contrat/);
-  assert.match(document.querySelector('.activity-summary-text').textContent,/^Terminé/);
-  const html=document.getElementById('messages').innerHTML;
-  emit({type:'snapshot_loaded',id:'saved-evidence',html});
-  assert.equal(document.querySelector('.execution-evidence').dataset.evidenceState,'no-contract');
-  assert.equal(document.querySelector('.execution-evidence').getAttribute('role'),'status');
- } finally {dom.window.close();}
-});
-
-test('unknown or failed acceptance cannot be upgraded by successful commands and tests',()=>{
- const {dom,document,emit}=browser();
- try {
-  for(const criteria_status of ['unverified','failed','unknown']) {
-   emit({type:'execution_evidence',criteria_status,command_status:'passed',test_status:'passed',contract_satisfied:false});
-   assert.equal(document.querySelector('.execution-evidence').textContent,'Critères non vérifiés');
-  }
-  emit({type:'response',html:'<p>Résultat incomplet.</p>'});
-  emit({type:'execution_evidence',criteria_status:'failed',contract_satisfied:false});
-  assert.equal(document.querySelectorAll('.message.assistant').length,1);
-  assert.equal(document.querySelectorAll('.execution-evidence').length,1);
- } finally {dom.window.close();}
-});
-
-test('archive evidence stays attached to its own answer and handles late events',()=>{
- const {dom,document,emit}=browser();
- try {
-  emit({type:'archive_loaded',id:'evidence-archive',messages:[
-   {type:'user',text:'Première tâche'},
-   {type:'execution_evidence',criteria_status:'failed',contract_satisfied:false,incomplete:true},
-   {type:'execution_evidence',criteria_status:'passed',contract_satisfied:true,incomplete:false},
-   {type:'response',html:'<p>Première réponse</p>'},
-   {type:'user',text:'Deuxième tâche'},
-   {type:'response',html:'<p>Deuxième réponse</p>'},
-   {type:'execution_evidence',criteria_status:'not_configured',contract_satisfied:null,incomplete:false}
-  ]});
-  const replies=[...document.querySelectorAll('.message.assistant')];
-  assert.equal(replies.length,2);
-  assert.equal(replies[0].querySelector('.execution-evidence').textContent,'Critères vérifiés');
-  assert.equal(replies[1].querySelector('.execution-evidence').textContent,'Exécution terminée · sans contrat');
-  assert.equal(document.querySelectorAll('.archived-execution').length,0);
- } finally {dom.window.close();}
-});
-
-test('older snapshots restore acceptance from response evidence without assigning it to tools',()=>{
- const {dom,document,emit}=browser();
- try {
-  const first='2026-10-20T01:00:00Z',second='2026-10-20T01:01:00Z';
-  const html='<article class="message assistant done"><div class="content"></div><details class="activity"></details></article>'+
-   `<article class="message assistant done"><div class="content">Première réponse</div><time class="message-time" datetime="${first}"></time></article>`+
-   `<article class="message assistant done"><div class="content">Deuxième réponse</div><time class="message-time" datetime="${second}"></time></article>`;
-  const timeline=[{type:'user',text:'Un'},
-   {type:'execution_evidence',criteria_status:'passed',contract_satisfied:true,incomplete:false},
-   {type:'response',timestamp:first}, {type:'user',text:'Deux'},
-   {type:'execution_evidence',criteria_status:'failed',contract_satisfied:false,incomplete:true},
-   {type:'response',timestamp:second}];
-  emit({type:'snapshot_loaded',id:'legacy-evidence',html,timeline});
-  const replies=[...document.querySelectorAll('.message.assistant')];
-  assert.equal(replies[0].querySelector('.execution-evidence'),null);
-  assert.equal(replies[1].querySelector('.execution-evidence').dataset.evidenceState,'passed');
-  assert.equal(replies[2].querySelector('.execution-evidence').dataset.evidenceState,'unverified');
- } finally {dom.window.close();}
-});
-
-test('evidence labels translate live and on snapshots without rewriting model prose',()=>{
- const {dom,document,emit}=browser();
- try {
-  emit({type:'execution_evidence',criteria_status:'passed',contract_satisfied:true,incomplete:false});
-  emit({type:'response',html:'<p>Critères vérifiés</p>'});
-  const html=document.getElementById('messages').innerHTML;
-  dom.window.OvhI18n.setLanguage('en');
-  emit({type:'snapshot_loaded',id:'translated-evidence',html});
-  assert.equal(document.querySelector('.execution-evidence').textContent,'Criteria verified');
-  assert.equal(document.querySelector('.content').textContent,'Critères vérifiés');
-  emit({type:'execution_evidence',criteria_status:'failed',contract_satisfied:false});
-  assert.equal(document.querySelector('.execution-evidence').textContent,'Criteria not verified');
+  emit({type:'execution_evidence',command_status:'passed',test_status:'passed',criteria_status:'passed',contract_satisfied:true,incomplete:false});
+  emit({type:'response',html:'<p>Travail terminé.</p>'});
+  assert.equal(document.querySelectorAll('.execution-evidence').length,0);
+  document.getElementById('history').click();
+  document.querySelector('.archive-open').click();
+  assert.equal(sent.at(-1).type,'loadArchive');
+  assert.equal(sent.at(-1).id,'next');
+  emit({type:'snapshot_loaded',id:'next',html:'<article class="message assistant"><div class="execution-evidence">Ancien badge</div><div class="content">Réponse archivée</div></article>',timeline:[{type:'execution_evidence',criteria_status:'failed'}]});
+  assert.equal(document.querySelectorAll('.execution-evidence').length,0);
  } finally {dom.window.close();}
 });

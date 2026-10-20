@@ -40,7 +40,13 @@ class BudgetedModel(WrapperModel):
             if hasattr(error, 'status'):
                 self.publish(error.status)
             raise
-        self.publish(ledger.status())
+        try:
+            self.publish(ledger.status())
+        except BaseException:
+            # No model request has started. A failed status refresh or UI
+            # callback must not leave a permanent charge/reservation behind.
+            ledger.settle(reservation, Decimal(0))
+            raise
         return ledger, reservation, incoming, outgoing, maximum
 
     def finish(self, reservation, response=None):

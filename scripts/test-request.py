@@ -40,7 +40,7 @@ class Preparation(unittest.TestCase):
 
     def test_actual_catalog_edit_requests_prepare_workspace(self):
         for prompt in ('Modernise la vue des modèles', 'Passe les bouton du catalogue de modèle en non fill',
-                       'Rends les boutons transparents'):
+                       'Rends les boutons transparents', 'Agrandi légèrement le logo du header'):
             with self.subTest(prompt=prompt):
                 a = r.analyze_request(prompt)
                 self.assertEqual((a.intent, a.domain, a.needs_workspace), ('edit', 'ui', True))
@@ -68,6 +68,26 @@ class Preparation(unittest.TestCase):
         self.assertFalse(result['analysis']['needs_workspace'])
         self.assertEqual(result['context'], '')
 
+    def test_audits_and_descriptive_modifications_do_not_become_edit_requests(self):
+        for prompt in (
+                'Analyse complèteme TRINITY Agent, il est devenu incohérent au fur et à mesure des pdofications',
+                'Analyse complètement TRINITY Agent, il est devenu incohérent au fur et à mesure des modifications',
+                'Audite le projet en lecture seule'):
+            analysis = r.analyze_request(prompt)
+            self.assertNotEqual(analysis.intent, 'edit')
+            self.assertTrue(analysis.needs_workspace)
+            self.assertEqual(analysis.complexity, 'complex')
+        self.assertNotEqual(r.analyze_request('Analyse les modifications sans rien modifier').intent, 'edit')
+
+    def test_local_diagnostic_and_contestation_do_not_require_external_search(self):
+        for prompt in ('Pourquoi mon fichier local affiche une erreur ?', 'Tu te trompes sur ce fichier local.'):
+            analysis = r.analyze_request(prompt)
+            self.assertTrue(analysis.needs_workspace)
+            self.assertFalse(analysis.fact_check or analysis.needs_web)
+            self.assertEqual(analysis.intent, 'diagnose')
+        documentary = r.analyze_request('Vérifie cette erreur dans la documentation officielle de notre API')
+        self.assertTrue(documentary.fact_check and documentary.needs_web)
+
     def test_readonly_and_offline_negations_do_not_request_edits_or_web(self):
         analysis = r.analyze_request('Lis settings.json. Aucune modification ni recherche Internet.')
         self.assertEqual(analysis.intent, 'question')
@@ -76,6 +96,7 @@ class Preparation(unittest.TestCase):
         followup = r.analyze_request('Continue sans modifier les fichiers', ['Modifie notre extension'])
         self.assertNotEqual(followup.intent, 'edit')
         self.assertEqual(r.analyze_request('Modifie chat.css sans modifier extension.js').intent, 'edit')
+        self.assertEqual(r.analyze_request('Corrige app.py sans modifier les tests').intent, 'edit')
 
     def test_targeted_excerpts_are_exact_and_warm_cache_is_reused(self):
         prompt = 'Modifie le survol de l’icône dans `chat.css`'
@@ -127,6 +148,19 @@ class Preparation(unittest.TestCase):
         machine_file = self.allowed / 'machine' / 'notes.md'
         machine_file.write_text('request fixture')
         self.assertIsNone(r._project_root(machine_file, self.allowed, self.allowed))
+
+    def test_restricted_project_retrieval_keeps_local_context_without_reading_neighbours(self):
+        neighbour = self.allowed / 'other'
+        neighbour.mkdir()
+        foreign = neighbour / 'private.css'
+        foreign.write_text('.archive-icon { color: FOREIGN_SENTINEL; }\n')
+        result = r.retrieve_context(r.analyze_request('Corrige notre icône archive au survol'),
+                                    [str(foreign)], self.project, self.project,
+                                    navigation_root=self.allowed)
+        self.assertTrue(result['sources'])
+        self.assertIn('color: green', result['context'])
+        self.assertNotIn('FOREIGN_SENTINEL', result['context'])
+        self.assertTrue(all(Path(source['path']).is_relative_to(self.project) for source in result['sources']))
 
     def test_recent_tools_focus_search_and_sources_match_line_numbers(self):
         lines = [f'/* line {i}: archive icon hover opacity */' for i in range(180)]
@@ -244,7 +278,7 @@ class Preparation(unittest.TestCase):
 
     def test_slow_mount_bounds_wait_and_does_not_accumulate_workers(self):
         entered, release = threading.Event(), threading.Event()
-        def slow(*args):
+        def slow(*args, **kwargs):
             entered.set()
             release.wait(2)
             return {'context': 'late stale data', 'sources': [], 'files_scanned': 1, 'partial': False}
@@ -344,7 +378,8 @@ class SourceEvidence(unittest.TestCase):
         analysis = r.analyze_request('Tu es sûr ?', ['Corrige notre code dans `app.py`'])
         self.assertTrue(analysis.needs_workspace)
         self.assertIn('app.py', analysis.paths)
-        self.assertEqual(analysis.intent, 'research')
+        self.assertFalse(analysis.fact_check or analysis.needs_web)
+        self.assertEqual(analysis.intent, 'diagnose')
 
     def test_offline_request_and_ui_error_label_do_not_start_web_review(self):
         for prompt in ['Vérifie cette erreur sans internet', 'Tu es sûr ? Reste hors ligne.',

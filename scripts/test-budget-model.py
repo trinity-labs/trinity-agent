@@ -96,8 +96,8 @@ with tempfile.TemporaryDirectory() as directory:
         pass
 print('PASS: per-request limits, summaries, streams, uncertain charges, native EUR prices and USD rejection')
 
-# Production ledger: a failed model call releases its hold; only OVH advances spending.
-from ovh_budget import OvhBalanceLedger
+# Provider observations remain separate from durable local request accounting.
+from ovh_budget import OvhBalanceLedger, BudgetLedgerError
 with tempfile.TemporaryDirectory() as directory:
     now = datetime.now(timezone.utc)
     snapshot = dict(available=True, currency='EUR', credit_currency='EUR', project='fixture',
@@ -116,7 +116,51 @@ with tempfile.TemporaryDirectory() as directory:
     state=ledger.status()
     assert state['pending_requests']==0 and state['periods']['daily']['spent']==0
     assert state['periods']['monthly']['spent']==2.1 and state['provider_balance']==197.9
+    assert state['periods']['daily']['local_spent']==.00105
     token=ledger.reserve('.001')
     ledger.settle(token,'50')
     assert ledger.status()['periods']['monthly']['spent']==2.1
-print('Provider-authoritative accounting ignores local estimates and failed-call maximums: OK')
+    assert ledger.status()['periods']['daily']['accounted_spent']==50.00105
+    assert ledger.status()['blocked']
+
+    # Failure after reservation, before any model call, cancels instead of
+    # charging an uncertain request. Exercise both request entry points.
+    for stream_mode in (False, True):
+        provider_reads=[];model_calls=[]
+        def billing():
+            provider_reads.append(True)
+            return snapshot if len(provider_reads)==1 else {'available':False}
+        pending=OvhBalanceLedger.from_provider(root/('orphan-'+str(stream_mode)+'.json'),
+            {'daily':8,'monthly':197},root/'absent.json',billing,now=lambda:now)
+        def tracked(messages,info):
+            model_calls.append(True)
+            return ModelResponse(parts=[TextPart('unexpected')])
+        async def tracked_stream(messages,info):
+            model_calls.append(True)
+            yield 'unexpected'
+        guarded=BudgetedModel(FunctionModel(tracked,stream_function=tracked_stream),
+            lambda:pending,lambda _:card,lambda _:None)
+        try:
+            if stream_mode:
+                asyncio.run(consume(guarded))
+            else:
+                Agent(guarded).run_sync('Fixture only.',model_settings=settings)
+            raise AssertionError('Expected preflight billing failure')
+        except BudgetLedgerError:
+            pass
+        data=json.loads(pending.path.read_text())
+        assert not model_calls and data['reservations']=={}
+        assert data['ovh']['local']['spent']['daily'][now.date().isoformat()]=='0'
+
+    callback_ledger=BudgetLedger(root/'callback.json',{'daily':1})
+    def broken_ui(_):
+        raise RuntimeError('fixture UI unavailable')
+    guarded=BudgetedModel(FunctionModel(model),lambda:callback_ledger,lambda _:card,broken_ui)
+    try:
+        guarded.begin(settings)
+        raise AssertionError('Expected UI callback failure')
+    except RuntimeError:
+        pass
+    assert callback_ledger.status()['pending_requests']==0
+    assert callback_ledger.status()['periods']['daily']['spent']==0
+print('Delayed provider accounting, uncertain local charges and pre-send reservation cleanup: OK')

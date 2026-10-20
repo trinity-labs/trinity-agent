@@ -14,7 +14,7 @@ import queue
 from pathlib import Path
 from ovh_memory import ConversationMemory, atomic_write, terms
 from ovh_cache import read_text_cached
-from ovh_project_memory import ProjectMemory, notes as markdown_notes, markdown_note, safe_path
+from ovh_project_memory import ProjectMemory, notes as markdown_notes, markdown_note, safe_path, conversation_eligible
 
 TOOLS = ('sh','bash','git','rg','python3','node','npm','bun','go','cargo','rustc','docker','ssh','apk','apt-get','dnf','pacman','make','gcc','curl','xl','lbu')
 _reader = None
@@ -65,7 +65,7 @@ class WorkspaceContext:
             if root.is_symlink() or not root.is_dir():
                 continue
             for folder in root.iterdir():
-                if folder.is_dir() and not folder.is_symlink() and re.fullmatch(r'[A-Za-z0-9_-]+',folder.name):
+                if folder.is_dir() and not folder.is_symlink() and re.fullmatch(r'[A-Za-z0-9_-]+',folder.name) and conversation_eligible(folder):
                     folders.append(folder)
         return sorted(folders, key=lambda p:p.stat().st_mtime, reverse=True)[:limit]
 

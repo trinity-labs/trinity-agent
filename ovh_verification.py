@@ -155,7 +155,9 @@ class ChangeGuard:
         self.lock = threading.RLock()
         self.checks: dict[str, Check] = {}
         self.projects: set[Path] = set()
+        self.explicit_policies: set[Path] = set()
         self.observed: set[Path] = set()
+        self.inspected_directories: set[Path] = set()
         self.require_checks = require_checks
         self.task_intent = "question"
         self.failures: dict[str, int] = {}
@@ -178,6 +180,8 @@ class ChangeGuard:
             path = self._path(path)
             if path.is_file():
                 self.observed.add(path)
+            elif path.is_dir():
+                self.inspected_directories.add(path)
             folder = path if path.is_dir() else path.parent
             # External projects retain their own checks; never widen the default workspace.
             while self.allow_external or folder.is_relative_to(self.workspace):
@@ -187,6 +191,7 @@ class ChangeGuard:
                     policy = folder / ".ovh-agent-checks.json"
                     definitions = []
                     if policy.is_file():
+                        self.explicit_policies.add(folder)
                         try:
                             document = json.loads(policy.read_text())
                             if not isinstance(document, dict) or document.get("version") != 1 or not isinstance(document.get("checks"), list):
@@ -256,7 +261,21 @@ class ChangeGuard:
                     "checks": [{"name": check.name, "argv": check.argv, "cwd": str(check.root),
                                 "paths": check.patterns, "protected": sorted(check.protected)}
                                for check in self.checks.values()],
-                    "instruction": "Utilise les contrôles existants avant de créer des scripts. Les fichiers non couverts sont refusés avant écriture ; n'altère pas les contrôles de référence."}
+                    "instruction": "Utilise les contrôles existants et préserve leurs références. Une politique explicite reste obligatoire. Sans suite configurée, les écritures conservent une sauvegarde et sont vérifiées par syntaxe disponible et contenu ; cela ne prouve pas leur comportement."}
+
+    def _requires_functional_coverage(self, path):
+        if any(path.is_relative_to(root) for root in self.explicit_policies):
+            return True
+        # A nested package marker must not hide an enclosing explicit policy and
+        # turn an uncovered file into an unrestricted bootstrap.
+        folder = path.parent
+        while self.allow_external or folder.is_relative_to(self.workspace):
+            if (folder / ".ovh-agent-checks.json").exists():
+                return True
+            if folder == self.workspace or folder == folder.parent:
+                break
+            folder = folder.parent
+        return False
 
     def _applicable(self, paths):
         return {key: check for key, check in self.checks.items()
@@ -387,14 +406,39 @@ class ChangeGuard:
                 r"\ball tests pass(?:ed)?\b|\bno tests failed\b", prose, re.I)
             if claim:
                 raise VerificationError("Aucune preuve de test exécuté dans cette tâche. Retire l’annonce de tests réussis ; exécute les contrôles ou indique explicitement qu’ils n’ont pas été exécutés.")
+        modification_claim = (
+                r"\b(?:modification|changement)\s+(?:a [ée]t[ée] |est |ont [ée]t[ée] )?(?:effectu[ée]|r[ée]alis[ée]|appliqu[ée])|"
+                r"\b(?:modification|changement)\s+(?:effectu[ée]|r[ée]alis[ée]|appliqu[ée])|"
+                r"\b(?:fichier|code|css)\s+(?:a [ée]t[ée] |est )?modifi[ée]|"
+                r"\b(?:added|changed|modified|updated|applied)\b[^.\n]{0,50}\b(?:file|code|css|rule)\b")
+        # Negation belongs to the clause, not the entire answer. A truthful
+        # blocker must pass; adding one before a contradictory success must not.
+        clauses = re.split(r'[.!?\n;:]|\b(?:mais|cependant|pourtant|but|however)\b', prose, flags=re.I)
+        affirmative_change = any(
+            re.search(modification_claim, clause, re.I)
+            and not re.search(r"\baucun(?:e)?\b|\b(?:ne|n[’'])[^,]{0,70}\bpas\b|\b(?:not|no)\b", clause, re.I)
+            for clause in clauses)
+        if not self.state["changes"] and affirmative_change:
+            raise VerificationError("La réponse annonce une modification, mais aucun changement n’a été enregistré par les outils suivis. Effectue la modification avec edit_file/write_file ou indique explicitement qu’aucune modification n’a été effectuée.")
         if self.task_intent == "edit" and not self.state["changes"]:
             # A truthful blocker/no-op is allowed; a plan presented as completion is not.
-            honest = re.search(r"aucun(?:e)? (?:fichier[^.\n]{0,40}modifi|modification (?:effectuée|réalisée|appliquée))|"
+            honest = re.search(r"aucun(?:e)? (?:fichier[^.\n]{0,40}modifi|modification\b|changement\b)|"
                                r"(?:je n[’']ai|n[’']a été)[^.\n]{0,30}modifi|"
+                               r"\bfichier[^.\n]{0,30}n[’']a pas[^.\n]{0,30}modifi|"
                                r"(?:no files (?:were )?changed|no changes made)", prose, re.I)
             if not honest:
                 raise VerificationError("La demande est une modification, mais aucun fichier n’a été modifié par les outils suivis. Lis le code actuel puis réalise la demande autorisée. Si un blocage ou un état déjà conforme empêche une modification, écris explicitement « Aucune modification effectuée » et explique les faits vérifiés. Un plan ou une nouvelle demande de permission ne suffit pas.")
         if not summary["checks"]:
+            basic = [path for path, change in self.state["changes"].items()
+                     if change.get("validation") == "syntax_and_content"]
+            if basic:
+                notice = ("Validation limitée à la syntaxe disponible et au contenu sauvegardé. "
+                          "Aucun test fonctionnel configuré n’a été exécuté pour ces fichiers.")
+                return output if notice in output else output.rstrip() + "\n\n" + notice
+            if (self.state.get("report") or {}).get("status") == "not_configured":
+                notice = ("Audit limité aux observations locales : aucun contrôle exécutable configuré n’a été identifié. "
+                          "Aucun test fonctionnel n’a été exécuté ; le comportement du projet reste non vérifié.")
+                return output if notice in output else output.rstrip() + "\n\n" + notice
             return output
         footer = self.summary_markdown(summary)
         if output.endswith("\n\n" + footer):
@@ -427,6 +471,11 @@ class ChangeGuard:
             raise VerificationError("Bilan non justifié : n'invente pas de total et ne conclus pas à l'absence de défauts dans le projet. "
                                     "Décris seulement les contrôles exécutés et leurs limites. Le backend ajoute le tableau exact.\n"
                                     + json.dumps(summary, ensure_ascii=False))
+        if any(change.get("validation") == "syntax_and_content" for change in self.state["changes"].values()):
+            notice = ("Certains fichiers ont uniquement été contrôlés par syntaxe disponible et contenu sauvegardé ; "
+                      "les tests ci-dessous ne prouvent pas leur comportement.")
+            if notice not in output:
+                output = output.rstrip() + "\n\n" + notice
         return output.rstrip() + "\n\n" + footer
 
     def _execute(self, key: str, check: Check, phase: str) -> dict:
@@ -468,9 +517,10 @@ class ChangeGuard:
                 self.observe(path)
                 if any(str(path) in check.protected for check in self.checks.values()):
                     raise VerificationError("Contrôle de référence protégé : modification refusée avant écriture.")
-                if not self._applicable([path]):
+                applicable = self._applicable([path])
+                if not applicable and self._requires_functional_coverage(path):
                     raise VerificationError(f"Aucun contrôle fonctionnel configuré pour {path}. Écriture refusée avant modification. Utilise verification_plan sur le dossier du projet pour consulter les contrôles existants ; ne contourne pas ce refus avec le shell.")
-                for check_key, check in self._applicable([path]).items():
+                for check_key, check in applicable.items():
                     if check_key not in self.state["baseline"]:
                         self.state["baseline"][check_key] = self._execute(check_key, check, "before")
                 # Tests may run arbitrary project code; check freshness again afterwards.
@@ -485,13 +535,15 @@ class ChangeGuard:
                         atomic_write(self.directory / backup, original.decode())
                     change = {"backup": backup, "original": digest(original), "mode": mode}
                     self.state["changes"][key] = change
-                change.update({"previous": digest(original), "written": digest(candidate), "syntax": syntax})
+                change.update({"previous": digest(original), "written": digest(candidate), "syntax": syntax,
+                               "validation": "configured_checks" if applicable else "syntax_and_content"})
                 self.state["status"] = "pending"
                 self.state["report"] = None
                 self._save()  # Recovery information precedes the filesystem mutation.
                 replace_checked(path, candidate, digest(original), mode)
                 self.publish({"type": "verification_status", "status": "pending", "files": list(self.state["changes"])})
-                return f"Syntaxe {syntax}. Modification sauvegardée ; validation fonctionnelle encore requise."
+                return (f"Syntaxe {syntax}. Modification sauvegardée ; validation fonctionnelle encore requise."
+                        if applicable else f"Syntaxe {syntax}. Modification sauvegardée ; vérifier le contenu avec verify_changes. Aucun test fonctionnel configuré.")
             except VerificationError:
                 self.failures[failure_key] = self.failures.get(failure_key, 0) + 1
                 raise
@@ -504,7 +556,9 @@ class ChangeGuard:
             subjects = sorted(set(changes) | {str(path) for path in self.observed})
             actual = {path: digest(contents(Path(path))) for path in subjects}
             old = self.state.get("report")
-            if old and old.get("fingerprints") == actual:
+            if (old and old.get("fingerprints") == actual
+                    and old.get("inspected_directories", []) == sorted(str(path) for path in self.inspected_directories)
+                    and old.get("checks_available", []) == sorted(self.checks)):
                 # Changing a test cannot make a cached result valid.
                 if all(self._fresh(r) for r in old.get("checks", [])) and all(digest(contents(Path(path))) == expected for check in self._applicable(subjects).values()
                        for path, expected in check.protected.items()):
@@ -517,9 +571,19 @@ class ChangeGuard:
             for receipt in self.state["receipts"]:
                 if receipt["phase"] == "manual" and receipt["key"] in self.checks:
                     applicable[receipt["key"]] = self.checks[receipt["key"]]
-            uncovered = [path for path in changes if not self._applicable([path])]
+            uncovered = [path for path in changes if not self._applicable([path])
+                         and changes[path].get("validation") != "syntax_and_content"]
             problems += [f"Aucun contrôle fonctionnel configuré pour {path}" for path in uncovered]
-            if not applicable:
+            basic = [path for path, change in changes.items() if change.get("validation") == "syntax_and_content"]
+            for name in basic:
+                try:
+                    check_syntax(Path(name), contents(Path(name)).decode())
+                except (VerificationError, UnicodeError, AttributeError) as error:
+                    problems.append(f"Validation actuelle impossible pour {name} : {error}")
+            inspected = list(self.observed) + [path / '_audit_scope_' for path in self.inspected_directories]
+            limited_audit = (not changes and not applicable and not self.checks and bool(inspected)
+                             and not any(self._requires_functional_coverage(path) for path in inspected))
+            if not applicable and not basic and not limited_audit:
                 problems.append("Aucun contrôle exécutable identifié ; audit non vérifié.")
             receipts = []
             if not problems:
@@ -530,15 +594,19 @@ class ChangeGuard:
             after = {path: digest(contents(Path(path))) for path in subjects}
             if actual != after:
                 problems.append("Des fichiers ont changé pendant les contrôles ; résultats périmés.")
-            passed = bool(receipts) and all(item["passed"] for item in receipts) and not problems
+            passed = bool(receipts or basic) and all(item["passed"] for item in receipts) and not problems
             # An audit can legitimately conclude with reproduced failures. A code
             # modification, however, cannot be accepted with failing controls.
             observed_failure = (not changes and receipts and not problems
                                 and all(item.get("exit_code") is not None and not item.get("timed_out") for item in receipts))
-            status = "passed" if passed else "observed_failure" if observed_failure else "failed"
+            status = ("passed" if passed else "observed_failure" if observed_failure else
+                      "not_configured" if limited_audit and not problems else "failed")
             report = {"status": status, "files": list(changes),
                       "checks": receipts, "problems": problems, "fingerprints": actual,
-                      "scope": "configured_local_checks", "universal_correctness": False}
+                      "inspected_directories": sorted(str(path) for path in self.inspected_directories),
+                      "checks_available": sorted(self.checks),
+                      "scope": "configured_local_checks" if receipts else "local_observations_only" if limited_audit else "syntax_and_content",
+                      "functional_coverage_missing": basic, "universal_correctness": False}
             self.state["report"] = report
             self.state["status"] = report["status"]
             self._save()

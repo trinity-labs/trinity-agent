@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.16.0 — 2026-10-20
+
+- Preserve pending prompts during backend restoration; reconcile stopped follow-ups without duplicate execution, and wait for new-conversation acknowledgement before accepting another prompt.
+- Keep project selection valid after a path change. Distinguish active permissions from the preference for the next request; resume with explicit current access and model choices.
+- Track refused file changes as incomplete work, accept honest no-change answers, and distinguish diagnostic failures or commands denied before launch from uncertain mutations.
+- Respect project access boundaries during automatic retrieval, find readable sources inside explicitly selected Git-ignored installations, and keep controller reminders separate from user requests.
+- Treat local diagnostics and audits as workspace tasks; require external research for documentary claims rather than every local error.
+- Allow backed-up edits with syntax/content verification when no functional policy exists, while preserving explicit project checks and reporting the missing functional coverage.
+- Exclude evaluation conversations consistently from ordinary memory and rebuild search fragments when their source documents change.
+- Account for completed local model calls before delayed provider billing catches up; release reservations when preparation fails before any model request. Preserve existing operator limits.
+- Rebuild frontend assets and extend offline regressions for these transitions. Update the companion backend together with this client.
+
 ## 1.15.4 — 2026-10-19
 
 - Keep the model catalogue open across delayed conversation loads and preserve a newer explicit model selection.

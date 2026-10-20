@@ -22,7 +22,8 @@ VERIFICATION_GUARD = None
 TASK_ENGINE = None
 ACTIVE_TOOLS = None
 
-names = {'read_followups', 'write_followups', 'publish_followups', 'handle_followup', 'apply_steering'}
+names = {'consumed_followup_ids', 'consume_followup', 'schedule_next_followup', 'read_followups', 'write_followups',
+         'publish_followups', 'handle_followup', 'apply_steering'}
 syntax = ast.parse((root / 'ovh-agent.py').read_text())
 module = ast.Module(body=[node for node in syntax.body if isinstance(node, ast.FunctionDef) and node.name in names], type_ignores=[])
 events, task = [], {'prompt': 'Original task'}
@@ -31,7 +32,7 @@ with tempfile.TemporaryDirectory() as temporary:
     folder = archive / 'conversation'
     folder.mkdir()
     scope = dict(globals(), ARCHIVE_ROOT=archive, CONVERSATION_ID='conversation', AUTO_MODEL='auto-balanced',
-                 FOLLOWUP_LOCK=threading.RLock(), FOLLOWUP_RUNNING=True, FOLLOWUP_CLAIMED=None,
+                 FOLLOWUP_LOCK=threading.RLock(), FOLLOWUP_RUNNING=True, FOLLOWUP_CLAIMED=None, FOLLOWUP_GENERATION=0,
                  conversation_dir=lambda: folder, emit=lambda data: events.append(data),
                  archive_event=lambda data: events.append(data), read_task_state=lambda: dict(task),
                  save_task_state=lambda **changes: task.update(changes))
@@ -72,6 +73,13 @@ with tempfile.TemporaryDirectory() as temporary:
     assert [i['id'] for i in scope['read_followups']()] == ['later']
     assert task['prompt'].endswith('Check the result carefully')
     assert sum(e['type'] == 'steer_applied' for e in events) == 2
+    # Lost acknowledgements never requeue already accepted steering, including
+    # after a fresh interpreter reloads the persistent task state.
+    before_prompt = task['prompt']
+    command('add', id='steer', text='Use the new requirement', mode='steer')
+    assert events[-1]['type'] == 'followup_ack' and events[-1]['already_started']
+    assert all(item['id'] != 'steer' for item in scope['read_followups']())
+    assert task['prompt'] == before_prompt
     # A correction must invalidate controller evidence too, not merely appear
     # as another model message whose old conclusion could survive compaction.
     assert steering_engine.focus.call_args_list == [call('Use the new requirement'), call('Check the result carefully')]
@@ -148,7 +156,8 @@ with tempfile.TemporaryDirectory() as temporary:
     dispatch_code = compile(ast.fix_missing_locations(dispatch_module),str(root/'ovh-agent.py'),'exec')
     dispatched=[]
     while scope['read_followups']():
-        scope.update(request_type='next_followup',request={'conversation':'conversation'},followup_id=None)
+        scope.update(request_type='next_followup',request={'conversation':'conversation',
+                     'generation':scope['FOLLOWUP_GENERATION']},followup_id=None)
         exec(dispatch_code,scope)
         dispatched.append(scope['request']['id'])
         scope['write_followups']([item for item in scope['read_followups']() if item['id'] != scope['followup_id']])

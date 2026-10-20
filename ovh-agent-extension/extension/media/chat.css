@@ -866,6 +866,25 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 /* Compact activity journal: one muted line, details only on demand. */
 .activity { border: 0; border-radius: 0; background: transparent; }
 .activity > summary { min-height: 26px; padding: 3px 0; gap: 8px; font-size: 12px; color: var(--vscode-descriptionForeground); }
+.message.working .activity-summary-text {
+  color: transparent;
+  background: linear-gradient(100deg, var(--vscode-descriptionForeground) 0 38%, color-mix(in srgb, var(--vscode-foreground) 95%, #fff) 48% 54%, var(--vscode-descriptionForeground) 64% 100%);
+  background-size: 260% 100%;
+  background-position: 115% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: activity-mirror-slide 1.8s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+@keyframes activity-mirror-slide {
+  0%, 18% { background-position: 115% 0; }
+  82%, 100% { background-position: -15% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .message.working .activity-summary-text { color: inherit; background: none; animation: none; }
+}
+@media (forced-colors: active) {
+  .message.working .activity-summary-text { color: inherit; background: none; animation: none; }
+}
 .activity-summary-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: .72; }
 .activity-elapsed { flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; opacity: .72; }
 .activity > summary > .summary-chevron { flex-shrink: 0; opacity: 0; }
@@ -959,25 +978,11 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 .followups button { color: var(--ovh-primary); border: 0; border-radius: 4px; padding: 6px; background: transparent; cursor: pointer; }
 .followups button:hover { background: color-mix(in srgb, var(--ovh-primary) 18%, transparent); }
 .followups .agent-icon { width: 14px; height: 14px; }
-.verification-status,
-.execution-evidence {
+.verification-status {
   opacity: .5;
   margin: 8px 0;
   font-size: 0.85em;
   color: var(--vscode-descriptionForeground);
-}
-.execution-evidence {
-  display: table;
-  padding: 2px 6px;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--ovh-primary) 5%, transparent);
-}
-.execution-evidence[data-evidence-state="passed"] {
-  color: var(--ovh-primary-text, var(--ovh-primary));
-}
-.execution-evidence[data-evidence-state="unverified"] {
-  color: var(--vscode-editorWarning-foreground, var(--vscode-descriptionForeground));
 }
 .verification-failed,
 .verification-observed_failure,

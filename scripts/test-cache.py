@@ -54,21 +54,30 @@ with tempfile.TemporaryDirectory() as directory:
     CACHE.clear()
     with patch('ovh_memory.read_text_cached', side_effect=AssertionError('disk index should survive restart')):
         assert memory.search('calyx') == first
-    # Legacy chunk files remain searchable alongside the new grouped format.
+    # Disposable legacy fragments cannot override the authoritative document.
     legacy = memory.index / f'{reference}-legacy.json'
     atomic_write(legacy, json.dumps(dict(reference=reference, offset=0, text='legacytoken')))
-    assert 'legacytoken' in memory.search('legacytoken')
+    assert memory.search('legacytoken') == ''
     atomic_write(legacy, json.dumps(dict(reference=reference, offset=0, text='changedtoken')))
     assert memory.search('legacytoken') == ''
-    assert 'changedtoken' in memory.search('changedtoken')
+    assert memory.search('changedtoken') == ''
     legacy.unlink()
     assert memory.search('changedtoken') == ''
-    # Corrupt derived cache rebuilds from canonical index, never drops history.
+    # Corrupt derived cache rebuilds from Markdown, never drops history.
     snapshot.write_text('{broken')
     CACHE.clear()
     assert memory.search('calyx') == first
-    (memory.docs / f'{reference}.md').unlink()
+    document = memory.docs / f'{reference}.md'
+    document.write_text(text.replace('calyx', 'lotus'))
     assert memory.search('calyx') == ''
+    assert 'lotus' in memory.search('lotus')
+    assert 'lotus' in memory.read(reference)
+    CACHE.clear()
+    assert memory.search('calyx') == '' and 'lotus' in memory.search('lotus')
+    atomic_write(document, 'Corrected source with orchid.')
+    assert memory.search('lotus') == '' and 'orchid' in memory.search('orchid')
+    (memory.docs / f'{reference}.md').unlink()
+    assert memory.search('orchid') == ''
     # A second conversation cannot reuse the first conversation's entries.
     other = ConversationMemory(root / 'other')
     other.put('independent memory')
@@ -78,4 +87,4 @@ with tempfile.TemporaryDirectory() as directory:
         other.put('another document')
         assert other.search('another')
         assert not (other.root / 'cache' / 'search-v1.json').exists()
-print('PASS: bounded LRU, file edits/replacement/deletion, grouped/legacy index, RAM/disk reuse, corruption recovery, conversation isolation')
+print('PASS: bounded LRU, authoritative Markdown edits/replacement/deletion, stale legacy rejection, RAM/disk reuse, corruption recovery, conversation isolation')

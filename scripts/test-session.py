@@ -10,6 +10,7 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +36,112 @@ class Sessions(unittest.TestCase):
         self.meta = self.folder / 'meta.json'
         self.events = self.folder / 'events.jsonl'
         self.events.write_text(json.dumps({'type': 'user', 'text': 'Analyse\n  le projet docker_trinity'}) + '\n')
+
+    def run_failed_queue(self, initial, prepare=None):
+        """Drive the real dispatcher and disk queue without a model/provider."""
+        outputs, calls, channels = [], [], {}
+        def inputs(requests):
+            channels['requests'] = requests
+            for request in initial:
+                requests.put(request)
+        def emit(event):
+            outputs.append(event)
+            if event['type'] == 'error':
+                # Existing stale wakeups remain ahead of shutdown and must be
+                # ignored; otherwise a second task runs before the test exits.
+                channels['requests'].put({'type': 'shutdown'})
+        def verification(*_):
+            a.VERIFICATION_GUARD = SimpleNamespace(state={'status': 'passed'})
+        def run_model(prompt, **kwargs):
+            calls.append(prompt)
+            raise RuntimeError('fixture model failure')
+        def preparation(*args):
+            if prepare:
+                prepare(channels['requests'])
+            return [], {}
+        with ExitStack() as stack:
+            mocks = {
+                'recover_verification': {}, 'load_history': {'return_value': []},
+                'read_snapshot': {'return_value': None}, 'read_archive': {'return_value': []},
+                'load_selected_model': {'return_value': 'fixture-model'},
+                'refresh_billing_async': {}, 'current_budget_status': {'return_value': {}},
+                'publish_budget': {}, 'stdin_reader': {'side_effect': inputs},
+                'emit': {'side_effect': emit}, 'write_pointer': {}, 'list_archives': {'return_value': []},
+                'save_selected_model': {}, 'is_selectable_model': {'return_value': True},
+                'compact_history': {'return_value': ([], {'before_chars': 0})},
+                'prepare_task_context': {'side_effect': preparation},
+                'begin_verification': {'side_effect': verification},
+                'model_supports_vision': {'return_value': True},
+                'generation_settings': {'return_value': {}},
+                'model_capabilities': {'return_value': {'stream': False}},
+                'get_agent': {'return_value': SimpleNamespace(run_sync=run_model)},
+                'archive_event': {},
+            }
+            for name, settings in mocks.items():
+                stack.enter_context(patch.object(a, name, **settings))
+            for name, value in {'FOLLOWUP_RUNNING': False, 'FOLLOWUP_CLAIMED': None,
+                                'FOLLOWUP_GENERATION': 0, 'TASK_ENGINE': None,
+                                'VERIFICATION_GUARD': None, 'JSON_MODE': False}.items():
+                stack.enter_context(patch.object(a, name, value))
+            stack.enter_context(patch.object(a.WorkspaceContext, 'answer', return_value=None))
+            a.main_json_lines()
+            self.assertFalse(a.FOLLOWUP_RUNNING)
+        return calls, outputs
+
+    def test_queued_wakeups_do_not_continue_after_first_model_failure(self):
+        requests = [{'type': 'followup', 'action': 'add', 'conversation': 'conversation',
+                     'id': name, 'text': name, 'mode': 'queue', 'model': 'fixture-model'}
+                    for name in ('first', 'second')]
+        calls, outputs = self.run_failed_queue(requests)
+        self.assertEqual(calls, ['first'])
+        self.assertEqual([item['id'] for item in a.read_followups()], ['second'])
+        self.assertEqual(a.consumed_followup_ids(), ['first'])
+        self.assertEqual(sum(event['type'] == 'error' for event in outputs), 1)
+        # An explicit continuation rearms the current generation.
+        calls, _ = self.run_failed_queue([
+            {'type': 'followup', 'action': 'continue', 'conversation': 'conversation'}])
+        self.assertEqual(calls, ['second'])
+        self.assertEqual(a.read_followups(), [])
+
+    def test_followup_received_during_failed_preparation_stays_paused(self):
+        def prepare(requests):
+            self.assertTrue(a.FOLLOWUP_RUNNING)
+            a.handle_followup({'type': 'followup', 'action': 'add', 'conversation': 'conversation',
+                'id': 'during-preparation', 'text': 'preserve pending', 'mode': 'queue',
+                'model': 'fixture-model'}, requests)
+            self.assertTrue(requests.empty(), 'A running preparation cannot schedule another attempt')
+            raise ValueError('fixture preparation failure')
+        calls, _ = self.run_failed_queue([
+            {'type': 'prompt', 'text': 'initial', 'model': 'fixture-model'}], prepare)
+        self.assertEqual(calls, [])
+        self.assertEqual([item['id'] for item in a.read_followups()], ['during-preparation'])
+
+    def test_corrupt_task_state_blocks_replay_writes_and_startup(self):
+        a.write_followups([{'id': 'accepted', 'text': 'accepted once', 'mode': 'queue'}])
+        a.consume_followup('accepted', status='running', prompt='accepted once')
+        self.assertEqual(a.read_followups(), [])
+        path = self.folder / 'task-state.json'
+        for broken in ('{broken', '[]', '{"consumed_followups": [1]}'):
+            with self.subTest(broken=broken):
+                path.write_text(broken)
+                with self.assertRaisesRegex(ValueError, 'task-state.json'):
+                    a.read_followups()
+                with self.assertRaisesRegex(ValueError, 'task-state.json'):
+                    a.save_task_state(status='interrupted')
+                with patch.object(a, 'emit') as emitted, patch.object(a, 'recover_verification') as recovery, \
+                        patch.object(a, 'JSON_MODE', False):
+                    a.main_json_lines()
+                recovery.assert_not_called()
+                self.assertEqual(emitted.call_args.args[0]['type'], 'error')
+                self.assertIn('task-state.json', emitted.call_args.args[0]['text'])
+                self.assertEqual(path.read_text(), broken)
+        with patch.object(a, 'read_text_cached', side_effect=PermissionError('fixture denied')):
+            with self.assertRaisesRegex(ValueError, 'task-state.json'):
+                a.read_task_state()
+        # Only actual absence permits the legacy event recovery.
+        path.unlink()
+        self.assertEqual(a.read_task_state()['status'], 'interrupted')
+        self.assertEqual(a.read_task_state()['prompt'], 'Analyse\n  le projet docker_trinity')
 
     def test_partial_stream_survives_without_a_queued_webview_snapshot(self):
         a.save_task_state(status='running',prompt='travaille')
@@ -264,6 +371,42 @@ class Sessions(unittest.TestCase):
         self.assertIn('aucun outil de génération',error['text'])
         self.assertFalse(any(e['type']=='response' for e in outputs))
 
+    def test_resume_uses_explicit_preferences_and_defaults_to_restricted_access(self):
+        for preferences, expected_access, expected_model in (
+                ({'full_access': False, 'model': 'selected-model'}, False, 'selected-model'),
+                ({'full_access': True, 'model': 'selected-model'}, True, 'selected-model'),
+                ({}, False, 'old-model')):
+            with self.subTest(preferences=preferences):
+                a.save_task_state(status='interrupted', prompt='Corrige app.py', full_access=True,
+                                  model='old-model', images=[], last_tool={})
+                observed = []
+                def inputs(requests):
+                    requests.put({'type': 'resume_archive', 'id': 'conversation', **preferences})
+                    requests.put({'type': 'shutdown'})
+                def prepare(*args):
+                    observed.append(a.FULL_ACCESS)
+                    raise ValueError('fixture stops before model')
+                with ExitStack() as stack:
+                    mocks = {
+                        'recover_verification': {}, 'load_history': {'return_value': []},
+                        'read_archive': {'return_value': []}, 'read_snapshot': {'return_value': None},
+                        'load_selected_model': {'return_value': a.AUTO_MODEL},
+                        'refresh_billing_async': {}, 'current_budget_status': {'return_value': {}},
+                        'publish_budget': {}, 'stdin_reader': {'side_effect': inputs},
+                        'emit': {}, 'write_pointer': {}, 'list_archives': {'return_value': []},
+                        'save_selected_model': {}, 'is_selectable_model': {'return_value': True},
+                        'compact_history': {'return_value': ([], {})},
+                        'prepare_task_context': {'side_effect': prepare},
+                        'get_agent': {'side_effect': AssertionError('No model call expected')},
+                    }
+                    patched = {name: stack.enter_context(patch.object(a, name, **settings))
+                               for name, settings in mocks.items()}
+                    stack.enter_context(patch.object(a, 'JSON_MODE', False))
+                    stack.enter_context(patch.object(a, 'FULL_ACCESS', False))
+                    a.main_json_lines()
+                    self.assertEqual(observed, [expected_access])
+                    patched['save_selected_model'].assert_called_once_with(expected_model)
+
     def test_local_document_answer_archives_without_any_model_or_compaction(self):
         workspace=self.root/'project';workspace.mkdir()
         prompt='Comment lancer les tests du projet ?'
@@ -304,7 +447,7 @@ class Sessions(unittest.TestCase):
         order=[]
         prepared={'context':'','sources':[],'files_scanned':0,'partial':False,'preparation_ms':0,'analysis':{'query':'Question'}}
         with patch.object(a,'history_with_memory',side_effect=lambda history,query, **kwargs: order.append('memory') or history), \
-             patch.object(a,'prepare_request',side_effect=lambda *args: order.append('files') or prepared):
+             patch.object(a,'prepare_request',side_effect=lambda *args, **kwargs: order.append('files') or prepared):
             a.prepare_task_context([],'Question')
         self.assertEqual(order,['memory','files'])
 

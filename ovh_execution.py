@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import stat
 import threading
 import time
@@ -35,6 +36,30 @@ READ_ONLY_TOOLS = frozenset({'read_file', 'list_files', 'search_text', 'read_mem
     'verification_plan', 'ask_user_questions'})
 
 
+def command_is_read_only(command):
+    """Recognize a deliberately small set of local diagnostics.
+
+    This is not a shell sandbox. Anything involving shell composition, expansion,
+    executable hooks, remote execution or an unknown program stays a mutation.
+    """
+    if not isinstance(command, str) or re.search(r'[\n\r;&|<>`$()]', command):
+        return False
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return False
+    if not argv or argv[0] not in {'pwd', 'ls', 'stat', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'test', '['}:
+        return False
+    if argv[0] == 'rg':
+        for arg in argv[1:]:
+            if arg == '--':
+                break
+            if (arg.split('=', 1)[0] in {'--pre', '--hostname-bin', '--search-zip'}
+                    or arg.startswith('-') and not arg.startswith('--') and 'z' in arg[1:]):
+                return False
+    return not (argv[0] == '[' and argv[-1] != ']')
+
+
 def read_only_policy(prompt, previous=False):
     """Keep an explicit read-only instruction until an explicit write request.
 
@@ -51,30 +76,47 @@ def read_only_policy(prompt, previous=False):
         r'\b(?:indique|reponds?(?: avec)?|affiche|dis|say|report|respond(?: with)?|output)\s*[:=]?\s*'
         r'["«“`\']?\s*(?:aucune modification(?: effectuee)?|no (?:edits|changes)(?: made)?)'
         r'(?=\s*(?:["»”`\']|[.!?,;:\n]|$))', '', text)
-    if re.search(r'\b(?:lecture seule|lis uniquement|aucune modification|read[ -]only|no (?:edits|changes))\b', text):
+    if re.search(r'\b(?:lecture seule|lis uniquement|aucune modification|sans rien modifier|read[ -]only|no (?:edits|changes))\b', text):
         return True
+    # A global prohibition takes precedence over a positive verb concerning an
+    # explanation. A restriction on tests or named files does not cancel an
+    # explicit request to edit a different target.
+    prohibitions = list(re.finditer(r'\b(?:sans (?:(?:le|la|les) )?modifi\w*|ne (?:modifie|change|supprime|ecris) pas|do not (?:modify|edit|write|change)|without (?:modifying|editing|writing|changing))\b', text))
+    if prohibitions:
+        from ovh_request import explicit_paths
+        for prohibition in prohibitions:
+            target = re.split(r'[;!?\n]|\.(?=\s|$)', text[prohibition.end():], maxsplit=1)[0].strip()
+            scoped_tests = re.fullmatch(r'(?:(?:les?|ces?|the) )?tests?(?: (?:existants?|actuels?|unitaires|de reference))?', target)
+            target_paths = explicit_paths(target)
+            scoped_paths = target_paths and not re.search(r'\b(?:fichiers|files|code|projet|project|anything|rien)\b', target)
+            if set(target_paths) & set(explicit_paths(text[:prohibition.start()])):
+                return True
+            if not scoped_tests and not scoped_paths:
+                return True
     if re.match(
         r"^\s*(?:(?:oui|ok|okay|yes|now|maintenant|please|d['’]accord|s['’]il te plait)[\s,!:.]+)*"
-        r"(?:modifie|corrige|ecris|cree|supprime|ajoute|applique|implemente|deploie|installe|publie|"
+        r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you)\s+(?:maintenant\s+)?)?"
+        r"(?:modifie|modifier|corrige|corriger|ecris|ecrire|cree|creer|supprime|supprimer|ajoute|ajouter|applique|appliquer|implemente|deploie|installe|publie|"
         r"fais (?:la correction|les corrections|les modifications)|"
         r"(?:tu peux|je t['’]autorise a) (?:modifier|corriger|ecrire|creer|supprimer|appliquer)|"
         r"(?:you may|you can|i authorize you to|go ahead and) (?:edit|modify|write|fix|implement)|"
         r"edit|modify|write|fix|implement|apply|deploy|install|publish)\b", text):
         return False
-    if re.search(r'\b(?:sans (?:(?:le|la|les) )?modifi\w*|ne (?:modifie|change|supprime|ecris) pas|do not (?:modify|edit|write|change))\b', text):
-        return True
-    return bool(previous)
+    return bool(prohibitions or previous)
 
 
 class WorkflowController:
     def __init__(self, workspace, directory, *, publish=None, receipts=None,
-                 allow_external=False, operation_runner=None):
+                 allow_external=False, operation_runner=None, trusted_diagnostics=False):
         self.workspace = Path(workspace).resolve()
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.publish = publish or (lambda event: None)
         self.receipts = receipts or (lambda: [])
         self.allow_external = allow_external
+        # Only the application executor can promise direct argv, trusted system
+        # executables and disabled external hooks. A tool name is not that proof.
+        self.trusted_diagnostics = trusted_diagnostics is True
         self.acceptance = AcceptanceSuite(self.workspace)
         self.proofs = self.directory / 'file-proofs'
         self.proofs.mkdir(exist_ok=True, mode=0o700)
@@ -116,6 +158,7 @@ class WorkflowController:
             pass
         self.incomplete = False
         self.command_results = []
+        self.current_file_attempts = {}
         self._validation_retries = 0
         self.read_only = previous_read_only
 
@@ -248,7 +291,8 @@ class WorkflowController:
         if (data.get('executed') is False and data.get('exit_code') is None
                 and data.get('passed') is False and data.get('timed_out') is False
                 and data.get('profile') in {'approved', 'workspace'}
-                and data.get('error') in {'sandbox_unavailable', 'invalid_process_arguments', 'process_start_failed'}):
+                and data.get('error') in {'sandbox_unavailable', 'invalid_process_arguments', 'process_start_failed',
+                                          'approval_denied', 'policy_denied', 'invalid_command_target'}):
             return {'kind': 'execution_not_started', 'exit_code': None}
         evidence = data.get('check_evidence')
         if name != 'run_command' or not isinstance(evidence, dict):
@@ -359,23 +403,25 @@ class WorkflowController:
 
     def invoke(self, function, *args, **kwargs):
         name = function.__name__
+        bound = inspect.signature(function).bind(*args, **kwargs)
+        bound.apply_defaults()
+        arguments = dict(bound.arguments)
+        diagnostic = (self.trusted_diagnostics and name == 'run_command'
+                      and command_is_read_only(arguments.get('command')))
         # Enforce authorization at execution, including stale/hallucinated tool
         # calls and private wrappers. Hiding a JSON schema is only a UI measure.
-        if self.read_only and name not in READ_ONLY_TOOLS:
+        if self.read_only and name not in READ_ONLY_TOOLS and not diagnostic:
             return json.dumps({'status': 'blocked', 'category': 'read_only', 'executed': False,
                 'tool': name, 'message': 'Consigne utilisateur de lecture seule active. Aucune action modificatrice exécutée.'}, ensure_ascii=False)
         if name in CONTROL:
             if name == 'execute_operation':
                 self.last_acceptance = None
             return function(*args, **kwargs)
-        bound = inspect.signature(function).bind(*args, **kwargs)
-        bound.apply_defaults()
-        arguments = dict(bound.arguments)
         revision = self._observation_revision(name, arguments)
         if self.failures.before_call(name, arguments, revision=revision)['blocked']:
             return json.dumps({'status': 'blocked', 'category': 'no_progress', 'executed': False,
                 'tool': name, 'message': 'Échecs répétés sans progrès vérifié. Inspecte la cause ou répare avant de répéter.'}, ensure_ascii=False)
-        mutation = name in MUTATIONS
+        mutation = name in MUTATIONS and not diagnostic
         if mutation:
             # Failed commands can still change files; cached evidence is stale
             # as soon as a potentially mutating executor is entered.
@@ -390,6 +436,7 @@ class WorkflowController:
         proof = self._file_proof(name, arguments)
         if proof is not None:
             atomic_write(self.proofs / (operation + '.json'), json.dumps(proof))
+            self.current_file_attempts[proof['path']] = operation
         self.local.events = []
         try:
             result = function(*args, **kwargs)
@@ -469,6 +516,13 @@ class WorkflowController:
                     continue  # A missing required proof remains unresolved above.
         failed_files = [row['id'] for row in latest_files.values()
                         if row.get('verification_outcome') != 'applied']
+        # A rejected write can be safely known not to have happened. That clears
+        # uncertainty, not the requested change. Only a later successful write to
+        # that same path resolves the failed attempt within this task.
+        current_ids = set(self.current_file_attempts.values())
+        failed_files = list(dict.fromkeys(failed_files + [
+            row['id'] for row in actions['operations']
+            if row['id'] in current_ids and row.get('verification_outcome') != 'applied']))
         failed_checks = [item['check'] for item in report['checks'] if item.get('status') == 'failed']
         self.incomplete = bool(unresolved or running or failed_files or failed_checks or report['criteria_status'] not in {'passed', 'not_configured'})
         result = {'incomplete': self.incomplete, 'unresolved': unresolved, 'running': running, 'failed_checks': failed_checks,

@@ -331,6 +331,22 @@
       "protect": [
         "scripts/test-agent-evaluation.py"
       ]
+    },
+    {
+      "name": "Cohérence du contexte, des recherches et des droits",
+      "paths": [
+        "ovh-agent.py",
+        "ovh_context.py",
+        "ovh_request.py",
+        "scripts/test-coherence.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-coherence.py"
+      ],
+      "protect": [
+        "scripts/test-coherence.py"
+      ]
     }
   ]
 }

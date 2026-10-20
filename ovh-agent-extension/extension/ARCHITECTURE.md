@@ -158,6 +158,17 @@ move the current conversation. New Conversation starts in that folder and record
 the history assignment when the backend acknowledges `cleared`, after creating
 the archive directory. Without an explicit selection, it uses the IDE workspace.
 
+Automatic archive restoration preserves an optimistic prompt already sent while
+the backend was starting and does not release the running-request state. A new
+conversation must be acknowledged before submission is enabled. Changing a
+project path remaps both the persisted selection and any pending destination.
+
+Access preference and running-task access are separate UI state. A resume request
+contains explicit `full_access` and `model` values; missing access defaults to
+restricted mode. Stopped follow-ups retain their client ID. The backend records
+accepted IDs atomically with the resumable task before removing queue entries;
+duplicate submissions return `already_started` without executing again.
+
 
 ### Model policy and executable controls
 
@@ -173,6 +184,25 @@ service effects. Acceptance tests must exercise the requested behavior and keep
 independent cases unavailable to the agent under evaluation. Record partial
 results, interrupted mutations and infrastructure errors separately from model
 quality scores.
+
+Refusal before launching a command is a structured `executed: false` result.
+Conservatively recognized diagnostic commands can fail without becoming unknown
+mutations; arbitrary commands and interrupted mutations still require evidence
+before replay. A refused file write remains incomplete in its current task until
+a subsequent successful write resolves it. Absence of recorded writes is not
+proof that a requested change was completed.
+
+An explicit project verification policy remains mandatory. A project without
+such a policy can start with tracked backups and syntax/content verification;
+receipts identify missing functional coverage rather than claiming test success.
+Periodic controller checkpoints use system context, never fabricated user turns,
+and are discarded when preparing a new task.
+
+Automatic file retrieval uses the same effective workspace boundary as explicit
+file tools. Text search includes Git-ignored readable files under the selected
+path while excluding dependency directories and generated bundles. Evaluation
+archives are ineligible for normal cross-conversation memory, including user-scope
+notes. Search fragments are rebuilt when their Markdown sources change.
 
 ## Contrôleur d’exécution et autonomie vérifiable
 

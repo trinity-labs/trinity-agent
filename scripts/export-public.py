@@ -64,6 +64,8 @@ for key, value in public_branding.items():
 compose = re.sub(r'\d+\.\d+\.\d+\.\d+:\d+:8080', '${IDE_BIND_ADDRESS:-127.0.0.1}:${IDE_PORT:-5734}:8080', compose)
 compose = compose.replace('/mnt/SSHFS/TRINITY-CLOUD/mnt/ENTREPRISE/SERVER/TRINITY/codex', '${CODEX_DATA_DIR:-./data/codex}')
 compose = compose.replace('/mnt/SSHFS/TRINITY-CLOUD/mnt/ENTREPRISE/SERVER/TRINITY/ovh-agent', '${AGENT_DATA_DIR:-./data/agent}')
+compose = compose.replace('/var/lib/trinity/agent-data/codex', '${CODEX_DATA_DIR:-./data/codex}')
+compose = compose.replace('/var/lib/trinity/agent-data/trinity-agent', '${AGENT_DATA_DIR:-./data/agent}')
 compose = '\n'.join(line for line in compose.splitlines() if '/mnt/SSHFS/' not in line) + '\n'
 compose = compose.replace('/etc/trinity/docker-trinity/', '${AGENT_SECRETS_DIR:-./secrets}/')
 compose = compose.replace('/var/docker/docker_ide/', './')

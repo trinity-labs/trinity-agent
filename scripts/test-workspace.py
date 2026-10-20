@@ -46,6 +46,23 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(note['conversation'],'original')
         shutil.rmtree(self.conv)
         self.assertEqual(self.other.search('interface française'),'')
+    def test_evaluations_never_enter_paged_or_cross_project_memory(self):
+        reference=ConversationMemory(self.conv).put('EvaluationFixtureWrongAnswer')
+        self.ctx.remember('original','EvaluationFixturePreference','user','declared','fixture')
+        # Warm project caches before changing the metadata.
+        self.assertIn(reference,self.ctx.search('EvaluationFixtureWrongAnswer'))
+        metadata=self.conv/'meta.json'
+        metadata.write_text(json.dumps({'evaluation':True}))
+        self.assertNotIn(reference,self.ctx.search('EvaluationFixtureWrongAnswer'))
+        self.assertNotIn(reference,json.dumps(self.ctx.search_page('EvaluationFixtureWrongAnswer')))
+        self.assertNotIn('EvaluationFixturePreference',self.other.search('unrelated request'))
+        self.assertNotIn(self.conv,self.ctx.folders(all_projects=True))
+        # Explicit archival reading remains available for evaluation inspection.
+        self.assertIn('EvaluationFixtureWrongAnswer',self.ctx.read('original',reference))
+        metadata.write_text('{broken')
+        self.assertNotIn(self.conv,self.ctx.folders())
+        metadata.unlink()
+        self.assertIn(self.conv,self.ctx.folders())
     def test_model_cannot_mark_memory_verified_or_escape_conversation(self):
         for conv,status in [('original','verified'),('../outside','declared')]:
             with self.assertRaises(ValueError):self.ctx.remember(conv,'some fact','project',status,'source')

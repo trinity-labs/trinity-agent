@@ -73,12 +73,12 @@ services:
       - ./config:/root/.config
       - ./docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
       - type: bind
-        source: /var/lib/trinity/agent-data/codex
+        source: ${CODEX_DATA_DIR:-./data/codex}
         target: /root/.codex
         bind:
           create_host_path: false
       - type: bind
-        source: /var/lib/trinity/agent-data/trinity-agent
+        source: ${AGENT_DATA_DIR:-./data/agent}
         target: /root/.ovh-agent
         bind:
           create_host_path: false

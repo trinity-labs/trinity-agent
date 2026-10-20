@@ -76,6 +76,12 @@ def _total(amounts) -> Decimal:
         return sum(amounts, ZERO)
 
 
+def _difference(left, right) -> Decimal:
+    with localcontext() as context:
+        context.prec = 80
+        return left - right
+
+
 def _unique_object(pairs) -> dict:
     result = {}
     for key, value in pairs:
@@ -285,7 +291,8 @@ class BudgetLedger:
         for period, (key, reset) in _periods(now).items():
             limit = self.limits[period]
             spent = _money(data["spent"][period].get(key, "0"))
-            used = _total((spent, reserved))
+            accounted = self._accounted_spent(data, period, key)
+            used = _total((accounted, reserved))
             with localcontext() as context:
                 context.prec = 80
                 remaining = max(ZERO, limit - used) if limit else None
@@ -293,6 +300,7 @@ class BudgetLedger:
                 "limit": float(limit),
                 "spent": float(spent),
                 "reserved": float(reserved),
+                "accounted_spent": float(accounted),
                 "remaining": float(remaining) if remaining is not None else None,
                 "reset_at": _iso(reset),
             }
@@ -307,6 +315,9 @@ class BudgetLedger:
             "pending_requests": len(data["reservations"]),
             "updated_at": _iso(now),
         }
+
+    def _accounted_spent(self, data, period, key):
+        return _money(data["spent"][period].get(key, "0"))
 
     def status(self) -> dict:
         with self._transaction() as (data, now):
@@ -326,7 +337,7 @@ class BudgetLedger:
             exceeded = []
             for period, (key, _reset) in _periods(now).items():
                 limit = self.limits[period]
-                spent = _money(data["spent"][period].get(key, "0"))
+                spent = self._accounted_spent(data, period, key)
                 if amount and limit and _total((spent, reserved, amount)) > limit:
                     exceeded.append(period)
             if self.credit and amount:
@@ -370,10 +381,13 @@ class BudgetLedger:
 
 
 class OvhBalanceLedger(BudgetLedger):
-    """Enforce limits against OVH observations, never local token estimates.
+    """Enforce the greater of OVH observations and durable local accounting.
 
     Daily/weekly counters measure observed changes since their first sample,
-    not a reconstructed invoice. Concurrent calls still reserve headroom.
+    not a reconstructed invoice. Each local period opens at its first observed
+    provider amount, then adds measured request costs or the reserved maximum
+    for uncertain calls. Taking max(local, provider) avoids both delayed-report
+    bypasses and normal double charging, without guessing request attribution.
     """
     @classmethod
     def from_provider(cls, path, limits, policy_path, provider, now=None):
@@ -408,6 +422,29 @@ class OvhBalanceLedger(BudgetLedger):
                     raise ValueError('Début de suivi absent')
                 if type(baseline['partial']) is not bool:
                     raise ValueError('Couverture du suivi invalide')
+            if 'local' in ovh:
+                local = ovh['local']
+                if datetime.fromisoformat(local['started_at'].replace('Z', '+00:00')).tzinfo is None:
+                    raise ValueError('Date du suivi local invalide')
+                for field in ('spent', 'opening', 'provider_adjustment'):
+                    if not isinstance(local[field], dict) or set(local[field]) != set(PERIODS):
+                        raise ValueError('Périodes du suivi local invalides')
+                    for period, counters in local[field].items():
+                        if not isinstance(counters, dict):
+                            raise ValueError('Compteurs locaux invalides')
+                        for key, value in counters.items():
+                            date = datetime.strptime(key, '%Y-%m-%d').replace(tzinfo=UTC)
+                            if _periods(date)[period][0] != key:
+                                raise ValueError('Date du compteur local invalide')
+                            _money(value)
+                for period in PERIODS:
+                    if (set(local['spent'][period]) != set(local['opening'][period])
+                            or set(local['spent'][period]) != set(local['provider_adjustment'][period])):
+                        raise ValueError('Base d’ouverture locale absente')
+                    for key, value in local['spent'][period].items():
+                        if _money(value) < _total((_money(local['opening'][period][key]),
+                                                  _money(local['provider_adjustment'][period][key]))):
+                            raise ValueError('Compteur local inférieur à sa base')
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise BudgetLedgerError('Registre des observations OVH invalide ; aucun compteur remis à zéro.') from error
         return data
@@ -447,8 +484,8 @@ class OvhBalanceLedger(BudgetLedger):
             snapshot = {key: old[key] for key in ('project','usage','credit','reported_at','fetched_at','month')}
         usage = _money(snapshot['usage'])
         previous_total = _money(old['total']) if old else usage
-        delta = usage - _money(old['usage']) if old and old['month'] == snapshot['month'] else usage if old else ZERO
-        total = max(ZERO, previous_total + delta)
+        delta = _difference(usage, _money(old['usage'])) if old and old['month'] == snapshot['month'] else usage if old else ZERO
+        total = max(ZERO, _total((previous_total, delta)))
         baselines = old.get('baselines', {}) if old else {}
         for period, (key, _) in _periods(now).items():
             if period == 'monthly':
@@ -458,15 +495,60 @@ class OvhBalanceLedger(BudgetLedger):
             if not baseline or baseline['key'] != key:
                 baseline = {'key': key, 'total': str(previous_total), 'since': _iso(now), 'partial': True}
                 baselines[period] = baseline
-            data['spent'][period][key] = str(max(ZERO, total - _money(baseline['total'])))
-        data['ovh'] = {**snapshot, 'total': str(total), 'baselines': baselines}
+            data['spent'][period][key] = str(max(ZERO, _difference(total, _money(baseline['total']))))
+        local = {'local': old['local']} if old and 'local' in old else {}
+        data['ovh'] = {**snapshot, 'total': str(total), 'baselines': baselines, **local}
+        self._ensure_local(data, now)
+
+    def _ensure_local(self, data, now):
+        local = data['ovh'].setdefault('local', {
+            'started_at': _iso(now), 'spent': {period: {} for period in PERIODS},
+            'opening': {period: {} for period in PERIODS},
+            'provider_adjustment': {period: {} for period in PERIODS}})
+        cutoff = (now - timedelta(days=90)).date().isoformat()
+        for period, (key, _) in _periods(now).items():
+            for field in ('spent', 'opening', 'provider_adjustment'):
+                for stale in list(local[field][period]):
+                    if stale < cutoff:
+                        del local[field][period][stale]
+            if key not in local['spent'][period]:
+                opening = data['spent'][period].get(key, '0')
+                local['spent'][period][key] = opening
+                local['opening'][period][key] = opening
+                local['provider_adjustment'][period][key] = '0'
+            provider = _money(data['spent'][period].get(key, '0'))
+            recorded = _money(local['spent'][period][key])
+            if provider > recorded:
+                # A provider jump above local accounting must raise the floor
+                # before later requests add costs; otherwise max() leaves a gap
+                # in which new, unreported spending would not consume the limit.
+                adjustment = _difference(provider, recorded)
+                local['spent'][period][key] = str(provider)
+                local['provider_adjustment'][period][key] = str(_total((
+                    _money(local['provider_adjustment'][period][key]), adjustment)))
+        return local
+
+    @staticmethod
+    def _local_requests(local, period, key):
+        return _difference(_money(local['spent'][period].get(key, '0')),
+            _total((_money(local['opening'][period].get(key, '0')),
+                    _money(local['provider_adjustment'][period].get(key, '0')))))
+
+    def _accounted_spent(self, data, period, key):
+        provider = super()._accounted_spent(data, period, key)
+        local = data.get('ovh', {}).get('local', {}).get('spent', {}).get(period, {}).get(key, '0')
+        return max(provider, _money(local))
 
     def _available(self, data, now):
         ovh = data['ovh']
-        available = max(ZERO, _money(ovh['credit']) - _money(ovh['usage']))
+        monthly = self._accounted_spent(data, 'monthly', _periods(now)['monthly'][0])
+        available = max(ZERO, _difference(_money(ovh['credit']), monthly))
         if self.credit_policy:
             start, end, cap = self.credit_policy
-            available = min(available, cap) if start <= now < end else ZERO
+            local = ovh['local']
+            spent = _total(self._local_requests(local, 'daily', day) for day in local['spent']['daily']
+                           if start.date().isoformat() <= day <= now.date().isoformat())
+            available = min(available, max(ZERO, _difference(cap, spent))) if start <= now < end else ZERO
         return available
 
     def _status(self, data, now):
@@ -474,17 +556,28 @@ class OvhBalanceLedger(BudgetLedger):
         ovh = data['ovh']
         reserved = _total(_money(item['amount']) for item in data['reservations'].values())
         available = self._available(data, now)
+        local = ovh.get('local', {})
+        for period, (key, _) in _periods(now).items():
+            result['periods'][period].update(
+                local_spent=float(self._local_requests(local, period, key)),
+                local_opening=float(_money(local['opening'][period].get(key, '0'))),
+                provider_adjustment=float(_money(local['provider_adjustment'][period].get(key, '0'))))
         result['periods']['ovh'] = {
             'limit': float(_money(ovh['credit'])), 'spent': float(_money(ovh['usage'])),
-            'reserved': float(reserved), 'remaining': float(max(ZERO, available - reserved)),
+            'reserved': float(reserved), 'remaining': float(max(ZERO, _difference(available, reserved))),
+            'accounted_spent': result['periods']['monthly']['accounted_spent'],
+            'local_spent': result['periods']['monthly']['local_spent'],
             'reset_at': _iso(self.credit_policy[1]) if self.credit_policy else _iso(_periods(now)['monthly'][1]),
         }
         for period in ('daily', 'weekly'):
             result['periods'][period].update(measurement='observed_ovh_variation',
                                             **{key:ovh['baselines'][period][key] for key in ('since','partial')})
         result.update(source='OVHcloud Public Cloud API', provider_reported_at=ovh['reported_at'],
-                      provider_balance=float(max(ZERO, _money(ovh['credit']) - _money(ovh['usage']))),
-                      authorized_balance=float(available), reporting_delayed=True)
+                      provider_balance=float(max(ZERO, _difference(_money(ovh['credit']), _money(ovh['usage'])))),
+                      authorized_balance=float(available), reporting_delayed=True,
+                      accounting_policy='max_local_provider',
+                      local_accounting_started_at=local.get('started_at'),
+                      local_accounting_scope='opening_and_provider_floor_plus_requests_since_start')
         result['blocked'] = result['blocked'] or available <= reserved
         return result
 
@@ -503,12 +596,19 @@ class OvhBalanceLedger(BudgetLedger):
                     raise BudgetExceeded(status, reserved)
 
     def settle(self, reservation_id, actual_amount):
-        # Only OVH changes spending; completed and failed requests release their hold.
-        # Settlement must also work during an OVH outage, so it needs no new snapshot.
+        # The provider-reported spending remains untouched. Charge the local
+        # counters, using the reservation maximum when usage is unknown.
+        # This transaction needs no provider request, including during an outage.
+        actual = _money(actual_amount) if actual_amount is not None else None
         with super()._transaction() as (data, now):
             if not self._valid_id(reservation_id, data):
                 raise BudgetLedgerError('Réservation inconnue.')
-            data['reservations'].pop(reservation_id, None)
             if not data.get('ovh'):
                 raise BudgetLedgerError('Relevé OVH absent du registre.')
+            local = self._ensure_local(data, now)
+            reservation = data['reservations'].pop(reservation_id, None)
+            if reservation is not None:
+                charge = _money(reservation['amount']) if actual is None else actual
+                for period, (key, _) in _periods(now).items():
+                    local['spent'][period][key] = str(_total((_money(local['spent'][period][key]), charge)))
             return self._status(data, now)

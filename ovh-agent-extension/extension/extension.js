@@ -107,7 +107,7 @@ class OvhAgentViewProvider {
       if (message.type === "openProjectDocument") await this.openProjectDocument(message);
       if (message.type === "assignProject") await this.assignProject(message);
       if (["moveProject","moveConversation"].includes(message.type)) this.organizeArchives(message);
-      if (message.type === "updateProject") this.updateProject(message);
+      if (message.type === "updateProject") await this.updateProject(message);
       if (message.type === "configureKey") await this.configureKey();
       if (message.type === "billing") await this.refreshBilling(true);
       if (message.type === "billingRefresh") await this.refreshBilling(false);
@@ -117,7 +117,9 @@ class OvhAgentViewProvider {
       if (message.type === "listModels") await this.sendControl({ type: "list_models", refresh: Boolean(message.refresh) });
       if (message.type === "selectModel") await this.sendControl({ type: "set_model", model: String(message.model || "") });
       if (message.type === "deleteArchiveConfirmed") await this.deleteArchive(message.id, message.source);
-      if (message.type === "resumeArchive") await this.sendControl({ type: "resume_archive", id: message.id });
+      if (message.type === "resumeArchive") await this.sendControl({
+        type: "resume_archive", id: message.id, full_access: message.fullAccess, model: message.model,
+      });
       if (message.type === "loadArchive") await this.sendControl({ type: "load_archive", id: message.id });
       if (message.type === "snapshot" && !this.deleting && this.agent && message.conversation && message.conversation === this.store.current()) await this.sendControl({
         type: "snapshot",
@@ -383,9 +385,16 @@ class OvhAgentViewProvider {
     } catch(error) {vscode.window.showErrorMessage(String(error.message));}
   }
 
-  updateProject(message) {
+  async updateProject(message) {
     try {
       const project=new ProjectStore(this.store.dataRoot).update(message.project,message);
+      if (project.id !== message.project) {
+        if (this.newConversationProject === message.project) {
+          this.newConversationProject = project.id;
+          await this.state?.update("ovhAgent.newConversationProject", project.id);
+        }
+        if (this.pendingConversationProject === message.project) this.pendingConversationProject = project.id;
+      }
       this.post({type:'project_updated',project,previousId:message.project,requestId:message.requestId});
     } catch(error) {
       this.post({type:'project_update_failed',project:message.project,requestId:message.requestId,text:String(error.message)});
@@ -692,6 +701,7 @@ class OvhAgentViewProvider {
       if(this.agent !== agent) return;
       this.billingChannel.cancel(error);
       this.busy=false;
+      this.clearingConversation=false;
       this.post({type:"error",text:`Écriture vers le backend interrompue : ${error.message}`});
     });
     agent.stdout.setEncoding("utf8");
@@ -703,12 +713,16 @@ class OvhAgentViewProvider {
     });
     agent.on("error", (error) => {
       if (this.agent !== agent) return;
+      this.busy = false;
+      this.clearingConversation = false;
       this.billingChannel.cancel(error);
       this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, error.message) });
       if (this.agent === agent) this.agent = undefined;
     });
     agent.on("exit", (code, signal) => {
       if (this.agent !== agent) return;
+      this.busy = false;
+      this.clearingConversation = false;
       this.billingChannel.cancel();
       this.flushDelta();
       if (code && code !== 0) {
@@ -759,6 +773,8 @@ class OvhAgentViewProvider {
         if (message.type === "session_busy" && this.agent) this.agent.sessionBusy = true;
         if (message.type === "status") { this.responseText = ""; this.busy = true; }
         if (["response", "error", "idle"].includes(message.type)) this.busy = false;
+        if (["cleared", "error", "idle"].includes(message.type)) this.clearingConversation = false;
+        if (message.type === "followup_ack" && message.already_started && message.running === false) this.busy = false;
         if (message.type === "delta") {
           this.responseText = (this.responseText + String(message.text || "")).slice(0, 2*1024*1024);
           this.pendingDelta = message;
@@ -798,10 +814,11 @@ class OvhAgentViewProvider {
   }
 
   async sendPrompt(text, fullAccess, model, images) {
-    if (this.switchingProject) return;
+    if (this.switchingProject || this.clearingConversation) return;
     const prompt = String(text || "").trim();
     const attachedImages = Array.isArray(images) ? images.slice(0, 5) : [];
     if ((!prompt && !attachedImages.length) || !(await this.ensureAgent())) return;
+    if (this.switchingProject || this.clearingConversation) return;
     this.responseText = "";
     this.busy = true;
     this.agent.stdin.write(`${JSON.stringify({
@@ -825,26 +842,34 @@ class OvhAgentViewProvider {
   }
 
   async clearConversation() {
-    const dataRoot=this.store.dataRoot;
-    // An explicitly selected folder wins; browsing an old archive alone does not.
-    const selected=new ProjectStore(dataRoot).list().find(entry=>entry.id===this.newConversationProject);
-    if (this.newConversationProject && !selected) {
-      this.post({type:"error",text:"Le dossier sélectionné n’existe plus. Sélectionne un dossier avant de créer la conversation."});
-      return;
+    if (this.clearingConversation) return;
+    this.clearingConversation = true;
+    let sent = false;
+    try {
+      const dataRoot=this.store.dataRoot;
+      // An explicitly selected folder wins; browsing an old archive alone does not.
+      const selected=new ProjectStore(dataRoot).list().find(entry=>entry.id===this.newConversationProject);
+      if (this.newConversationProject && !selected) {
+        this.post({type:"error",text:"Le dossier sélectionné n’existe plus. Sélectionne un dossier avant de créer la conversation."});
+        return;
+      }
+      await this.stopAgent(false);
+      this.busy = false;
+      this.pendingConversationProject = undefined;
+      this.workspace=selected?.root || this.initialWorkspace;
+      this.store=new ArchiveStore(this.workspace,dataRoot);
+      new ProjectStore(dataRoot).activate(this.initialWorkspace,this.workspace,{register:false});
+      await this.state?.update("ovhAgent.projectRoot",this.workspace);
+      if (!(await this.ensureAgent())) {
+        this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, "initialization failed") });
+        return;
+      }
+      this.pendingConversationProject = selected?.id;
+      this.agent.stdin.write(`${JSON.stringify({ type: "clear" })}\n`);
+      sent = true;
+    } finally {
+      if (!sent) this.clearingConversation = false;
     }
-    await this.stopAgent(false);
-    this.busy = false;
-    this.pendingConversationProject = undefined;
-    this.workspace=selected?.root || this.initialWorkspace;
-    this.store=new ArchiveStore(this.workspace,dataRoot);
-    new ProjectStore(dataRoot).activate(this.initialWorkspace,this.workspace,{register:false});
-    await this.state?.update("ovhAgent.projectRoot",this.workspace);
-    if (!(await this.ensureAgent())) {
-      this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, "initialization failed") });
-      return;
-    }
-    this.pendingConversationProject = selected?.id;
-    this.agent.stdin.write(`${JSON.stringify({ type: "clear" })}\n`);
   }
 
   async openLink(href) {
@@ -885,6 +910,7 @@ class OvhAgentViewProvider {
       }
       this.flushDelta();
       this.busy = false;
+      if (notify) this.clearingConversation = false;
       if (notify) this.post({ type: "idle" });
     })().finally(() => { this.stopPromise = undefined; });
     return this.stopPromise;

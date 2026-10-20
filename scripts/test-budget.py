@@ -356,23 +356,92 @@ class OvhBalanceTests(unittest.TestCase):
             {'daily':8,'weekly':56,'monthly':197}, self.root/'policy.json',
             lambda:dict(self.snapshot), now=lambda:self.now)
 
-    def test_provider_balance_is_authoritative_not_settled_estimates(self):
+    def test_local_costs_bound_stable_provider_and_catch_up_without_double_charge(self):
         ledger=self.factory()
         self.assertAlmostEqual(ledger.status()['provider_balance'],197.9)
-        for cost in (None, '100', '0.02'):
+        for cost in (None, '0.01', '0.02'):
             token=ledger.reserve('.03');ledger.settle(token,cost)
         state=ledger.status()
         self.assertEqual(state['periods']['daily']['spent'],0)
         self.assertEqual(state['periods']['monthly']['spent'],2.1)
+        self.assertEqual(state['periods']['daily']['local_spent'],.06)
+        self.assertEqual(state['periods']['daily']['accounted_spent'],.06)
+        self.assertEqual(state['periods']['monthly']['accounted_spent'],2.16)
         self.assertEqual(state['pending_requests'],0)
         self.assertTrue(state['periods']['daily']['partial'])
-        self.snapshot['current_usage']=2.35
+        self.snapshot['current_usage']=2.16
         self.snapshot['last_update']=(self.now+timedelta(seconds=1)).isoformat()
         self.now+=timedelta(seconds=1)
         state=ledger.status()
-        self.assertEqual(state['periods']['daily']['spent'],.25)
-        self.assertEqual(state['provider_balance'],197.65)
-        self.assertEqual(self.factory().status()['periods']['daily']['spent'],.25)
+        self.assertEqual(state['periods']['daily']['spent'],.06)
+        self.assertEqual(state['periods']['daily']['accounted_spent'],.06)
+        self.assertEqual(state['provider_balance'],197.84)
+        self.assertEqual(self.factory().status()['periods']['daily']['accounted_spent'],.06)
+
+    def test_finished_requests_cannot_reuse_unchanged_provider_headroom(self):
+        (self.root/'policy.json').write_text(json.dumps({'schema':1,'limits':{'daily':'.10'}}))
+        ledger=self.factory()
+        ledger.settle(ledger.reserve('.08'),'.08')
+        with self.assertRaises(BudgetExceeded):
+            self.factory().reserve('.08')
+        self.assertEqual(ledger.status()['periods']['daily']['remaining'],.02)
+
+    def test_provider_jump_raises_floor_before_new_local_costs(self):
+        ledger=self.factory();ledger.settle(ledger.reserve('.1'),'.1')
+        self.now+=timedelta(seconds=1)
+        self.snapshot.update(current_usage=3.1,last_update=self.now.isoformat(),cached_at=self.now.timestamp())
+        ledger.settle(ledger.reserve('.1'),'.1')
+        state=ledger.status()
+        self.assertEqual(state['periods']['daily']['spent'],1)
+        self.assertEqual(state['periods']['daily']['local_spent'],.2)
+        self.assertEqual(state['periods']['daily']['provider_adjustment'],.9)
+        self.assertEqual(state['periods']['daily']['accounted_spent'],1.1)
+
+    def test_legacy_ledger_migration_preserves_observations_and_reservations(self):
+        ledger=self.factory();token=ledger.reserve('.2')
+        path=self.root/'ovh.json';data=json.loads(path.read_text())
+        del data['ovh']['local'];path.write_text(json.dumps(data))
+        state=self.factory().settle(token,'.1')
+        self.assertEqual(state['periods']['monthly']['spent'],2.1)
+        self.assertEqual(state['periods']['monthly']['local_opening'],2.1)
+        self.assertEqual(state['periods']['monthly']['local_spent'],.1)
+        self.assertEqual(state['periods']['monthly']['accounted_spent'],2.2)
+        self.assertEqual(state['pending_requests'],0)
+
+    def test_concurrent_settlements_are_idempotent_and_decimal_exact(self):
+        ledger=self.factory();token=ledger.reserve('.2')
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda _:self.factory().settle(token,'0.100000000000000000000000000000000001'),range(16)))
+        data=json.loads((self.root/'ovh.json').read_text())
+        self.assertEqual(data['ovh']['local']['spent']['daily']['2026-10-18'],
+                         '0.100000000000000000000000000000000001')
+        self.assertEqual(data['reservations'],{})
+
+    def test_corrupt_local_counter_fails_closed_without_reset(self):
+        self.factory().status();path=self.root/'ovh.json';data=json.loads(path.read_text())
+        data['ovh']['local']['spent']['monthly']['2026-10-01']='-1'
+        path.write_text(json.dumps(data));before=path.read_bytes()
+        with self.assertRaises(BudgetLedgerError):self.factory().status()
+        self.assertEqual(path.read_bytes(),before)
+
+    def test_open_reservations_cross_rollover_then_charge_current_period(self):
+        ledger=self.factory();token=ledger.reserve('.2')
+        self.now=datetime(2026,11,1,1,tzinfo=timezone.utc)
+        self.snapshot.update(current_usage=0,usage_period={'from':'2026-11-01T00:00:00Z'},
+                             last_update=self.now.isoformat(),cached_at=self.now.timestamp())
+        state=ledger.status()
+        self.assertEqual(state['periods']['monthly']['reserved'],.2)
+        state=ledger.settle(token,None)
+        self.assertEqual(state['periods']['daily']['local_spent'],.2)
+        self.assertEqual(state['periods']['monthly']['accounted_spent'],.2)
+
+    def test_temporary_credit_tracks_local_requests_despite_provider_delay(self):
+        policy={'schema':1,'limits':{},'credit':{'starts_at':'2026-10-18T00:00:00Z',
+                'expires_at':'2026-11-15T20:00:00Z','limit_eur':'.15'}}
+        (self.root/'policy.json').write_text(json.dumps(policy))
+        ledger=self.factory();ledger.settle(ledger.reserve('.1'),'.1')
+        self.assertEqual(ledger.status()['authorized_balance'],.05)
+        with self.assertRaises(BudgetExceeded):ledger.reserve('.051')
 
     def test_configured_credit_cap_does_not_relabel_provider_balance(self):
         policy={'schema':1,'limits':{},'credit':{'starts_at':'2026-10-18T00:00:00Z',

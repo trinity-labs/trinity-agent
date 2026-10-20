@@ -85,15 +85,15 @@ These tests are targeted regression checks, not a certification or full audit.
 Executable verification of agent changes
 ----------------------------------------
 
-When a user reports an error, expresses doubt or challenges an answer, local
-request analysis marks the turn for documentary verification. The agent is
-instructed to search official documentation first, read the relevant pages,
-then consult issues/discussions in the official repository if documentation is
-insufficient. Dates, versions and issue status must be checked; a third-party
-issue is not a maintainer confirmation. The same rule applies to steering
-messages received during a task, with fresh evidence for the new challenge.
+Request analysis distinguishes documentary questions from local diagnostics.
+Local code reviews and debugging use inspected files, logs and executable checks.
+Questions about external documentation, versions or reported upstream behaviour
+require official documentation first, then issues/discussions in the official
+repository if needed. Dates, versions and issue status must be checked; a
+third-party issue is not a maintainer confirmation. The same distinction applies
+to steering messages, with fresh evidence for the new challenge.
 
-The output validator rejects a detected challenge answered without an official-
+The output validator rejects a documentary challenge answered without an official-
 documentation search attempt, with search snippets alone, or without citing a
 URL actually read during that review. Empty documentation searches require an
 issue-search fallback. An unavailable/empty source is not counted as evidence;
@@ -111,10 +111,12 @@ formats are explicitly reported as lacking a syntax check.
 
 Before the first edit, the backend runs the applicable reference checks. Before
 accepting the final answer, it runs them again. A passing assertion by the model
-does not bypass this gate. A changed file with no applicable configured check,
-a failed check, or a stale result prevents completion. Identical invalid edit
+does not bypass this gate. With an explicit project policy, a changed file with
+no applicable configured check, a failed check, or a stale result prevents completion. Identical invalid edit
 attempts are blocked after two failures. Read-only code audits can conclude with
 observed test failures; this is distinguished from successful checks.
+An audit without configured tests can conclude after actual local inspection,
+with an explicit notice that these observations do not verify runtime behaviour.
 
 Configure a trusted project's checks in ``.ovh-agent-checks.json``::
 
@@ -137,7 +139,9 @@ frozen when the project is first observed during a task. Editing these reference
 does not make an existing verification pass; add a separate regression test
 instead of weakening one. A package with a usable ``test`` script defaults to
 ``bun run test`` when it has a Bun lockfile, otherwise ``npm run test``. Other
-projects must configure applicable checks before guarded edits can be accepted.
+projects can use tracked backups and syntax/content verification to start work.
+Such receipts explicitly report missing functional coverage; they do not claim
+that tests ran. Adding a project policy makes its coverage requirements mandatory.
 
 Checks obey the existing command approval mode, execute locally with the current
 user's permissions, and must be chosen to avoid unwanted external effects.
@@ -312,6 +316,9 @@ new model requests for the entire installation sharing ``OVH_AGENT_DATA_ROOT``.
 They cover all conversations, workspaces and projects, including compaction
 requests and every model step in a tool loop. Zero disables the corresponding
 limit. Periods are UTC calendar days, weeks starting Monday and calendar months.
+An existing ``budgets/policy.json`` overrides these environment defaults and is
+reloaded for each model request. Inspect the effective limits in ``budget_status``
+before comparing them with Compose; upgrading preserves operator policy.
 
 Before a request, ``BudgetedModel`` atomically reserves a conservative maximum
 cost from the model's context/output limits and native OVH EUR prices. It
@@ -325,8 +332,9 @@ matching the `official France EUR prices, excluding VAT <https://www.ovhcloud.co
 There is no exchange-rate service or currency conversion. Historical USD
 events remain labelled USD and are not silently reinterpreted as EUR.
 
-The locked, atomically written ledger is
-``/root/.ovh-agent/budgets/usage-eur.json`` on the persistent mount. It retains
+The provider-backed, locked and atomically written ledger is
+``/root/.ovh-agent/budgets/usage-ovh-eur.json`` on the persistent mount. The legacy
+``usage-eur.json`` ledger remains separate. The active ledger retains
 90 days of period counters and open reservations. Repeated settlement does
 not charge twice. A corrupt or inaccessible ledger blocks requests instead of
 resetting counters. Reservations are shared across processes on this IDE host;
@@ -340,9 +348,26 @@ to the UTC period in which it completes. SDK HTTP retries are disabled so a
 hidden retry cannot bypass a reservation. Ordinary agent tool/model correction
 rounds remain possible and each model request obtains its own reservation.
 
-Tracking starts when this feature is activated; earlier spending and external
-API calls are not retroactively inferred. These are application spending limits
-based on catalogue estimates, separate from OVH account quotas and final bills.
+Local accounting starts when this version first uses the active ledger. Its
+opening baseline is the provider spending already observed for each period.
+Subsequent completed calls add their locally calculated cost even when OVH has
+not yet reported them. The enforced amount is the greater of provider spending
+and the durable local counter, plus outstanding reservations. A provider increase
+above that counter raises its baseline before more local calls are charged.
+The provider balance displayed to the user remains the provider's figure.
+
+``budget_status`` distinguishes ``spent`` (provider), ``local_spent`` (calls
+accounted since activation), ``local_opening``, ``provider_adjustment`` and
+``accounted_spent`` (the amount used for enforcement). This deliberately
+conservative accounting cannot reconstruct unreported calls before activation,
+attribute every external service charge, or certify the final OVH invoice.
+If provider consumption arrives before a local call settles, the two cannot
+always be matched and enforcement can overestimate spending until period reset.
+Failed preparation before sending any model request releases its reservation;
+uncertain failures after sending retain the conservative charge.
+
+These are application spending limits based on catalogue estimates and observed
+provider charges, separate from OVH account quotas and final bills.
 The balance stays visible; the separate budget label is hidden. Backend limits
 continue to apply to every inference request.
 
@@ -358,12 +383,13 @@ depends on the underlying mount. Cached JSON is parsed into fresh objects for
 mutable backend state.
 
 New memory documents use one grouped index file per document instead of one
-file per 1000 characters. Old per-chunk files remain readable. An inverted
+file per 1000 characters. Legacy archives remain readable, while obsolete
+index fragments do not override the current Markdown documents. An inverted
 lexical index is built lazily, reused in RAM and persisted atomically to
 ``archive/<workspace>/<conversation>/memory/cache/search-v1.json`` under
-``OVH_AGENT_DATA_ROOT`` (normally ``/root/.ovh-agent`` on TRINITY-CLOUD).
-The derived index is validated against source index file metadata and the
-document list; additions, removals and index edits invalidate it. A missing,
+``OVH_AGENT_DATA_ROOT`` (normally ``/root/.ovh-agent`` on a persistent mount).
+The derived index is validated against the source documents and their metadata;
+document edits and deletions invalidate stale excerpts. A missing,
 corrupt or unwritable derived cache falls back to rebuilding from the sources.
 Deleting a conversation also deletes its derived disk cache.
 
@@ -787,12 +813,14 @@ La suppression d’une conversation supprime également ses notes partagées :
 aucune copie permanente globale de ces notes n’est créée.
 
 La recherche automatique sélectionne des extraits, sans appel LLM supplémentaire.
-Elle examine au plus 30 conversations récentes du projet et 100 conversations
-pour les notes explicites. L’attente est bornée à 1,1 seconde et un unique lecteur
+Elle utilise un index du projet borné en documents et en octets, et examine au
+plus 100 conversations pour les notes explicites. L’attente est bornée à 1,1 seconde et un unique lecteur
 peut rester bloqué sur un montage ; la demande continue alors sans ces extraits.
 Cette injection automatique n’est pas exhaustive. L’outil ``search_project_memory``
-permet ensuite de parcourir toutes les conversations du projet par pages de 20,
+permet ensuite de parcourir les conversations éligibles du projet par pages de 20,
 y compris les plus anciennes ; ``next_offset`` indique la page suivante.
+Les archives d’évaluation et les métadonnées invalides sont exclues de ces recherches
+et des notes partagées ; une archive d’évaluation reste consultable explicitement.
 Les souvenirs sont
 des données historiques, pas des instructions prioritaires ni une preuve actuelle.
 ``OVH_AGENT_SHARED_MEMORY_CHARS=4000`` limite les extraits partagés, zéro les désactive.

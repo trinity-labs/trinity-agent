@@ -122,6 +122,55 @@ class Verification(unittest.TestCase):
         self.guard.require_verified()
         self.assertIn('Bilan des contrôles', self.guard.validate_summary('app.py modifié.'))
 
+    def test_untracked_change_claim_is_rejected_even_if_intent_was_misclassified(self):
+        self.guard.task_intent = 'question'
+        with self.assertRaisesRegex(VerificationError, 'aucun changement'):
+            self.guard.validate_summary('Le changement a été effectué et la règle CSS a été appliquée.')
+
+    def test_negated_change_is_allowed_without_masking_a_separate_success_claim(self):
+        for text in ('Aucune modification effectuée.', 'Le fichier n’a pas été modifié.',
+                     'No changes made.', 'Aucune modification appliquée : accès refusé.'):
+            self.assertEqual(self.guard.validate_summary(text), text)
+        self.guard.task_intent = 'edit'
+        for text in ('Aucune modification n’a été effectuée.', 'Je n’ai effectué aucune modification.',
+                     'Le fichier n’a pas été modifié.', 'No changes made.'):
+            self.assertEqual(self.guard.validate_summary(text), text)
+        with self.assertRaises(VerificationError):
+            self.guard.validate_summary('Aucune modification effectuée. Le fichier est modifié.')
+        with self.assertRaises(VerificationError):
+            self.guard.validate_summary('Aucune modification effectuée mais le code est modifié.')
+
+    def test_unconfigured_new_project_can_bootstrap_with_content_syntax_and_rollback(self):
+        workspace = self.root / 'new-project'
+        workspace.mkdir()
+        guard = ChangeGuard(workspace, self.root / 'new-receipts')
+        target = workspace / 'hello.py'
+        guard.write(target, None, 'VALUE = 42\n')
+        result = guard.require_verified()
+        self.assertEqual(result['status'], 'passed')
+        self.assertEqual(result['scope'], 'syntax_and_content')
+        self.assertEqual(result['checks'], [])
+        self.assertIn('Aucun test fonctionnel', guard.validate_summary('Fichier créé.'))
+        with self.assertRaises(VerificationError):
+            guard.validate_summary('Tous les tests sont réussis. Tests réussis.')
+        self.assertEqual(guard.rollback()['restored'], [str(target)])
+        self.assertFalse(target.exists())
+
+    def test_basic_validation_does_not_certify_concurrent_changes_or_invalid_syntax(self):
+        workspace = self.root / 'unconfigured'
+        workspace.mkdir()
+        target = workspace / 'app.py'
+        target.write_text('VALUE = 1\n')
+        guard = ChangeGuard(workspace, self.root / 'basic-receipts')
+        with self.assertRaises(VerificationError):
+            guard.write(target, target.read_text(), 'def invalid(\n')
+        self.assertEqual(target.read_text(), 'VALUE = 1\n')
+        guard.write(target, target.read_text(), 'VALUE = 2\n')
+        target.write_text('VALUE = 3\n')
+        with self.assertRaises(VerificationError):
+            guard.require_verified()
+        self.assertEqual(guard.rollback()['conflicts'], [str(target)])
+
     def test_new_uncovered_script_is_rejected_before_any_write(self):
         target = self.workspace / 'manual-test.py'
         with self.assertRaisesRegex(VerificationError, 'verification_plan'):
@@ -132,6 +181,15 @@ class Verification(unittest.TestCase):
         plan = self.guard.plan()
         self.assertEqual(plan['checks'][0]['argv'], [sys.executable, 'check.py'])
         self.assertIn(str(self.check), plan['checks'][0]['protected'])
+
+    def test_nested_package_does_not_hide_enclosing_explicit_checks_policy(self):
+        nested = self.workspace / 'nested'
+        nested.mkdir()
+        (nested / 'package.json').write_text('{}')
+        target = nested / 'app.py'
+        with self.assertRaisesRegex(VerificationError, 'Aucun contrôle'):
+            self.guard.write(target, None, 'VALUE = 1\n')
+        self.assertFalse(target.exists())
 
     def test_invalid_configuration_is_never_accepted_on_a_second_attempt(self):
         self.policy.write_text('{"version":1,"checks":[{"argv":["python"],"paths":"*.py"}]}')
@@ -227,13 +285,15 @@ class Verification(unittest.TestCase):
         with self.assertRaisesRegex(VerificationError, 'Contrôles de référence modifiés'):
             self.guard.require_verified()
 
-    def test_missing_tests_and_missing_executable_fail_closed(self):
+    def test_missing_suite_uses_limited_validation_but_missing_executable_is_not_success(self):
         self.policy.unlink()
         before = self.file.read_bytes()
-        with self.assertRaisesRegex(VerificationError, 'Aucun contrôle'):
-            self.edit(2)
+        self.edit(2)
+        report = self.guard.require_verified()
+        self.assertEqual(report['scope'], 'syntax_and_content')
+        self.assertFalse(report['checks'])
+        self.guard.rollback()
         self.assertEqual(self.file.read_bytes(), before)
-        self.assertFalse(self.guard.state['changes'])
         result = run_check(['executable-that-does-not-exist'], self.workspace)
         self.assertFalse(result['passed'])
         self.assertIsNone(result['exit_code'])
@@ -274,6 +334,23 @@ class Verification(unittest.TestCase):
         self.file.write_text('VALUE = 2\n')
         guard.observe(self.file)
         self.assertEqual(guard.require_verified()['status'], 'passed')
+
+    def test_audit_without_configured_suite_reports_limits_after_actual_inspection(self):
+        workspace = self.root / 'audit-without-tests'
+        workspace.mkdir()
+        guard = ChangeGuard(workspace, self.root / 'limited-audit', require_checks=True)
+        with self.assertRaises(VerificationError):
+            guard.require_verified()
+        guard.observe(workspace)
+        result = guard.require_verified()
+        self.assertEqual(result['status'], 'not_configured')
+        self.assertEqual(result['scope'], 'local_observations_only')
+        self.assertFalse(result['checks'])
+        output = guard.validate_summary('Le projet ne contient pas encore de suite configurée.')
+        self.assertIn('Aucun test fonctionnel n’a été exécuté', output)
+        with self.assertRaises(VerificationError):
+            guard.validate_summary('Tests réussis.')
+        self.assertFalse(guard.state['changes'])
 
     def test_general_question_does_not_require_irrelevant_test_execution(self):
         self.assertEqual(self.guard.require_verified()['status'], 'not_required')

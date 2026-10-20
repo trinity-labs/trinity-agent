@@ -30,13 +30,14 @@ The extension itself is free and licensed under **0BSD**. OVHcloud API usage and
 - **Perf. Auto / Perf. Max**: switch local CPU/RAM allocation from the composer, including during a task. Max replaces fixed cache/reader/search caps with hardware budgets and adapts to container limits and memory pressure. The choice persists; API budgets and verification remain active.
 - When a user challenges an answer or reports an error/doubt, prioritize official documentation, then official-repository issues. Detected challenges require a search attempt and consultation/citation of an available source; failed research is explicitly labelled incomplete. Explicit offline requests are respected.
 - Executable verification for tracked file edits: syntax checks, saved originals, reference checks before/after changes, and a final-answer gate. Failed unverified edits can be restored without resetting existing user work.
-- Check receipts and explicit verification status in the activity log and conversation archives. A passing result covers the configured checks; it does not certify every model claim or arbitrary shell/SSH effects. Projects without a usable test script must configure `.ovh-agent-checks.json` in the backend workspace.
+- Check receipts and explicit verification status in the activity log and conversation archives. A passing result covers the configured checks; it does not certify every model claim or arbitrary shell/SSH effects. Without a functional test policy, tracked edits receive backup, syntax and content checks with their limited coverage explicitly reported. An existing `.ovh-agent-checks.json` remains authoritative.
 - Local syntax highlighting with a dark Monokai theme, including restored conversations; full-width tables with subtle alternating rows.
 - Persistent conversation history, deletion and interrupted-task resumption.
 - Send a message while a task runs to queue it; edit, remove or promote pending messages to steering. Stop remains the interruption control.
 - Drag pending queued/steering tasks up or down, or use Alt + ↑ / ↓ on their grip. Order is saved without restarting a stopped queue. Steering keeps its next-step behavior; queued tasks run afterward in their saved order.
 - **Steer task** applies the instruction before the next model call, after the current call/tool completes. It does not roll back running commands.
 - Pending text messages survive restarts and require explicit queue continuation after a stop/restart. Images are supported in ordinary prompts, not in queued messages.
+- Access changes apply to the next request; the running task retains its displayed active permissions. Resuming a task uses the currently selected access and model. Older clients that omit access on resume default to restricted access.
 - French, English, German and Spanish interface; automatic locale or Docker override.
 - Configurable names, colors and custom logos in self-hosted deployments.
 

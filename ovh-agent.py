@@ -10,7 +10,7 @@ from ovh_workspace import WorkspaceContext, inventory, install_plan
 from ovh_project_memory import ProjectMemory, aggregate, schedule_export
 from ovh_cache import CACHE, read_text_cached
 from ovh_resources import resource_profile, set_performance_mode
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from ovh_request import prepare_request, strip_prepared_context, analyze_request, recent_context, SourceReview, REVIEW_INSTRUCTIONS, refresh_reader_limits
 from ovh_budget import BudgetLedger, OvhBalanceLedger
 from ovh_budget_model import BudgetedModel
@@ -18,7 +18,7 @@ from ovh_vision import read_images, parse_reading, visual_context, without_histo
 from ovh_evaluation import load_evidence, routing_domain, prefer_evaluated, measured_latency, measured_settings, routing_price_factor
 from typing import Literal
 from ovh_verification import ChangeGuard, VerificationError, run_check
-from ovh_execution import WorkflowController, guarded_tool, READ_ONLY_TOOLS, read_only_policy
+from ovh_execution import WorkflowController, guarded_tool, READ_ONLY_TOOLS, read_only_policy, command_is_read_only
 from ovh_repository import repository_map
 from ovh_vision import run_reader_sync
 from ovh_process import run_process
@@ -116,6 +116,7 @@ FULL_ACCESS = False
 EXTERNAL_ACCESS_NOTICES: set[str] = set()
 OUTPUT_LOCK = threading.Lock()
 METADATA_LOCK = threading.RLock()
+TASK_STATE_LOCK = threading.RLock()
 ACTIVITY_STARTED: dict[str, float] = {}
 ACTIVITY_LOCK = threading.Lock()
 APPROVALS: dict[str, queue.Queue[bool]] = {}
@@ -396,9 +397,19 @@ def read_task_state() -> dict:
         return {}
     try:
         value = json.loads(read_text_cached(conversation_dir() / "task-state.json"))
-        return value if isinstance(value, dict) else {}
-    except (OSError, ValueError):
+        if not isinstance(value, dict):
+            raise ValueError("Un objet JSON est requis.")
+        consumed = value.get("consumed_followups", [])
+        if (not isinstance(consumed, list) or len(consumed) > 10000
+                or any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", item)
+                       for item in consumed)):
+            raise ValueError("Reçus des messages consommés invalides.")
+        return value
+    except FileNotFoundError:
         pass
+    except (OSError, ValueError) as error:
+        raise ValueError("État de tâche task-state.json illisible ou invalide ; "
+                         "reprise bloquée pour éviter de rejouer une action déjà acceptée.") from error
     # Recover unfinished conversations created before checkpoints were introduced.
     pending = None
     try:
@@ -424,14 +435,15 @@ def read_task_state() -> dict:
 
 
 def save_task_state(**changes: object) -> None:
-    ensure_conversation()
-    state = read_task_state()
-    if changes.get('status') == 'completed' or (changes.get('status') == 'running' and 'prompt' in changes):
-        # A draft belongs to one attempt only, never to the next prompt.
-        (conversation_dir() / 'response-draft.json').unlink(missing_ok=True)
-    state.update(changes)
-    state["updated_at"] = now_iso()
-    atomic_write(conversation_dir() / "task-state.json", json.dumps(state, ensure_ascii=False, indent=2))
+    with TASK_STATE_LOCK:
+        ensure_conversation()
+        state = read_task_state()
+        if changes.get('status') == 'completed' or (changes.get('status') == 'running' and 'prompt' in changes):
+            # A draft belongs to one attempt only, never to the next prompt.
+            (conversation_dir() / 'response-draft.json').unlink(missing_ok=True)
+        state.update(changes)
+        state["updated_at"] = now_iso()
+        atomic_write(conversation_dir() / "task-state.json", json.dumps(state, ensure_ascii=False, indent=2))
 
 
 def activity_start(tool: str, title: str, detail: str) -> str:
@@ -593,9 +605,12 @@ def search_text(query: str, path: str = ".") -> str:
         activity_id = activity_start("search", "Recherche dans le projet", f"{query} · {relative_name(target)}")
         try:
             result = subprocess.run(
-                ["rg", "--line-number", "--color", "never", "--max-count", "100",
+                ["rg", "--no-config", "--no-ignore-vcs", "--line-number", "--color", "never", "--max-count", "100",
                  "--max-columns", "500", "--max-columns-preview",
-                 *(["--glob", "!*.min.js", "--glob", "!*.map", "--glob", "!package-lock.json"] if target.is_dir() else []),
+                 *(["--glob", "!*.min.js", "--glob", "!*.map", "--glob", "!package-lock.json",
+                    "--glob", "!**/node_modules/**", "--glob", "!**/.git/**",
+                    "--glob", "!**/.venv/**", "--glob", "!**/__pycache__/**"]
+                   if target.is_dir() else []),
                  "--", query, str(target)],
                 cwd=WORKSPACE,
                 text=True,
@@ -657,7 +672,7 @@ def begin_verification(prompt: str = "", fact_check: bool | None = None) -> Chan
     VERIFICATION_GUARD.checkpoints = set()
     TASK_ENGINE = WorkflowController(WORKSPACE, conversation_dir() / 'execution',
         publish=emit, receipts=lambda: VERIFICATION_GUARD.state.get('receipts', []) if VERIFICATION_GUARD else [],
-        allow_external=FULL_ACCESS, operation_runner=run_operation_stage)
+        allow_external=FULL_ACCESS, operation_runner=run_operation_stage, trusted_diagnostics=True)
     TASK_ENGINE.focus(prompt)
     ACTIVE_TOOLS = ToolSelection(prompt)
     save_task_state(verification_id=identifier)
@@ -767,13 +782,15 @@ def task_checkpoint(ctx: RunContext, messages: list) -> list:
     milestone = "final" if remaining <= max(3, min(10, REQUEST_LIMIT // 5)) else "time" if elapsed >= TASK_CHECKPOINT_SECONDS else ""
     if milestone and milestone not in guard.checkpoints:
         guard.checkpoints.add(milestone)
-        notice = (f"Point d'avancement : {int(elapsed)} s écoulées, {remaining} appels modèle restants. "
+        notice = (f"[TRINITY task checkpoint]\nPoint d'avancement : {int(elapsed)} s écoulées, {remaining} appels modèle restants. "
                   "Réduis le périmètre exploratoire aux preuves nécessaires à la demande. "
                   "Exécute les contrôles identifiés avec verify_changes maintenant. "
                   "Ne crée pas de nouveau script redondant et ne répète pas un test inchangé réussi. "
                   "Si un blocage empêche de finir, décris précisément ce qui est vérifié et ce qui manque ; "
                   "ne prétends pas avoir terminé et ne contourne aucune validation.")
-        messages = [*messages, ModelRequest(parts=[UserPromptPart(content=notice)])]
+        # Controller notices must not impersonate the user: compaction and
+        # steering pin the latest real request, not this periodic reminder.
+        messages = [*messages, ModelRequest(parts=[SystemPromptPart(content=notice)])]
         emit({"type": "task_checkpoint", "elapsed_seconds": int(elapsed), "remaining_requests": remaining,
               "duration_ms": round((time.monotonic() - started) * 1000)})
     return messages
@@ -818,10 +835,33 @@ def validate_task_output(output: str) -> str:
                 reasons.append(f"{len(status['running'])} action(s) sont encore en cours.")
             if status['failed_checks']:
                 reasons.append('Contrôles en échec : ' + ', '.join(status['failed_checks']) + '.')
+            if status.get('failed_files'):
+                reasons.append('Modifications demandées non appliquées ou non vérifiées : '
+                               + ', '.join(status['failed_files']) + '.')
             if status['criteria_status'] not in {'passed', 'not_configured'}:
                 reasons.append('Les critères attendus ne sont pas tous vérifiés.')
             return 'Tâche incomplète. ' + ' '.join(reasons)
+    deletion_paths = read_task_state().get("deleted_paths", [])
+    if isinstance(deletion_paths, list) and deletion_paths:
+        paths = list(dict.fromkeys(str(path) for path in deletion_paths if str(path).strip()))[:500]
+        if paths:
+            escaped = [path.replace("`", "ˋ") for path in paths]
+            report = f"**Résultat de la suppression : {len(escaped)} élément{'s' if len(escaped) != 1 else ''} supprimé{'s' if len(escaped) != 1 else ''}**\n\n" + "\n".join(f"- `{path}`" for path in escaped)
+            if not all(path in output for path in paths):
+                output = output.rstrip() + "\n\n" + report
     return output
+
+
+def deleted_paths_from_command(command: str, command_output: str) -> list[str]:
+    """Extract the deletion manifest deliberately printed by a successful shell command."""
+    if not re.search(r'(^|[;&|]\s*)(?:[^\n]*\s)?(?:rm|unlink)\s|\b-delete\b', command):
+        return []
+    paths = []
+    for line in str(command_output).splitlines():
+        candidate = line.strip()
+        if candidate.startswith('/') and '\x00' not in candidate:
+            paths.append(candidate)
+    return list(dict.fromkeys(paths))[:500]
 
 
 def recover_verification() -> None:
@@ -912,14 +952,40 @@ def write_file(path: str, content: str) -> str:
         return local_tool_error(error)
 
 
+def command_not_executed(reason: str, detail: str) -> str:
+    """Record a refusal before launch distinctly from uncertain process effects."""
+    return json.dumps({"executed": False, "exit_code": None, "passed": False,
+                       "timed_out": False, "profile": "approved",
+                       "error": reason, "output": detail}, ensure_ascii=False)
+
+
 def run_command(command: str, cwd: str = ".") -> str:
     """Exécute dans le conteneur IDE uniquement. Pour Xen, lbu ou un service distant, utiliser run_host_command. cwd ne change pas la machine d’exécution."""
+    execution_entered = False
     try:
         working_dir = resolve_path(cwd)
         blocked = ("rm -rf /", "mkfs", "shutdown", "reboot", ":(){", "dd if=")
         if any(pattern in command.lower() for pattern in blocked):
-            return "Commande refusée car elle est potentiellement destructive."
-        if VERIFICATION_GUARD is not None:
+            return command_not_executed("policy_denied", "Commande refusée car elle est potentiellement destructive.")
+        dynamic_deletion = re.search(r'\bxargs\b[^\n]*\brm\b|\bfind\b[^\n]*\s-delete\b', command)
+        if dynamic_deletion and not re.search(r'\btee\b', command):
+            return command_not_executed("policy_denied", "Commande refusée avant exécution : une suppression dynamique doit conserver son manifeste. "
+                    "Fais produire les chemins, passe-les par tee, puis supprime exactement ce manifeste ; "
+                    "la sortie finale doit contenir un chemin absolu supprimé par ligne. Ne relance pas une suppression déjà exécutée.")
+        diagnostic = command_is_read_only(command)
+        diagnostic_argv = None
+        if diagnostic:
+            words = shlex.split(command)
+            # The classifier's read-only contract requires this executor:
+            # project PATH shadows and shell startup files must not run here.
+            binary = shutil.which(words[0], path="/usr/bin:/bin")
+            if binary is None:
+                return command_not_executed("invalid_command_target", "Outil de diagnostic système indisponible.")
+            diagnostic_argv = [binary, *(["--no-config"] if words[0] == "rg" else []), *words[1:]]
+        if VERIFICATION_GUARD is not None and not diagnostic:
+            # The configured runner may launch a check before a receipt write
+            # fails. An exception from here onward cannot prove non-execution.
+            execution_entered = True
             receipt = VERIFICATION_GUARD.execute_configured(command, working_dir)
             if receipt is not None:
                 evidence = {key: receipt.get(key) for key in (
@@ -927,16 +993,22 @@ def run_command(command: str, cwd: str = ".") -> str:
                     "duration_ms", "reported_tests", "count_source", "output")}
                 return json.dumps({"check_evidence": evidence, "test_summary": VERIFICATION_GUARD.test_summary()}, ensure_ascii=False)
         if not request_approval("command", "Exécuter une commande", command):
-            return "Commande refusée par l’utilisateur."
+            return command_not_executed("approval_denied", "Commande refusée par l’utilisateur.")
         activity_id = activity_start("command", "Commande dans le conteneur IDE", f"cwd={working_dir}\n{command}")
         project_bins = os.pathsep.join(str(WORKSPACE / part) for part in
                                       (".agent-tools/venv/bin", ".agent-tools/npm/node_modules/.bin"))
         # Process supervision bounds output and terminates ordinary descendants.
         # The optional workspace profile fails closed when namespaces are unavailable.
+        execution_entered = True
         result = run_process(
+            diagnostic_argv if diagnostic else
             ["sh", "-lc", "export PATH=" + shlex.quote(project_bins) + ':"$PATH"\n' + command],
             working_dir, workspace=WORKSPACE,
             profile=os.environ.get("OVH_AGENT_COMMAND_PROFILE", "approved"))
+        if result['passed']:
+            deleted = deleted_paths_from_command(command, result.get('output', ''))
+            if deleted:
+                save_task_state(deleted_paths=deleted)
         if result['exit_code'] == 127:
             inventory(WORKSPACE, DATA_ROOT, refresh=True)
         detail = f"IDE · code de sortie {result['exit_code']} · profil {result['profile']}"
@@ -948,6 +1020,8 @@ def run_command(command: str, cwd: str = ".") -> str:
     except (OSError, UnicodeError, ModelRetry, VerificationError) as error:
         if "activity_id" in locals():
             activity_end(activity_id, str(error), False)
+        if not execution_entered:
+            return command_not_executed("invalid_command_target", local_tool_error(error))
         return local_tool_error(error)
 
 
@@ -959,15 +1033,15 @@ REMOTE_KNOWN_HOSTS = "/home/coder/TRINITY-DOCKER/root/.ssh/known_hosts"
 def run_host_command(host: str, command: str, cwd: str = "/") -> str:
     """Exécute par SSH sur une machine de l’infrastructure. Exemple : host='TRINITY-EDGE', command='xl list'. cwd est un chemin absolu SUR LA CIBLE, pas le chemin SSHFS de l’IDE. Utiliser pour Xen, services, lbu et création de VM sur le Dom0 choisi."""
     if host not in REMOTE_HOSTS:
-        return "Erreur outil : machine inconnue. Cibles : " + ", ".join(sorted(REMOTE_HOSTS))
+        return command_not_executed("invalid_command_target", "Erreur outil : machine inconnue. Cibles : " + ", ".join(sorted(REMOTE_HOSTS)))
     if not cwd.startswith("/") or cwd.startswith("/home/coder/"):
-        return "Erreur outil : cwd doit être un chemin absolu sur la machine cible, par exemple /etc/xen, sans préfixe /home/coder/<HOST>."
+        return command_not_executed("invalid_command_target", "Erreur outil : cwd doit être un chemin absolu sur la machine cible, par exemple /etc/xen, sans préfixe /home/coder/<HOST>.")
     blocked = ("rm -rf /", "mkfs", "shutdown", "reboot", ":(){", "dd if=")
     if any(pattern in command.lower() for pattern in blocked):
-        return "Commande refusée car elle est potentiellement destructive."
+        return command_not_executed("policy_denied", "Commande refusée car elle est potentiellement destructive.")
     detail = f"Cible SSH : {host} · cwd={cwd}\n{command}"
     if not request_approval("command", f"Exécuter sur {host}", detail):
-        return "Commande refusée par l’utilisateur."
+        return command_not_executed("approval_denied", "Commande refusée par l’utilisateur.")
     activity_id = activity_start("command", f"Commande SSH sur {host}", detail)
     try:
         result = run_process(
@@ -1954,6 +2028,33 @@ def load_infrastructure_instructions() -> str:
 FOLLOWUP_LOCK = threading.RLock()
 FOLLOWUP_RUNNING = False
 FOLLOWUP_CLAIMED = None
+FOLLOWUP_GENERATION = 0
+
+
+def schedule_next_followup(requests: queue.Queue) -> None:
+    with FOLLOWUP_LOCK:
+        requests.put({"type": "next_followup", "conversation": CONVERSATION_ID,
+                      "generation": FOLLOWUP_GENERATION})
+
+
+def consumed_followup_ids() -> list[str]:
+    values = read_task_state().get("consumed_followups", [])
+    if (not isinstance(values, list) or len(values) > 10000
+            or any(not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value)
+                   for value in values)):
+        raise ValueError("Invalid consumed follow-up receipts")
+    return values
+
+
+def consume_followup(identity: str, **changes) -> None:
+    """Persist acceptance together with the resumable task before removing its queue item."""
+    with FOLLOWUP_LOCK:
+        values = consumed_followup_ids()
+        if identity not in values:
+            if len(values) >= 10000:
+                raise ValueError("Conversation follow-up limit reached; start a new conversation")
+            values = [*values, identity]
+        save_task_state(consumed_followups=values, **changes)
 
 
 def read_followups() -> list[dict]:
@@ -1976,7 +2077,10 @@ def read_followups() -> list[dict]:
                 or not isinstance(item.get("text"), str) or not 0 < len(item["text"]) <= 16000
                 or item.get("mode") not in {"queue", "steer"}):
             raise ValueError("Invalid follow-up")
-    return items
+    # A crash between the task-state write and queue removal must not replay an
+    # accepted request. Its task remains available through explicit resumption.
+    consumed = set(consumed_followup_ids())
+    return [item for item in items if item["id"] not in consumed]
 
 
 def write_followups(items: list[dict]) -> None:
@@ -2008,6 +2112,13 @@ def handle_followup(request: dict, requests: queue.Queue) -> None:
             if action == "add":
                 if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(identity)) or request.get("mode") not in {"queue", "steer"}:
                     raise ValueError("Invalid follow-up")
+                if identity in consumed_followup_ids():
+                    publish_followups()
+                    emit({"type": "followup_ack", "conversation": CONVERSATION_ID,
+                          "id": identity, "action": action, "already_started": True,
+                          "running": FOLLOWUP_RUNNING,
+                          "resumable": read_task_state().get("status") in {"running", "interrupted"}})
+                    return
                 if not any(item["id"] == identity for item in items):
                     if len(items) >= 20:
                         raise ValueError("Queue limit: 20 messages")
@@ -2047,7 +2158,7 @@ def handle_followup(request: dict, requests: queue.Queue) -> None:
             publish_followups()
             emit({"type": "followup_ack", "conversation": CONVERSATION_ID, "id": identity, "action": action})
             if not FOLLOWUP_RUNNING and action in {"add", "continue", "steer"}:
-                requests.put({"type": "next_followup", "conversation": CONVERSATION_ID})
+                schedule_next_followup(requests)
         except (OSError, ValueError) as error:
             emit({"type": "followup_error", "conversation": request.get("conversation"),
                   "id": request.get("id"), "action": request.get("action"), "text": str(error)})
@@ -2061,6 +2172,8 @@ def apply_steering(messages: list) -> list:
         steering = [item for item in items if item["mode"] == "steer"]
         for item in steering:
             started = time.monotonic()
+            state = read_task_state()
+            consume_followup(item["id"], prompt=str(state.get("prompt", "")) + "\n\n" + item["text"])
             messages.append(ModelRequest(parts=[UserPromptPart(content=item["text"])]))
             analysis = analyze_request(item["text"])
             if TASK_ENGINE is not None:
@@ -2074,8 +2187,6 @@ def apply_steering(messages: list) -> list:
                 if analysis.fact_check:
                     messages.append(ModelRequest(parts=[SystemPromptPart(content=REVIEW_INSTRUCTIONS)]))
             archive_event({"type": "user", "text": item["text"], "steering": True})
-            state = read_task_state()
-            save_task_state(prompt=str(state.get("prompt", "")) + "\n\n" + item["text"])
             emit({"type": "steer_applied", "id": item["id"], "text": item["text"],
                   "duration_ms": round((time.monotonic() - started) * 1000)})
         if steering:
@@ -2605,6 +2716,13 @@ def history_with_memory(history: list, query: str = "", *, include_excerpts: boo
 
 def prepare_task_context(history: list, prompt: str, image_count: int = 0) -> tuple[list, dict]:
     history = strip_prepared_context(history)
+    cleaned = []
+    for message in history:
+        parts = [part for part in message.parts if not (
+            isinstance(part, SystemPromptPart) and part.content.startswith("[TRINITY task checkpoint]\n"))]
+        if parts:
+            cleaned.append(replace(message, parts=parts))
+    history = cleaned
     # Read project Markdown/history before broader workspace retrieval or any model.
     started = time.monotonic()
     prompts, _ = recent_context(history)
@@ -2613,7 +2731,9 @@ def prepare_task_context(history: list, prompt: str, image_count: int = 0) -> tu
     # Mutation tasks need current files, not top-ranked unverified assistant prose.
     # Historical evidence remains available through explicit memory tools.
     history = history_with_memory(history, query, include_excerpts=analysis.intent != "edit")
-    prepared = prepare_request(prompt, history, WORKSPACE, ALLOWED_ROOT, image_count)
+    retrieval_root = ALLOWED_ROOT if FULL_ACCESS else WORKSPACE
+    prepared = prepare_request(prompt, history, WORKSPACE, retrieval_root, image_count,
+                               navigation_root=ALLOWED_ROOT)
     prepared['preparation_ms'] = round((time.monotonic()-started)*1000)
     if prepared['context']:
         history = [ModelRequest(parts=[SystemPromptPart(content=prepared['context'])]), *history]
@@ -2631,7 +2751,7 @@ def complete_memory_answer(history: list, prompt: str, answer: dict, selection: 
     """Persist a local documentary response through the same archive lifecycle."""
     output = answer['text']
     archive_event({'type':'user','text':prompt,'model':'local-memory','selection':selection,'images':[]})
-    save_task_state(status='running',prompt=prompt,model=selection,full_access=FULL_ACCESS,last_tool={},images=[],
+    save_task_state(status='running',prompt=prompt,model=selection,full_access=FULL_ACCESS,last_tool={},images=[],deleted_paths=[],
                     verification_id='',verification={},local_answer=True)
     emit({'type':'status','conversation':CONVERSATION_ID,'text':'Lecture de la mémoire du projet…'})
     emit({'type':'request_prepared','sources':[{'path':answer['source']}],
@@ -2982,9 +3102,10 @@ def stdin_reader(requests: queue.Queue[dict]) -> None:
 
 
 def main_json_lines() -> None:
-    global JSON_MODE, FULL_ACCESS, CONVERSATION_ID, FOLLOWUP_RUNNING, FOLLOWUP_CLAIMED, VERIFICATION_GUARD, TASK_ENGINE, ACTIVE_TOOLS
+    global JSON_MODE, FULL_ACCESS, CONVERSATION_ID, FOLLOWUP_RUNNING, FOLLOWUP_CLAIMED, FOLLOWUP_GENERATION, VERIFICATION_GUARD, TASK_ENGINE, ACTIVE_TOOLS
     JSON_MODE = True
     try:
+        read_task_state()  # Validate receipts before any recovery may update state.
         recover_verification()
     except (VerificationError, OSError, ValueError) as error:
         emit({"type": "error", "text": f"Récupération des fichiers non vérifiable : {error}"})
@@ -3028,21 +3149,29 @@ def main_json_lines() -> None:
             })
     emit({"type": "archives", "items": list_archives()})
     while True:
+        # Includes every early exit from preparation, not only the model's
+        # try/finally below. The stdin reader can now safely queue idle controls.
+        with FOLLOWUP_LOCK:
+            FOLLOWUP_RUNNING = False
+            FOLLOWUP_CLAIMED = None
         request = requests.get()
         request_type = request.get("type")
         followup_id = None
-        with FOLLOWUP_LOCK:
-            FOLLOWUP_CLAIMED = None
         if request_type == "next_followup":
             with FOLLOWUP_LOCK:
-                if request.get("conversation") != CONVERSATION_ID:
+                if (request.get("conversation") != CONVERSATION_ID
+                        or request.get("generation") != FOLLOWUP_GENERATION):
                     continue
+                # Coalesce all earlier wakeups. Only success or an explicit new
+                # action can arm the next generation after this attempt.
+                FOLLOWUP_GENERATION += 1
                 items = read_followups()
                 if not items:
                     continue
                 item = next((item for item in items if item["mode"] == "steer"), items[0])
                 followup_id = item["id"]
                 FOLLOWUP_CLAIMED = followup_id
+                FOLLOWUP_RUNNING = True
                 request = {**item, "type": "prompt"}
                 request_type = "prompt"
         if request_type == "followup":
@@ -3182,11 +3311,17 @@ def main_json_lines() -> None:
                 f"Dernière étape enregistrée : {last_tool}\nDemande initiale : {task['prompt']}"
             )
             request = {"type": "prompt", "text": continuation, "original_task": task["prompt"],
-                       "model": task.get("model", selected_model), "full_access": task.get("full_access", False),
+                       "model": request.get("model", task.get("model", selected_model)),
+                       # Old clients must not silently restore elevated rights.
+                       "full_access": request.get("full_access") is True,
                        "images": restored_images}
             request_type = "prompt"
         if request_type != "prompt":
             continue
+        with FOLLOWUP_LOCK:
+            if not followup_id:
+                FOLLOWUP_GENERATION += 1
+            FOLLOWUP_RUNNING = True
         prompt = str(request.get("text", "")).strip()
         raw_images = request.get("images", [])
         if not prompt and not raw_images:
@@ -3214,11 +3349,14 @@ def main_json_lines() -> None:
             if local_answer:
                 if followup_id:
                     with FOLLOWUP_LOCK:
+                        consume_followup(followup_id, status="running", prompt=prompt,
+                                         model=selected_model, full_access=FULL_ACCESS,
+                                         last_tool={}, images=archived_images)
                         write_followups([item for item in read_followups() if item['id'] != followup_id])
                         emit({'type':'followup_started','id':followup_id,'text':prompt})
                         publish_followups()
                 history = complete_memory_answer(history,prompt,local_answer,selected_model)
-                requests.put({'type':'next_followup','conversation':CONVERSATION_ID})
+                schedule_next_followup(requests)
                 continue
             history, context_stats = compact_history(history)
             request_history, preparation = prepare_task_context(history, prompt, len(binary_images))
@@ -3242,8 +3380,12 @@ def main_json_lines() -> None:
         except (OSError, ValueError) as error:
             emit({"type": "error", "text": str(error)})
             continue
-        save_task_state(status="running", prompt=str(request.get("original_task", prompt)),
-                        model=selected_model, full_access=FULL_ACCESS, last_tool={}, images=archived_images)
+        task_changes = dict(status="running", prompt=str(request.get("original_task", prompt)), deleted_paths=[],
+                            model=selected_model, full_access=FULL_ACCESS, last_tool={}, images=archived_images)
+        if followup_id:
+            consume_followup(followup_id, **task_changes)
+        else:
+            save_task_state(**task_changes)
         archive_event({
             "type": "user",
             "text": prompt,
@@ -3336,7 +3478,7 @@ def main_json_lines() -> None:
             with FOLLOWUP_LOCK:
                 FOLLOWUP_RUNNING = False
                 if not incomplete:
-                    requests.put({"type": "next_followup", "conversation": CONVERSATION_ID})
+                    schedule_next_followup(requests)
         except Exception as error:
             detail = task_error_message(error)
             if VERIFICATION_GUARD is not None and VERIFICATION_GUARD.state["status"] != "passed":
