@@ -992,7 +992,7 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 .markdown .diff-line > code { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 0 12px 0 0; font: inherit; }
 
 /* Only explicitly selected conversations appear in project folders. */
-.archive-project { margin-bottom: 10px; --project-color: var(--ovh-primary); }
+.archive-project { margin-bottom: 4px; --project-color: var(--ovh-primary); }
 .archive-item .icon, .archive-item .icon:hover, .archive-item .icon:focus-visible {
   color: var(--project-color, var(--ovh-primary));
   outline-color: var(--project-color, var(--ovh-primary));

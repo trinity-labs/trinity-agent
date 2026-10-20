@@ -316,7 +316,8 @@ function resumeArchive(id) {
 let currentRun = null;
 let pendingQuestionnaire = null;
 let fullAccess = saved?.fullAccess !== false;
-let selectedModel = saved?.model || "auto-balanced";
+const normalizeModelSelection = value => value === "auto" ? "auto-balanced" : (value || "auto-balanced");
+let selectedModel = normalizeModelSelection(saved?.model);
 let lastRoutedModel = saved?.lastRoutedModel || "";
 let modelCatalog = [];
 let modelPanelActive = false;
@@ -369,7 +370,7 @@ function restoreArchiveModel(data) {
   const execution = [...events].reverse().find(event =>
     ['model_active', 'model_routed'].includes(event.type) && event.model);
   const request = [...events].reverse().find(event => event.type === 'user' && !event.steering);
-  selectedModel = execution?.selection || request?.selection || data.model || request?.model || 'auto-balanced';
+  selectedModel = normalizeModelSelection(execution?.selection || request?.selection || data.model || request?.model);
   lastRoutedModel = selectedModel === 'auto-balanced'
     ? (execution?.model || data.active_model || '') : '';
   updateModelButton();
@@ -2532,14 +2533,14 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "models") {
     modelCatalog = data.items || [];
     // A delayed catalogue reply describes global preference, not the opened archive.
-    if (data.selected && !loadingArchive && !archiveModelRestored && !modelSelectionChanged) selectedModel = data.selected;
+    if (data.selected && !loadingArchive && !archiveModelRestored && !modelSelectionChanged) selectedModel = normalizeModelSelection(data.selected);
     updateModelButton();
     renderModels();
     if (pendingImages.length) ensureVisionModel();
     setStatus(modelAvailabilityLabel());
   }
   if (data.type === "model_selected") {
-    selectedModel = data.model;
+    selectedModel = normalizeModelSelection(data.model);
     modelSelectionChanged = true;
     if (selectedModel !== "auto-balanced") lastRoutedModel = "";
     updateModelButton();

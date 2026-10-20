@@ -28,6 +28,9 @@ with patch.dict(os.environ, {
 a.load_evidence = lambda *args, **kwargs: {}
 events = []
 a.emit = events.append
+assert a.normalize_model_selection('auto') == a.AUTO_MODEL
+assert a.normalize_model_selection(a.AUTO_MODEL) == a.AUTO_MODEL
+assert a.normalize_model_selection('gpt-oss-120b') == 'gpt-oss-120b'
 catalog = [{'id': 'gpt-oss-20b', 'context_length': 131072, 'max_completion_tokens': 12000}]
 with patch.object(a, 'fetch_model_catalog', return_value=catalog):
     assert a.generation_settings('gpt-oss-20b', 'Bonjour')['openai_reasoning_effort'] == 'low'

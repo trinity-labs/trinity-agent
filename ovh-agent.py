@@ -227,15 +227,23 @@ def ensure_conversation() -> None:
             }, ensure_ascii=False, indent=2))
 
 
+def normalize_model_selection(model: object) -> str:
+    """Accept the legacy UI identifier while persisting the canonical route."""
+    value = str(model or "").strip()
+    return AUTO_MODEL if value in {"auto", AUTO_MODEL} else value
+
+
 def load_selected_model(fallback: str = AUTO_MODEL) -> str:
     try:
         candidate = MODEL_SELECTION_FILE.read_text(encoding="utf-8").strip()
     except OSError:
         candidate = ""
-    return candidate if re.fullmatch(r"[0-9A-Za-z_.-]+", candidate) else fallback
+    candidate = normalize_model_selection(candidate)
+    return candidate if re.fullmatch(r"[0-9A-Za-z_.-]+", candidate) else normalize_model_selection(fallback)
 
 
 def save_selected_model(model: str) -> None:
+    model = normalize_model_selection(model)
     if not re.fullmatch(r"[0-9A-Za-z_.-]+", model):
         return
     ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -3073,7 +3081,7 @@ def main_json_lines() -> None:
             emit({"type": "billing_status", "request_id": request.get("request_id"), **fetch_billing_status(bool(request.get("refresh", False)))})
             continue
         if request_type == "set_model":
-            requested_model = str(request.get("model", ""))
+            requested_model = normalize_model_selection(request.get("model", ""))
             if requested_model == AUTO_MODEL or is_selectable_model(requested_model):
                 selected_model = requested_model
                 save_selected_model(selected_model)
@@ -3189,7 +3197,7 @@ def main_json_lines() -> None:
         local_answer = None if raw_images or request.get("original_task") else WorkspaceContext(DATA_ROOT, WORKSPACE).answer(prompt)
         if local_answer:
             local_answer = {**local_answer, 'duration_ms': round((time.monotonic() - lookup_started) * 1000)}
-        requested_model = str(request.get("model", selected_model))
+        requested_model = normalize_model_selection(request.get("model", selected_model))
         if not local_answer and requested_model != AUTO_MODEL and not is_selectable_model(requested_model):
             emit({"type": "error", "text": f"Le modèle {requested_model} n’est pas compatible avec le chat agent."})
             continue

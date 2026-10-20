@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const {createRequire} = require('node:module');
 const {JSDOM} = require('jsdom');
 
-function browser(minified) {
+function browser(minified, saved) {
   const root = path.resolve(__dirname, '..');
   const nativeRequire = createRequire(path.join(root, 'extension.js'));
   const vscode = {workspace:{workspaceFolders:[{uri:{fsPath:root}}]}, Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)}, env:{language:'fr'}};
@@ -16,13 +16,24 @@ function browser(minified) {
   const dom = new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}), {runScripts:'outside-only',url:'https://test.invalid'});
   const w = dom.window;
   const states=[],posted=[];
-  w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:value=>states.push(value),postMessage:value=>posted.push(value)});
+  w.acquireVsCodeApi=()=>({getState:()=>saved,setState:value=>states.push(value),postMessage:value=>posted.push(value)});
   w.HTMLElement.prototype.scrollIntoView=function(){};
   w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','highlight.min.js','chat.js']) w.eval(fs.readFileSync(minified && ['i18n.js','safe-html.js','chat.js'].includes(name) ? path.join(minified,name.replace('.js','.min.js')) : path.join(root,'media',name),'utf8'));
   return {dom, w, states, posted, render:scope.module.exports.renderMarkdown,
     emit:data=>w.dispatchEvent(new w.MessageEvent('message',{data}))};
 }
+
+test('legacy auto model state is normalized before sending a prompt',()=>{
+  const {dom,w,posted}=browser(undefined,{model:'auto'});
+  try {
+    const prompt=w.document.getElementById('prompt');
+    prompt.value='Test du routage';
+    w.document.getElementById('send').click();
+    const request=posted.find(message=>message.type==='prompt');
+    assert(request);assert.equal(request.model,'auto-balanced');
+  } finally {dom.window.close();}
+});
 
 test('Monokai code highlighting preserves literal code, safe restoration and copy', async () => {
   const {dom,w,render,emit} = browser();
