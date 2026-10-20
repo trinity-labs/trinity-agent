@@ -155,6 +155,24 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.memory.index(refresh=True);self.assertIn('sapin',self.memory.search('sapin'))
         file.unlink();self.assertNotIn('sapin',self.memory.search('sapin'))
 
+    def test_nested_project_markdown_is_automatic_memory_but_dependencies_are_excluded(self):
+        docs=self.work/'docs'/'architecture';docs.mkdir(parents=True)
+        source=docs/'OVERVIEW.md';source.write_text('Topologie amarante documentée pour ce projet.')
+        dependency=self.work/'node_modules'/'package';dependency.mkdir(parents=True)
+        (dependency/'README.md').write_text('Secret dépendance vermillon')
+        result=self.ctx.search('topologie amarante',budget=3000,automatic=True)
+        self.assertIn('docs/architecture/OVERVIEW.md',result)
+        reference=self.memory.document_reference(source)
+        self.assertIn('amarante',self.ctx.read('project',reference))
+        self.assertNotIn('vermillon',self.ctx.search('vermillon',budget=3000,automatic=True))
+
+    def test_automatic_memory_keeps_project_markdown_and_excludes_assistant_prose(self):
+        (self.work/'DESCRIPTION.md').write_text('Contrat cobalt du projet.')
+        ConversationMemory(self.folder).put('response: ancien contrat cobalt inventé par assistant')
+        result=self.ctx.search('contrat cobalt',budget=3000,automatic=True)
+        self.assertIn('DESCRIPTION.md',result)
+        self.assertNotIn('inventé par assistant',result)
+
     def test_verification_history_uses_receipts_and_remains_historical(self):
         ConversationMemory(self.folder).put(json.dumps({'type':'verification_check','check':'Transactions','passed':False,'exit_code':1,'timestamp':'2026-10-17T19:00:00Z'}))
         ConversationMemory(self.folder).put('response: Tous les tests réussissent')

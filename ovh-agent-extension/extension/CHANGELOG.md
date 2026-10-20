@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.1 — 2026-10-20
+
+- Restore automatic project Markdown recall after the 1.17.0 historical-memory filter excluded authoritative documents.
+- Read descriptive `.md` files recursively across the selected project while excluding dependencies, generated trees, caches, recovery copies and agent archive storage.
+- Keep historical assistant prose excluded and retain exact project-document references for the whole conversation.
+
 ## 1.17.0 — 2026-10-20
 
 - Size context, completion, summary and retrieval budgets from the selected model; size caches from available resources. Support explicit numeric ceilings and preserve monetary and execution limits. Show a dynamic Auto context label.

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import threading
 import time
 import tempfile
@@ -17,7 +18,12 @@ from ovh_cache import CACHE, file_signature, read_text_cached, positive_env, mem
 from ovh_memory import atomic_write, terms, execution_evidence
 
 SCAN_SECONDS = positive_env('OVH_AGENT_MEMORY_SCAN_SECONDS', 5)
+IGNORED_SOURCE_DIRS = frozenset({'.git','.hg','.svn','node_modules','vendor','dist','build','coverage',
+                                 '__pycache__','.pytest_cache','.mypy_cache','.tox','.venv','venv',
+                                 'local-recovery'})
 _export_lock = threading.Lock()
+_documents_lock = threading.Lock()
+_documents_cache = {}
 
 
 def safe_path(file, root):
@@ -157,11 +163,36 @@ class ProjectMemory:
             value=json.dumps({'id':self.project,'workspace':self.workspace},ensure_ascii=False)
             if not metadata.exists() or read_text_cached(metadata)!=value: atomic_write(metadata,value)
 
-    def root_documents(self):
+    def root_documents(self, refresh=False):
         if not self.workspace: return []
         root=Path(self.workspace)
-        try: return sorted(p for p in root.iterdir() if p.suffix.lower()=='.md' and p.is_file() and not p.is_symlink())
-        except OSError: return []
+        key=str(root)
+        with _documents_lock:
+            cached=_documents_cache.get(key)
+            if not refresh and cached and cached[0]>time.monotonic(): return list(cached[1])
+        result=[]
+        try:
+            command=['rg','--files','--hidden','-g','*.md']
+            for name in sorted(IGNORED_SOURCE_DIRS): command += ['-g',f'!{name}/**']
+            completed=subprocess.run(command,cwd=root,text=True,stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL,timeout=2,check=False)
+            for relative in completed.stdout.splitlines()[:2000]:
+                path=root/relative
+                try:
+                    resolved=path.resolve()
+                    generated=any(resolved.is_relative_to(directory) for directory in
+                                  (self.data/'archive',self.data/'memory'))
+                except OSError: generated=True
+                if not generated and path.is_file() and not path.is_symlink() and safe_path(path,root):
+                    result.append(path)
+        except (OSError,subprocess.TimeoutExpired): pass
+        result=sorted(result)
+        with _documents_lock: _documents_cache[key]=(time.monotonic()+max(1,SCAN_SECONDS),tuple(result))
+        return result
+
+    def document_reference(self,file):
+        relative=str(Path(file).relative_to(Path(self.workspace)))
+        return 'root-'+hashlib.sha256(relative.encode()).hexdigest()[:20]
 
     def source_file(self,row):
         return Path(row['path']) if row['kind']=='project-document' else self.data/row['path']
@@ -175,7 +206,7 @@ class ProjectMemory:
         if not (self.root/'NOTES.md').is_symlink():
             yield self.root/'NOTES.md','project','notes','manual',None
         for file in self.root_documents():
-            yield file,'project','root-'+hashlib.sha256(file.name.encode()).hexdigest()[:20],'project-document',None
+            yield file,'project',self.document_reference(file),'project-document',None
         if not self.archive.is_dir() or self.archive.is_symlink(): return
         folders=[]
         for folder in sorted(self.archive.iterdir(),key=lambda p:p.stat().st_mtime,reverse=True):
@@ -265,7 +296,7 @@ class ProjectMemory:
         file=self.source_file(row)
         try:
             if row['kind']=='project-document':
-                return bool(self.workspace) and file.parent==Path(self.workspace) and file.suffix.lower()=='.md' and not file.is_symlink() and list(file_signature(file))==row['signature']
+                return bool(self.workspace) and safe_path(file,Path(self.workspace)) and file.suffix.lower()=='.md' and not file.is_symlink() and list(file_signature(file))==row['signature']
             if not safe_path(file,self.data): return False
             if not (file.is_relative_to(self.archive) or file == self.root/'NOTES.md'): return False
             if file.is_relative_to(self.archive) and not conversation_eligible(self.archive / row['conversation']):
@@ -290,7 +321,7 @@ class ProjectMemory:
             return None
         _, _, document_chars = memory_index_limits()
         deadline = deadline or time.monotonic() + 0.8
-        files = self.root_documents()
+        files = self.root_documents(refresh=True)
         manual = self.root/'NOTES.md'
         if manual.is_file() and safe_path(manual,self.data): files.append(manual)
         if len(files) > 64: return None
@@ -346,10 +377,11 @@ class ProjectMemory:
         parts=[];used=0
         for i in ranked:
             row=index['rows'][i]
-            # Automatic recall is evidence-only. User preferences are added by
-            # WorkspaceContext; other notes and transcripts require an explicit
-            # historical search, which keeps the full archive available.
-            if automatic and (row['kind']!='archive' or not execution_evidence(row['body'],self.archive/row['conversation'])):continue
+            # Current project Markdown files are authoritative inputs.
+            # Historical notes and assistant prose stay excluded;
+            # only controller-backed execution evidence may return automatically.
+            if automatic and not (row['kind']=='project-document' or
+                    (row['kind']=='archive' and execution_evidence(row['body'],self.archive/row['conversation']))):continue
             if row['conversation']==current and row['kind']=='archive':continue
             if not self.current(row):continue
             text=row['body']
@@ -369,7 +401,7 @@ class ProjectMemory:
         elif conversation=='project' and reference in {'overview','index','regressions'}:
             file=self.root/{'overview':'MEMORY.md','index':'INDEX.md','regressions':'REGRESSIONS.md'}[reference];kind='generated'
         elif conversation=='project' and re.fullmatch(r'root-[a-f0-9]{20}',reference):
-            file=next((p for p in self.root_documents() if 'root-'+hashlib.sha256(p.name.encode()).hexdigest()[:20]==reference),None);kind='project-document'
+            file=next((p for p in self.root_documents() if self.document_reference(p)==reference),None);kind='project-document'
             if file is None: raise ValueError('Document projet introuvable.')
         elif re.fullmatch(r'[A-Za-z0-9_-]+',conversation) and re.fullmatch(r'note-[a-f0-9]{20}',reference):
             file=self.archive/conversation/'memory/notes'/(reference[5:]+'.md');kind='note'
