@@ -14,9 +14,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.tools import ToolDefinition
+from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.usage import RequestUsage
 from ovh_budget import BudgetLedger, BudgetExceeded
 from ovh_budget_model import BudgetedModel
+from ovh_budget_model import normalize_tool_call_names
+
+# Some OVH chat templates occasionally append an OpenAI channel marker to a
+# function name. Strip it only when the base name is an advertised tool.
+parameters = ModelRequestParameters(function_tools=[ToolDefinition(name='read_file', parameters_json_schema={})])
+malformed = ModelResponse(parts=[ToolCallPart('read_file<|channel|>commentary', {})])
+assert normalize_tool_call_names(malformed, parameters).parts[0].tool_name == 'read_file'
+unknown = ModelResponse(parts=[ToolCallPart('not_advertised<|channel|>commentary', {})])
+assert normalize_tool_call_names(unknown, parameters).parts[0].tool_name == 'not_advertised<|channel|>commentary'
 
 card = dict(currency='EUR', input_per_million=1, output_per_million=2, context_length=1000)
 settings = {'max_tokens': 50}

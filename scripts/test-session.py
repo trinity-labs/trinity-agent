@@ -152,7 +152,11 @@ class Sessions(unittest.TestCase):
         self.assertEqual(a.read_task_state()['prompt'], 'Analyse\n  le projet docker_trinity')
 
     def test_partial_stream_survives_without_a_queued_webview_snapshot(self):
+        a.save_task_state(status='interrupted', prompt='travaille', error='ancien échec',
+                          verification_recovery={'status': 'rolled_back'})
         a.save_task_state(status='running',prompt='travaille')
+        self.assertNotIn('error', a.read_task_state())
+        self.assertNotIn('verification_recovery', a.read_task_state())
         with patch.object(a,'JSON_MODE',True),patch.object(a,'emit'):
             stream=a.ResponseStream();stream.pending='Texte provisoire';stream.flush()
         a.save_task_state(status='interrupted')
@@ -415,41 +419,12 @@ class Sessions(unittest.TestCase):
                     self.assertEqual(observed, [expected_access])
                     patched['save_selected_model'].assert_called_once_with(expected_model)
 
-    def test_local_document_answer_archives_without_any_model_or_compaction(self):
-        workspace=self.root/'project';workspace.mkdir()
+    def test_document_question_is_always_proxied_to_the_ovh_model(self):
         prompt='Comment lancer les tests du projet ?'
-        (workspace/'FAQ.md').write_text('## '+prompt+'\nUtiliser `python3 -m unittest`.\n')
-        self.events.write_text('');outputs=[]
-        def input_messages(requests):
-            requests.put({'type':'prompt','text':prompt});requests.put({'type':'shutdown'})
-        def output(event):
-            outputs.append(event);a.archive_event(event)
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(a,'WORKSPACE',workspace))
-            mocks={
-                'recover_verification':{},'load_history':{'return_value':[]},
-                'read_snapshot':{'return_value':None},'load_selected_model':{'return_value':a.AUTO_MODEL},
-                'save_selected_model':{},'refresh_billing_async':{},'current_budget_status':{'return_value':{}},
-                'publish_budget':{},'stdin_reader':{'side_effect':input_messages},'emit':{'side_effect':output},
-                'schedule_export':{},'compact_history':{'side_effect':AssertionError('No compaction')},
-                'prepare_task_context':{'side_effect':AssertionError('No broader retrieval')},
-                'get_agent':{'side_effect':AssertionError('No model call')},
-                'choose_cost_effective_model':{'side_effect':AssertionError('No routing')},
-                'begin_verification':{'side_effect':AssertionError('No verification performed')},
-            }
-            for name,settings in mocks.items():stack.enter_context(patch.object(a,name,**settings))
-            stack.enter_context(patch.object(a,'JSON_MODE',False))
-            a.main_json_lines()
-        response=next(e for e in outputs if e['type']=='response')
-        self.assertIn('python3 -m unittest',response['text'])
-        self.assertEqual(response['source'],'project-memory')
-        usage=next(e for e in outputs if e['type']=='usage')
-        self.assertEqual((usage['requests'],usage['cost_eur']),(0,0))
-        self.assertTrue((self.folder/'messages.json').exists())
-        events=[json.loads(line) for line in self.events.read_text().splitlines()]
-        self.assertEqual(sum(e['type']=='user' for e in events),1)
-        self.assertEqual(sum(e['type']=='response' for e in events),1)
-        self.assertEqual(a.read_task_state()['status'],'completed')
+        calls,outputs=self.run_failed_queue([
+            {'type':'prompt','text':prompt,'model':'fixture-model'}])
+        self.assertEqual(calls,[prompt])
+        self.assertTrue(any(event['type']=='error' for event in outputs))
 
     def test_project_memory_precedes_workspace_retrieval(self):
         order=[]

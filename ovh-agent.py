@@ -439,9 +439,14 @@ def save_task_state(**changes: object) -> None:
     with TASK_STATE_LOCK:
         ensure_conversation()
         state = read_task_state()
-        if changes.get('status') == 'completed' or (changes.get('status') == 'running' and 'prompt' in changes):
+        fresh_attempt = changes.get('status') == 'running' and 'prompt' in changes
+        if changes.get('status') == 'completed' or fresh_attempt:
             # A draft belongs to one attempt only, never to the next prompt.
             (conversation_dir() / 'response-draft.json').unlink(missing_ok=True)
+            # Failures remain in the immutable event journal, but must not make
+            # a resumed or completed attempt look interrupted in task-state.
+            state.pop('error', None)
+            state.pop('verification_recovery', None)
         state.update(changes)
         state["updated_at"] = now_iso()
         atomic_write(conversation_dir() / "task-state.json", json.dumps(state, ensure_ascii=False, indent=2))
@@ -3044,12 +3049,6 @@ def main_terminal() -> None:
             continue
         try:
             ensure_conversation()
-            local_answer = WorkspaceContext(DATA_ROOT,WORKSPACE).answer(prompt)
-            if local_answer:
-                history = complete_memory_answer(history,prompt,local_answer,selected_model)
-                archive_event({'type':'response','text':local_answer['text'],'source':'project-memory'})
-                print(f"\nOVH > {local_answer['text']}")
-                continue
             archive_event({"type": "user", "text": prompt, "model": selected_model})
             history, _ = compact_history(history)
             request_history, preparation = prepare_task_context(history, prompt,
@@ -3371,12 +3370,8 @@ def main_json_lines() -> None:
             continue
         if not prompt:
             prompt = "Analyse cette image."
-        lookup_started = time.monotonic()
-        local_answer = None if raw_images or request.get("original_task") else WorkspaceContext(DATA_ROOT, WORKSPACE).answer(prompt)
-        if local_answer:
-            local_answer = {**local_answer, 'duration_ms': round((time.monotonic() - lookup_started) * 1000)}
         requested_model = normalize_model_selection(request.get("model", selected_model))
-        if not local_answer and requested_model != AUTO_MODEL and not is_selectable_model(requested_model):
+        if requested_model != AUTO_MODEL and not is_selectable_model(requested_model):
             emit({"type": "error", "text": f"Le modèle {requested_model} n’est pas compatible avec le chat agent."})
             continue
         selected_model = requested_model
@@ -3389,18 +3384,6 @@ def main_json_lines() -> None:
             # No deadline: a conversation can remain empty for any length of time.
             if update_metadata(first_message=str(request.get("original_task", prompt)), model=selected_model):
                 emit({"type": "archives", "items": list_archives()})
-            if local_answer:
-                if followup_id:
-                    with FOLLOWUP_LOCK:
-                        consume_followup(followup_id, status="running", prompt=prompt,
-                                         model=selected_model, full_access=FULL_ACCESS,
-                                         last_tool={}, images=archived_images)
-                        write_followups([item for item in read_followups() if item['id'] != followup_id])
-                        emit({'type':'followup_started','id':followup_id,'text':prompt})
-                        publish_followups()
-                history = complete_memory_answer(history,prompt,local_answer,selected_model)
-                schedule_next_followup(requests)
-                continue
             history, context_stats = compact_history(history)
             request_history, preparation = prepare_task_context(history, prompt, len(binary_images),
                 context_card=next((card for card in (MODEL_CATALOG or []) if card['id'] == selected_model), None))

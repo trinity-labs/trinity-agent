@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.4 — 2026-10-20
+
+- Proxy every user prompt to an OVH model again. Project Markdown retrieval still prepares authoritative context, but no documentary answer bypasses inference locally.
+- Clear stale error and rollback fields after a successful retry while retaining the original failure in the event journal.
+
 ## 1.17.3 — 2026-10-20
 
 - Confirm that model-change dividers display the exact OVH Agent catalogue identifiers selected by the user, such as `gpt-oss-120b` and `Qwen3.8-27B`; Codex product names are never substituted.

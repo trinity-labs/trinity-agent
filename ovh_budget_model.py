@@ -1,7 +1,34 @@
 """Budget enforcement immediately around every model request, including streams."""
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
+import re
 from pydantic_ai.models.wrapper import WrapperModel
+from pydantic_ai.messages import ToolCallPart
+
+
+_CHANNEL_SUFFIX = re.compile(r'<\|channel\|>(?:analysis|commentary|final)$')
+
+
+def normalize_tool_call_names(response, model_request_parameters):
+    """Repair an OVH chat-template channel suffix only for advertised tools."""
+    available = {
+        definition.name
+        for definition in (
+            *model_request_parameters.function_tools,
+            *model_request_parameters.output_tools,
+        )
+    }
+    changed = False
+    parts = []
+    for part in response.parts:
+        if isinstance(part, ToolCallPart):
+            base = _CHANNEL_SUFFIX.sub('', part.tool_name)
+            if base != part.tool_name and base in available:
+                part = replace(part, tool_name=base)
+                changed = True
+        parts.append(part)
+    return replace(response, parts=parts) if changed else response
 
 
 class BudgetedModel(WrapperModel):
@@ -64,6 +91,7 @@ class BudgetedModel(WrapperModel):
         response = None
         try:
             response = await self.wrapped.request(messages, model_settings, model_request_parameters)
+            response = normalize_tool_call_names(response, model_request_parameters)
             return response
         finally:
             self.finish(reservation, response)
