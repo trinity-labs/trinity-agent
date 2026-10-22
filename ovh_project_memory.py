@@ -176,7 +176,19 @@ class ProjectMemory:
             for name in sorted(IGNORED_SOURCE_DIRS): command += ['-g',f'!{name}/**']
             completed=subprocess.run(command,cwd=root,text=True,stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL,timeout=2,check=False)
-            for relative in completed.stdout.splitlines()[:2000]:
+            relatives=completed.stdout.splitlines() if completed.returncode in (0,1) else []
+        except (OSError,subprocess.TimeoutExpired):
+            relatives=[]
+            for directory,dirs,files in os.walk(root,topdown=True,followlinks=False):
+                dirs[:]=[name for name in dirs if name not in IGNORED_SOURCE_DIRS and
+                         not (Path(directory)/name).is_symlink()]
+                for name in files:
+                    if name.lower().endswith('.md'):
+                        relatives.append(str((Path(directory)/name).relative_to(root)))
+                        if len(relatives)>=2000: break
+                if len(relatives)>=2000: break
+        try:
+            for relative in relatives[:2000]:
                 path=root/relative
                 try:
                     resolved=path.resolve()
@@ -185,7 +197,7 @@ class ProjectMemory:
                 except OSError: generated=True
                 if not generated and path.is_file() and not path.is_symlink() and safe_path(path,root):
                     result.append(path)
-        except (OSError,subprocess.TimeoutExpired): pass
+        except OSError: pass
         result=sorted(result)
         with _documents_lock: _documents_cache[key]=(time.monotonic()+max(1,SCAN_SECONDS),tuple(result))
         return result

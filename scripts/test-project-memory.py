@@ -166,6 +166,15 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertIn('amarante',self.ctx.read('project',reference))
         self.assertNotIn('vermillon',self.ctx.search('vermillon',budget=3000,automatic=True))
 
+    def test_project_markdown_falls_back_when_ripgrep_is_unavailable(self):
+        source=self.work/'DESCRIPTION.md';source.write_text('Contrat indigo du projet.')
+        dependency=self.work/'node_modules'/'package';dependency.mkdir(parents=True)
+        (dependency/'README.md').write_text('Secret dépendance écarlate')
+        with patch('ovh_project_memory.subprocess.run',side_effect=FileNotFoundError):
+            documents=self.memory.root_documents(refresh=True)
+        self.assertIn(source,documents)
+        self.assertFalse(any('node_modules' in str(file) for file in documents))
+
     def test_automatic_memory_keeps_project_markdown_and_excludes_assistant_prose(self):
         (self.work/'DESCRIPTION.md').write_text('Contrat cobalt du projet.')
         ConversationMemory(self.folder).put('response: ancien contrat cobalt inventé par assistant')

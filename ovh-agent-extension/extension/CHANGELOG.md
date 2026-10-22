@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.9 — 2026-10-22
+
+- Preserve automatic project Markdown discovery on systems without ripgrep by using a bounded, symlink-safe filesystem fallback.
+
 ## 1.17.8 — 2026-10-22
 
 - Require the exported Git release to be pushed before local or Marketplace installation so README assets always resolve to the matching public version.
