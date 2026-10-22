@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.6 — 2026-10-22
+
+- Keep automatic selection cost-first without a preferred model family. Comparable local measurements and task capacity continue to constrain the eligible economic pool.
+- Retry an automatically selected Qwen provider timeout with `gpt-oss-120b` only when the execution journal proves that no mutation occurred, preventing duplicate side effects.
+
 ## 1.17.5 — 2026-10-22
 
 - Keep the permanent model prompt bounded: expose the complete Markdown collection through its index instead of repeating every path on every model request.

@@ -128,6 +128,9 @@ print('PASS: all 10 model profiles, reasoning isolation and expanded automatic r
 
 assert a.MODEL_SPECS['gpt-oss-120b']['parameters_b'] == 117
 assert a.MODEL_SPECS['gpt-oss-120b']['active_parameters_b'] == 5.1
+assert a.qwen_timeout_fallback_allowed('Qwen3.8-27B', TimeoutError('timed out'), None)
+assert not a.qwen_timeout_fallback_allowed('gpt-oss-120b', TimeoutError('timed out'), None)
+assert not a.qwen_timeout_fallback_allowed('Qwen3.8-27B', RuntimeError('invalid response'), None)
 assert a.MODEL_SPECS['Qwen3.5-397B-A17B']['active_parameters_b'] == 17
 assert len(a.MODEL_SPECS) == 10
 assert a.is_complex_task('PoC de vulnérabilité')
@@ -138,6 +141,27 @@ cards = [a.normalise_model({'id': mid, 'context_length': 131072,
 with patch.object(a, 'fetch_model_catalog', return_value=cards), patch.object(a, 'load_router_state', return_value={}), patch.object(a, 'routing_billing_status', return_value={}):
     assert a.choose_cost_effective_model('Refactor plusieurs fichiers', 100, 0)[0] == 'gpt-oss-120b'
     assert a.choose_cost_effective_model('Bonjour', 100, 0)[0] == 'gpt-oss-20b'
+for cheaper, expected in [(('Qwen3.8-27B','gpt-oss-120b'),'Qwen3.8-27B'),
+                          (('gpt-oss-120b','Qwen3.8-27B'),'gpt-oss-120b')]:
+    prices = {cheaper[0]:'0.000001', cheaper[1]:'0.000010'}
+    economic_cards = [a.normalise_model({'id':mid,'context_length':131072,
+        'pricing':{'currency_unit':'EUR','prompt':price,'completion':price}})
+        for mid,price in prices.items()]
+    with patch.object(a,'fetch_model_catalog',return_value=economic_cards), patch.object(a,'load_router_state',return_value={}), patch.object(a,'routing_billing_status',return_value={}):
+        selected, _ = a.choose_cost_effective_model('Ajuste le logo du header',100,0,
+            analysis={'domain':'ui','intent':'edit','scope':'targeted','complexity':'simple'})
+        assert selected == expected
+free_agent = a.normalise_model({'id':'Qwen3.5-9B','context_length':131072,
+    'pricing':{'currency_unit':'EUR','prompt':'0','completion':'0'},'free':True})
+paid_agent = a.normalise_model({'id':'gpt-oss-20b','context_length':131072,
+    'pricing':{'currency_unit':'EUR','prompt':'0.000001','completion':'0.000001'}})
+with patch.object(a,'fetch_model_catalog',return_value=[paid_agent,free_agent]), patch.object(a,'load_router_state',return_value={}), patch.object(a,'routing_billing_status',return_value={}):
+    selected, route = a.choose_cost_effective_model('Bonjour',100,0)
+    assert selected == 'Qwen3.5-9B' and route['reason'] == 'modèle gratuit compatible'
+guard = a.normalise_model({'id':'Qwen3Guard-Gen-8B','model_type':'moderation','context_length':32768,
+    'pricing':{'currency_unit':'EUR','prompt':'0','completion':'0'},'free':True,
+    'capabilities':{'tools':False,'streaming':True}})
+assert not guard['selectable'] and not a.model_capabilities('Qwen3Guard-Gen-8B')['tools']
 print('PASS: documented total/active parameters and weight-aware routing')
 
 # A short continuation carries task difficulty into both routing and generation.

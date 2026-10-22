@@ -1642,6 +1642,27 @@ def is_complex_task(prompt: str, analysis: dict | None = None) -> bool:
     return is_cyber_task(prompt) or len(prompt) > 700 or any(marker in lowered for marker in markers)
 
 
+def qwen_timeout_fallback_allowed(model_id, error, controller) -> bool:
+    """Retry transport timeouts only while no mutation can be duplicated."""
+    if not str(model_id).startswith('Qwen'):
+        return False
+    chain = []
+    current = error
+    while current is not None and len(chain) < 8:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    if not any(isinstance(item, TimeoutError) or re.search(r'\b(?:timed out|timeout)\b', str(item), re.I)
+               for item in chain):
+        return False
+    if controller is None:
+        return True
+    try:
+        operations = controller.journal.snapshot().get('operations', [])
+        return not any(row.get('mutation') for row in operations)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def projected_model_cost(model: dict[str, object], input_tokens: int, output_tokens: int) -> float:
     return (
         input_tokens * float(model.get("input_per_million", 0) or 0)
@@ -3492,12 +3513,37 @@ def main_json_lines() -> None:
                     emit({"type": "status", "text": f"{active_model} travaille à partir de la lecture des captures…"})
             stream = ResponseStream()
             settings = generation_settings(active_model, prompt, preparation.get('analysis'))
-            result = get_agent(active_model).run_sync(
-                user_content, message_history=request_history,
-                model_settings=settings,
-                usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
-                event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
-            )
+            try:
+                result = get_agent(active_model).run_sync(
+                    user_content, message_history=request_history,
+                    model_settings=settings,
+                    usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
+                    event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
+                )
+            except Exception as primary_error:
+                fallback_model = 'gpt-oss-120b'
+                if (selected_model != AUTO_MODEL
+                        or not qwen_timeout_fallback_allowed(active_model, primary_error, TASK_ENGINE)
+                        or not is_selectable_model(fallback_model)):
+                    raise
+                previous_model = active_model
+                active_model = fallback_model
+                update_metadata(active_model=active_model)
+                emit({"type": "model_active", "model": active_model, "selection": selected_model,
+                      "automatic": True})
+                emit({"type": "model_routed", "model": active_model, "previous_model": previous_model,
+                      "reason": "timeout Qwen sans mutation ; reprise automatique fiable",
+                      "fallback": True, "duration_ms": 0})
+                emit({"type": "status", "conversation": CONVERSATION_ID,
+                      "text": f"{previous_model} a expiré ; {active_model} reprend la demande…"})
+                stream = ResponseStream()
+                settings = generation_settings(active_model, prompt, preparation.get('analysis'))
+                result = get_agent(active_model).run_sync(
+                    user_content, message_history=request_history,
+                    model_settings=settings,
+                    usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
+                    event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
+                )
             verification = VERIFICATION_GUARD.require_verified()
             output = validate_task_output(str(result.output))
             usage = result.usage
