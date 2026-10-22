@@ -55,7 +55,10 @@ class WorkspaceContext:
                  'manifests': [p for p in ('package.json','pyproject.toml','requirements.txt','Cargo.toml','go.mod','docker-compose.yml','.ovh-agent-checks.json') if (self.workspace/p).is_file()]}
         memory=ProjectMemory(self.data,self.id,self.workspace)
         memory.initialise()
-        facts['memory']={'notes':str(memory.root/'NOTES.md'),'overview':str(memory.root/'MEMORY.md'),'sources':str(memory.root/'INDEX.md'),'verification_history':str(memory.root/'REGRESSIONS.md'),'project_markdown':[str(p) for p in memory.root_documents()], 'read_with':{'tool':'read_project_memory','conversation':'project','references':['notes','overview','index','regressions']}}
+        # Keep permanent context bounded. The index and memory tools expose the
+        # complete Markdown set; retrieval injects only excerpts relevant now.
+        documents = sum(1 for _ in memory.root_documents())
+        facts['memory']={'notes':str(memory.root/'NOTES.md'),'overview':str(memory.root/'MEMORY.md'),'sources':str(memory.root/'INDEX.md'),'verification_history':str(memory.root/'REGRESSIONS.md'),'document_count':documents, 'read_with':{'tool':'read_project_memory','conversation':'project','references':['notes','overview','index','regressions']}}
         return json.dumps(facts, ensure_ascii=False)
 
     def folders(self, all_projects=False, limit=100):

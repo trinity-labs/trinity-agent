@@ -183,13 +183,14 @@ class BackendTools(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.object(a,'WORKSPACE',Path(folder)), patch.dict('os.environ',{'OVH_AGENT_AUTO_INSTALL':'project'}), patch.object(a,'install_plan',return_value=[['apk','add','git']]), patch.object(a,'request_approval',return_value=False) as approval, patch.object(a,'run_check') as run:
             self.assertEqual(a.install_tools('system',['git'],'system'),'Installation refusée.')
             approval.assert_called_once();run.assert_not_called()
-    def test_context_loader_includes_profile_project_and_inventory(self):
+    def test_context_loader_includes_profile_and_bounded_project_index(self):
         a=self.a
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);(root/'AGENTS.md').write_text('Projet exemple uniquement.')
             with patch.object(a,'WORKSPACE',root),patch.object(a,'ALLOWED_ROOT',root),patch.object(a,'DATA_ROOT',root/'data'):
                 context=a.load_infrastructure_instructions()
-                self.assertIn('Projet exemple uniquement',context);self.assertIn('Profil utilisateur partagé',context);self.assertIn('architecture',context)
+                self.assertIn('Projet exemple uniquement',context);self.assertIn('Profil utilisateur partagé',context);self.assertIn('document_count',context)
+                self.assertNotIn('Environnement observé',context)
     def test_normal_commands_use_project_tools(self):
         a=self.a
         with tempfile.TemporaryDirectory() as folder:

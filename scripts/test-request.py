@@ -534,6 +534,22 @@ class SourceEvidence(unittest.TestCase):
         self.assertEqual(fresh.validate('Bonjour'), 'Bonjour')
         self.assertFalse(fresh.searches or fresh.pages)
 
+    def test_research_policy_is_injected_only_for_a_web_request(self):
+        base = {'context':'','sources':[],'files_scanned':0,'partial':False,
+                'analysis':{'query':'q','fact_check':False,'needs_web':False}}
+        with patch.object(self.backend, 'history_with_memory', side_effect=lambda messages,query, **kwargs:messages), \
+             patch.object(self.backend, 'prepare_request', return_value=base):
+            ordinary, _ = self.backend.prepare_task_context([], 'Bonjour')
+        self.assertFalse(any(isinstance(p,SystemPromptPart) and p.content == self.backend.RESEARCH_INSTRUCTIONS
+                             for message in ordinary for p in message.parts))
+        web = {**base, 'analysis':{**base['analysis'], 'needs_web':True}}
+        with patch.object(self.backend, 'history_with_memory', side_effect=lambda messages,query, **kwargs:messages), \
+             patch.object(self.backend, 'prepare_request', return_value=web):
+            researched, details = self.backend.prepare_task_context([], 'Cherche la documentation')
+        self.assertTrue(details['analysis']['needs_web'])
+        self.assertTrue(any(isinstance(p,SystemPromptPart) and p.content == self.backend.RESEARCH_INSTRUCTIONS
+                            for message in researched for p in message.parts))
+
     def test_pydantic_loop_retries_an_unresearched_answer_then_accepts_read_source(self):
         count = 0
         def model(messages, info):

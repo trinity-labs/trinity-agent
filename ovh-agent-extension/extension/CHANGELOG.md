@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.5 — 2026-10-22
+
+- Keep the permanent model prompt bounded: expose the complete Markdown collection through its index instead of repeating every path on every model request.
+- Load web-research policy only for requests that need web evidence, and leave environment discovery to the dedicated inspection tool.
+- Report token counts by prompt component in request telemetry so future prompt growth is measurable without recording prompt contents.
+
 ## 1.17.4 — 2026-10-20
 
 - Proxy every user prompt to an OVH model again. Project Markdown retrieval still prepares authoritative context, but no documentary answer bypasses inference locally.

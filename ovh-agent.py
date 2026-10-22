@@ -2013,8 +2013,7 @@ def load_infrastructure_instructions() -> str:
     """Vérifie les fichiers à chaque demande et réutilise le texte inchangé en RAM."""
     shared = WorkspaceContext(DATA_ROOT, WORKSPACE)
     sections = ["Profil utilisateur partagé (instructions explicites) :\n" + shared.profile(),
-                "Projet actif : " + shared.project_context(),
-                "Environnement observé, données techniques : " + json.dumps(inventory(WORKSPACE, DATA_ROOT), ensure_ascii=False)]
+                "Projet actif : " + shared.project_context()]
     roots = list(dict.fromkeys([ALLOWED_ROOT, WORKSPACE]))
     for root in roots:
         for name in ("AGENT.md", "AGENTS.md", "MASTER.md", "master.md"):
@@ -2218,7 +2217,25 @@ def routing_billing_status() -> dict:
 
 
 def context_overhead() -> int:
-    return text_tokens(WEB_INSTRUCTIONS + load_infrastructure_instructions() + active_plan_context() + active_workflow_context()) + (ACTIVE_TOOLS.token_overhead() if ACTIVE_TOOLS else 8500)
+    return text_tokens(load_infrastructure_instructions() + active_plan_context() + active_workflow_context()
+                       + access_instructions() + emoji_instructions(EMOJI_MODE)
+                       + execution_instructions(WORKSPACE)) + (ACTIVE_TOOLS.token_overhead() if ACTIVE_TOOLS else 8500)
+
+
+def prompt_component_profile(history: list) -> dict:
+    """Non-content telemetry for detecting prompt growth without logging prompts."""
+    execution = execution_instructions(WORKSPACE)
+    infrastructure = load_infrastructure_instructions()
+    plan = active_plan_context()
+    workflow = active_workflow_context()
+    return {
+        "execution_instructions_tokens": text_tokens(execution),
+        "infrastructure_instructions_tokens": text_tokens(infrastructure),
+        "workflow_state_tokens": text_tokens(plan + workflow),
+        "presentation_and_access_tokens": text_tokens(emoji_instructions(EMOJI_MODE) + access_instructions()),
+        "tool_schema_tokens": ACTIVE_TOOLS.token_overhead() if ACTIVE_TOOLS else 8500,
+        "prepared_history_tokens": estimate_tokens(history),
+    }
 
 
 def usable_context_window(window: int) -> int:
@@ -2487,7 +2504,7 @@ def get_agent(model_id: str, *, output_validator=None) -> Agent:
     if model_id not in AGENTS:
         AGENTS[model_id] = Agent(
             get_budgeted_model(model_id),
-            instructions=WEB_INSTRUCTIONS + emoji_instructions(EMOJI_MODE) + execution_instructions(WORKSPACE),
+            instructions=emoji_instructions(EMOJI_MODE) + execution_instructions(WORKSPACE),
             tools=agent_tools() if model_capabilities(model_id)["tools"] else [],
             retries=2,
             capabilities=[ProcessHistory(apply_steering), ProcessHistory(task_checkpoint), ProcessHistory(manage_model_context)],
@@ -2778,8 +2795,11 @@ def prepare_task_context(history: list, prompt: str, image_count: int = 0, *, co
         history = [ModelRequest(parts=[SystemPromptPart(content=prepared['context'])]), *history]
     if prepared['analysis'].get('fact_check'):
         history = [ModelRequest(parts=[SystemPromptPart(content=REVIEW_INSTRUCTIONS)]), *history]
+    elif prepared['analysis'].get('needs_web'):
+        history = [ModelRequest(parts=[SystemPromptPart(content=RESEARCH_INSTRUCTIONS)]), *history]
     details = {key: prepared[key] for key in ('sources', 'files_scanned', 'partial', 'preparation_ms')}
     details['analysis'] = {key: value for key, value in prepared['analysis'].items() if key != 'query'}
+    details['prompt_components'] = prompt_component_profile(history)
     if prepared.get('retrieval'):
         details['retrieval'] = prepared['retrieval']
     details['estimated_tokens'] = estimate_tokens(history)
