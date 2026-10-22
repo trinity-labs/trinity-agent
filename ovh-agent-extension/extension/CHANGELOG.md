@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.10 — 2026-10-22
+
+- Keep bounded project text search available on systems without ripgrep while preserving hidden-file, dependency and symlink exclusions.
+
 ## 1.17.9 — 2026-10-22
 
 - Preserve automatic project Markdown discovery on systems without ripgrep by using a bounded, symlink-safe filesystem fallback.

@@ -631,6 +631,39 @@ def search_text(query: str, path: str = ".") -> str:
             activity_end(activity_id, "Recherche interrompue après 30 secondes", False)
             return ("Recherche interrompue après 30 secondes. Résultats partiels ci-dessous. "
                     "Relance la recherche dans un sous-dossier plus précis.\n" + partial[-30_000:])
+        except FileNotFoundError:
+            try:
+                expression = re.compile(query)
+            except re.error as error:
+                activity_end(activity_id, "Motif de recherche invalide", False)
+                return f"Erreur de recherche : {error}"
+            excluded_dirs = {'node_modules','.git','.venv','__pycache__'}
+            excluded_files = {'package-lock.json'}
+            files = [target] if target.is_file() else []
+            if target.is_dir():
+                for directory, dirs, names in os.walk(target, topdown=True, followlinks=False):
+                    dirs[:] = [name for name in dirs if name not in excluded_dirs and
+                               not name.startswith('.') and not (Path(directory)/name).is_symlink()]
+                    files.extend(Path(directory)/name for name in names
+                                 if not name.startswith('.') and name not in excluded_files and
+                                 not name.endswith(('.min.js','.map')))
+            matches=[]
+            for file in files:
+                if file.is_symlink() or not file.is_file(): continue
+                try:
+                    if file.stat().st_size > 4_000_000: continue
+                    with file.open(encoding='utf-8',errors='replace') as stream:
+                        for number,line in enumerate(stream,1):
+                            if expression.search(line):
+                                matches.append(f"{file}:{number}:{line.rstrip()}")
+                                if len(matches)>=100: break
+                except OSError: continue
+                if len(matches)>=100: break
+            output='\n'.join(matches)
+            activity_end(activity_id, f"{len(matches)} correspondances")
+            if not output:
+                return "Aucun résultat pour ce motif dans ce périmètre. Cela ne prouve pas l’absence de la fonctionnalité : cherche les noms réellement présents."
+            return output[:24000] + ("\n[Recherche partielle : limite 24000 caractères. Affine le motif ou le chemin.]" if len(output)>24000 else "")
         except OSError as error:
             activity_end(activity_id, "Recherche impossible", False)
             return f"Recherche impossible : {error}"

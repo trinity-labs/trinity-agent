@@ -53,6 +53,17 @@ class CoherenceTests(unittest.TestCase):
         self.assertNotIn('vendor-sentinel', result)
         self.assertNotIn('secret-sentinel', result)
 
+    def test_search_falls_back_safely_without_ripgrep(self):
+        source=self.workspace/'source.py';source.write_text('PORTABLE_SENTINEL = True\n')
+        hidden=self.workspace/'.env';hidden.write_text('PORTABLE_SENTINEL=secret\n')
+        dependency=self.workspace/'node_modules';dependency.mkdir()
+        (dependency/'vendor.js').write_text('PORTABLE_SENTINEL vendor\n')
+        with patch.object(a.subprocess,'run',side_effect=FileNotFoundError):
+            result=a.search_text('PORTABLE_SENTINEL')
+        self.assertIn('source.py:1',result)
+        self.assertNotIn('secret',result)
+        self.assertNotIn('vendor',result)
+
     def test_automatic_retrieval_shares_explicit_file_access_boundary(self):
         sibling = self.root / 'neighbor'
         sibling.mkdir()
