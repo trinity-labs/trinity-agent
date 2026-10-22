@@ -204,7 +204,7 @@ including optional development tools, retain their own licenses and ownership.
 Custom icons
 ------------
 
-``OVH_AGENT_APP_ICON`` selects the light-theme application header logo.
+``OVH_AGENT_APP_ICON`` selects the light-theme installed application and header logo.
 ``OVH_AGENT_MENU_ICON`` selects the monochrome VS Code navigation logo.
 ``OVH_AGENT_DARK_THEME_ICON`` selects the application header logo in dark and
 high-contrast themes.
@@ -232,11 +232,11 @@ Controls use the outline variants of Bootstrap Icons (MIT), except the trash2-fi
 branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 25% opacity.
 The configuration key is rotated 135 degrees with a local vertical mirror so its teeth face down. Licenses are included in media/.
 Only the selected SVG vectors are bundled and minified; no webfont or CDN is used.
-The application header switches between the configured light and dark sets.
+The locally installed application icon and header switch between the configured
+light and dark sets. The published Marketplace package keeps its purple identity.
 The Activity Bar uses the supplied white TRINITY logo directly as its alpha mask,
 which VS Code tints for the active theme; this preserves its transparent symbol
-cut-outs. The extension Marketplace identity stays on the bundled purple logo
-in every theme.
+cut-outs.
 Native command icons have light/dark variants; the native status bar uses text.
 
 Rebuild the versioned assets with::

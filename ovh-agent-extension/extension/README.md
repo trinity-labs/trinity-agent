@@ -51,51 +51,50 @@ Prompts, relevant workspace contents, tool results and images can be sent to the
 
 Original code: 0BSD. Bootstrap Icons: MIT. Highlight.js and its bundled Monokai theme: BSD-3-Clause. The Marketplace icon is the TRINITY logo. The history header uses Font Awesome Free's **hexagon-nodes** icon under CC BY 4.0. DOMPurify, Markdown-it and other dependencies retain their respective licenses; license files are included in the package.
 
-Affichage configurable via `OVH_AGENT_EMOJI_MODE` : `0` aucun emoji décoratif,
-`1` uniquement ✅➡️ (défaut), `2` tous avec parcimonie, `3` expressif. Le code et
-les citations restent exacts. Les libellés d’activité restent sans emojis ; ceux-ci
-concernent les messages intermédiaires rédigés et les réponses. Les icônes suivent
-les actions, le curseur suit la
-couleur primary, les mentions de vérification et le disclaimer sont à 50 %
-d'opacité, et les diffs colorent toute la ligne. Ces réglages et les nouveaux
-contrôles nécessitent également le backend à jour.
+Display style is configurable through `OVH_AGENT_EMOJI_MODE`: `0` disables
+decorative emojis, `1` allows only ✅➡️ (default), `2` uses all supported emojis
+sparingly, and `3` is expressive. Code and quotations remain exact. Activity
+labels do not use emojis; the setting applies to written progress messages and
+answers. Icons match their actions, the cursor follows the primary color,
+verification labels and the disclaimer use 50% opacity, and diffs color the full
+line. These settings and the newer controls also require an up-to-date backend.
 
 
-### Mémoire Markdown
+### Markdown memory
 
-Dans le sélecteur de projet, **Modifier la mémoire du projet** ouvre les notes
-manuelles `NOTES.md`. **Agréger les mémoires des projets** permet de sélectionner
-plusieurs projets et ouvre leur `AGGREGATE.md`, avec leurs notes, des extraits
-récents et les liens vers les sources. Ces actions n'appellent pas le modèle.
+In the project selector, **Edit project memory** opens the manually maintained
+`NOTES.md`. **Aggregate project memories** lets you select several projects and
+opens their `AGGREGATE.md`, containing notes, recent excerpts and source links.
+These actions do not call the model.
 
-Les vues `MEMORY.md` et `INDEX.md` sont générées : modifier `NOTES.md` ou les notes
-sources. Un index lexical local compressé et le cache RAM accélèrent la recherche
-entre conversations ; les archives Markdown restent sur le stockage persistant.
-La recherche reste ciblée et peut être partielle. Les notes d'un autre projet ne
-sont pas automatiquement injectées, sauf les préférences de portée utilisateur.
+The `MEMORY.md` and `INDEX.md` views are generated; edit `NOTES.md` or the source
+notes instead. A compressed local lexical index and RAM cache speed up searches
+across conversations, while Markdown archives remain on persistent storage.
+Search stays targeted and can be partial. Notes from another project are not
+injected automatically, except for user-scoped preferences.
 
 
-L'historique classe uniquement les conversations que vous choisissez dans des
-dossiers repliables. Glissez la poignée ou le titre d'un dossier pour changer son
-ordre ; le repère indique une insertion avant ou après le dossier survolé.
-Avec le focus sur la poignée, **Alt + ↑ / ↓** permet aussi de le déplacer.
+### Conversation organization
 
-Glissez une conversation sur un dossier, même fermé, pour l'y ajouter ou la
-changer de dossier. La zone **Conversations hors projet** permet de la retirer
-d'un dossier ; elle apparaît pendant le glissement si elle est vide. Le bouton
-de classement reste disponible au clavier. L'ordre et les affectations sont
-enregistrés automatiquement, et le dossier de destination s'ouvre après le dépôt.
-À l'ouverture, chaque conversation retrouve son espace de travail et son contexte.
-Ajouter ou réordonner un dossier ne modifie pas le contexte de la conversation.
-Ouvrir une conversation restaure son dossier de travail ; une nouvelle conversation
-repart dans l’espace de travail initial de VS Code, sans hériter du dernier dossier.
-Les couleurs choisies sont enregistrées automatiquement et restent persistantes.
+History groups only the conversations you choose into collapsible folders. Drag
+a folder handle or title to reorder it; the marker shows whether it will be
+inserted before or after the hovered folder. With focus on the handle,
+**Alt + ↑ / ↓** also moves the folder.
 
-La liste des fichiers Markdown est repliée par défaut et se déroule à la demande.
-Les dossiers de projet présentent aussi les chemins des fichiers Markdown à leur
-racine et les vues de mémoire disponibles. `REGRESSIONS.md` conserve des résultats
-de contrôles historiques sourcés ; les tests doivent être relancés pour valider
-l'état actuel. Les fichiers du projet restent leurs propres sources de vérité.
+Drag a conversation onto a folder, including a collapsed folder, to add or move
+it. Drop it on **Conversations outside projects** to remove its folder assignment;
+this area appears while dragging even when empty. The organization control remains
+keyboard accessible. Order and assignments are saved automatically, and the target
+folder opens after the drop. Opening a conversation restores its workspace and
+context. Adding or reordering a folder does not change conversation context.
+Opening an archived conversation restores its working directory; a new conversation
+starts in the initial VS Code workspace and does not inherit the previous directory.
+Selected colors are saved automatically and remain persistent.
+
+The Markdown file list is collapsed by default and expands on demand. Project
+folders also show root Markdown paths and available memory views. `REGRESSIONS.md`
+stores sourced historical check results; rerun the tests to validate the current
+state. Project files remain their own sources of truth.
 
 ### Project memory before inference
 
@@ -109,9 +108,9 @@ An exact, standalone informational question matching a Markdown heading in a roo
 `.md` file or the project's `NOTES.md` can be answered locally. For example:
 
 ```markdown
-## Comment lancer les tests du projet ?
+## How do I run the project tests?
 
-Exécuter `python3 -m unittest discover` depuis la racine du projet.
+Run `python3 -m unittest discover` from the project root.
 ```
 
 The agent quotes the existing answer with the source path and modification date,
@@ -123,9 +122,10 @@ path with relevant memory. Source files are reread through metadata-validated
 caches; generated summaries and old model answers cannot become direct answers.
 The local lookup is bounded to avoid blocking on slow mounts. No budgets change.
 
-## Contribuer au flux de l’extension
+## Contributing to the extension flow
 
-Consultez [Architecture et contribution](ARCHITECTURE.md) pour le parcours des messages, les responsabilités des modules, les règles de cache et la génération du frontend minifié.
+See [Architecture and contribution](ARCHITECTURE.md) for the message flow, module
+responsibilities, cache rules and minified frontend generation.
 
 ### Provider-based budgets (1.14.3)
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.16 — 2026-10-22
+
+- Keep the published Marketplace icon purple while switching the locally installed application icon to the white set in dark themes.
+- Translate the remaining French sections of the extension README into English.
+
 ## 1.17.15 — 2026-10-22
 
 - Preserve the TRINITY symbol cut-outs in the dark VS Code Activity Bar instead of rendering the white logo as a solid hexagon.
