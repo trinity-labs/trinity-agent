@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.14 — 2026-10-22
+
+- Keep the installed extension's Marketplace identity icon purple in every theme while retaining the white dark-theme logo in the application header and VS Code navigation.
+
 ## 1.17.13 — 2026-10-22
 
 - Restore the purple logo set for light themes and use the supplied white TRINITY set for dark and high-contrast themes across the header, local application icon and VS Code navigation.

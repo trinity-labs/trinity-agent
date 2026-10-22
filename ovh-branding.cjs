@@ -92,7 +92,10 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
     (fs.existsSync(path.join(media, 'trinity-icon.png')) ? 'media/trinity-icon.png' : 'media/ovh-activity.svg');
   const darkThemeIcon = customIcon('OVH_AGENT_DARK_THEME_ICON', media) ||
     (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : menuLightIcon);
-  manifest.icon = themedIcon(lightThemeIcon, darkThemeIcon, media, 'app');
+  // VS Code also uses manifest.icon on the installed extension's Marketplace
+  // page. Keep that identity icon fixed instead of switching it with the UI
+  // theme; application/header theming is carried by ovhAgentBranding below.
+  manifest.icon = defaultIcon;
   const menuIcon = themedIcon(menuLightIcon, darkThemeIcon, media, 'menu');
   const branding = manifest.ovhAgentBranding && typeof manifest.ovhAgentBranding === 'object' && !Array.isArray(manifest.ovhAgentBranding)
     ? manifest.ovhAgentBranding : {};
