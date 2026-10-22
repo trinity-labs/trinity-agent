@@ -27,6 +27,9 @@ class Preparation(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        performance = patch.dict(os.environ, {'OVH_AGENT_PERFORMANCE_MODE': 'auto'})
+        performance.start()
+        self.addCleanup(performance.stop)
         self.allowed = Path(self.temp.name)
         self.project = self.allowed / 'machine' / 'project'
         self.project.mkdir(parents=True)

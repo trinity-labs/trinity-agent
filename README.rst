@@ -204,18 +204,20 @@ including optional development tools, retain their own licenses and ownership.
 Custom icons
 ------------
 
-``OVH_AGENT_APP_ICON`` selects a local PNG or SVG for the extension list.
-``OVH_AGENT_MENU_ICON`` selects a local SVG for the activity bar (prefer a
-monochrome 24x24 vector). Paths must be absolute and accessible inside the
-container. Images are limited to 1 MiB; SVGs are restricted to static vectors.
-Custom images replace the complete icon; their colors are preserved.
-The default application icon continues to follow ``OVH_AGENT_PRIMARY_COLOR``.
+``OVH_AGENT_APP_ICON`` selects the light-theme application and header logo.
+``OVH_AGENT_MENU_ICON`` selects the light-theme VS Code navigation logo.
+``OVH_AGENT_DARK_THEME_ICON`` selects their shared dark and high-contrast logo.
+Paths must be absolute and accessible inside the container. Images are limited
+to 1 MiB; SVGs are restricted to static vectors. Custom image colors are
+preserved. Defaults form two complete sets: purple in light themes and the
+bundled white mark in dark themes.
 
 Place images in the private, Git-ignored ``branding/`` directory beside the
 compose file, then set these variables in the compose project's ``.env``::
 
     OVH_AGENT_APP_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/app.png
     OVH_AGENT_MENU_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/menu.svg
+    OVH_AGENT_DARK_THEME_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/theme-dark.svg
 
 Recreate the service with ``docker compose up -d --no-build vscode`` and reload
 the browser. Empty or invalid settings restore the default icons. Content-based
@@ -229,7 +231,8 @@ Controls use the outline variants of Bootstrap Icons (MIT), except the trash2-fi
 branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 25% opacity.
 The configuration key is rotated 135 degrees with a local vertical mirror so its teeth face down. Licenses are included in media/.
 Only the selected SVG vectors are bundled and minified; no webfont or CDN is used.
-Application and activity-bar branding remain independently configurable.
+The application, header and activity-bar logos switch together with the active
+theme; the two light placement overrides and shared dark set remain configurable.
 Native command icons have light/dark variants; the native status bar uses text.
 
 Rebuild the versioned assets with::

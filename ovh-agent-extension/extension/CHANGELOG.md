@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.13 — 2026-10-22
+
+- Restore the purple logo set for light themes and use the supplied white TRINITY set for dark and high-contrast themes across the header, local application icon and VS Code navigation.
+- Add `OVH_AGENT_DARK_THEME_ICON` as the shared dark-set branding override while retaining independent light application and navigation overrides.
+
 ## 1.17.12 — 2026-10-22
 
 - Replace the preview's baked checkerboard corners with a real antialiased alpha channel while preserving the requested screenshot content.

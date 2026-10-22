@@ -436,9 +436,13 @@ test('reopening interrupted conversation restores actions, partial text and resu
 test('header background stays transparent after the full cascade in every theme', () => {
   const css = fs.readFileSync(path.resolve(__dirname, '../media/chat.css'), 'utf8');
   for (const theme of ['vscode-light', 'vscode-dark', 'vscode-high-contrast']) {
-    const dom = new JSDOM(`<style>${css}</style><body class="${theme}"><header><span class="history-brand"><img class="header-app-logo" src="logo.svg"></span></header></body>`);
+    const dom = new JSDOM(`<style>${css}</style><body class="${theme}"><header><span class="history-brand"><img class="header-app-logo header-app-logo-light" src="light.svg"><img class="header-app-logo header-app-logo-dark" src="dark.svg"></span></header></body>`);
     assert.equal(dom.window.getComputedStyle(dom.window.document.querySelector('header')).backgroundColor, 'rgba(0, 0, 0, 0)', theme);
-    const logo = dom.window.document.querySelector('.header-app-logo');
+    const light = dom.window.document.querySelector('.header-app-logo-light');
+    const dark = dom.window.document.querySelector('.header-app-logo-dark');
+    assert.equal(dom.window.getComputedStyle(light).display, theme === 'vscode-light' ? 'block' : 'none', `${theme}: light logo`);
+    assert.equal(dom.window.getComputedStyle(dark).display, theme === 'vscode-light' ? 'none' : 'block', `${theme}: dark logo`);
+    const logo = theme === 'vscode-light' ? light : dark;
     const computed = dom.window.getComputedStyle(logo);
     assert.equal(computed.width, '28px', theme);
     assert.equal(computed.height, '28px', theme);

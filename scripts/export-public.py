@@ -57,6 +57,7 @@ public_branding = {
     'OVH_AGENT_PRIMARY_COLOR': '"${OVH_AGENT_PRIMARY_COLOR:-#3e3aab}"',
     'OVH_AGENT_APP_ICON': '"${OVH_AGENT_APP_ICON:-}"',
     'OVH_AGENT_MENU_ICON': '"${OVH_AGENT_MENU_ICON:-}"',
+    'OVH_AGENT_DARK_THEME_ICON': '"${OVH_AGENT_DARK_THEME_ICON:-}"',
 }
 for key, value in public_branding.items():
     compose = re.sub(r'^      #?\s*' + key + r':.*$', f'      # {key}: {value}', compose, flags=re.M)

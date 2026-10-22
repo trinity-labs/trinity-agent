@@ -39,7 +39,9 @@ function customIcon(variable, media) {
       extension = 'svg';
     }
     const digest = crypto.createHash('sha256').update(content).digest('hex').slice(0, 20);
-    const filename = `custom-${variable === 'OVH_AGENT_MENU_ICON' ? 'menu' : 'app'}-${digest}.${extension}`;
+    const role = variable === 'OVH_AGENT_MENU_ICON' ? 'menu' :
+      variable === 'OVH_AGENT_DARK_THEME_ICON' ? 'theme-dark' : 'app';
+    const filename = `custom-${role}-${digest}.${extension}`;
     fs.writeFileSync(path.join(media, filename), content);
     return 'media/' + filename;
   } catch (error) {
@@ -47,6 +49,23 @@ function customIcon(variable, media) {
     console.warn(`[branding] ${variable}: ${error.code || error.message}; preserving current icon.`);
     return null;
   }
+}
+function themedIcon(lightAsset, darkAsset, media, role) {
+  if (lightAsset === darkAsset) return lightAsset;
+  const readAsset = asset => {
+    const match = /^media\/([a-z0-9_.-]+\.(png|svg|jpg|jpeg|webp))$/i.exec(String(asset));
+    if (!match) throw new Error('invalid local theme icon');
+    const content = fs.readFileSync(path.join(media, match[1]));
+    const mime = {png:'image/png',svg:'image/svg+xml',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'}[match[2].toLowerCase()];
+    return `data:${mime};base64,${content.toString('base64')}`;
+  };
+  const light = readAsset(lightAsset);
+  const dark = readAsset(darkAsset);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><style>.dark{display:none}@media(prefers-color-scheme:dark){.light{display:none}.dark{display:inline}}</style><image class="light" width="512" height="512" preserveAspectRatio="xMidYMid meet" href="${light}"/><image class="dark" width="512" height="512" preserveAspectRatio="xMidYMid meet" href="${dark}"/></svg>`;
+  const digest = crypto.createHash('sha256').update(svg).digest('hex').slice(0, 20);
+  const filename = `theme-${role}-${digest}.svg`;
+  fs.writeFileSync(path.join(media, filename), svg);
+  return 'media/' + filename;
 }
 function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'auto') {
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -67,10 +86,17 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
     manifest.icon = "media/" + iconName;
   }
   const defaultIcon = manifest.icon;
-  manifest.icon = defaultIcon;
   const appIcon = customIcon('OVH_AGENT_APP_ICON', media);
-  if (appIcon) manifest.icon = appIcon;
-  const menuIcon = customIcon('OVH_AGENT_MENU_ICON', media) || (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/ovh-activity.svg');
+  const lightThemeIcon = appIcon || defaultIcon;
+  const menuLightIcon = customIcon('OVH_AGENT_MENU_ICON', media) ||
+    (fs.existsSync(path.join(media, 'trinity-icon.png')) ? 'media/trinity-icon.png' : 'media/ovh-activity.svg');
+  const darkThemeIcon = customIcon('OVH_AGENT_DARK_THEME_ICON', media) ||
+    (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : menuLightIcon);
+  manifest.icon = themedIcon(lightThemeIcon, darkThemeIcon, media, 'app');
+  const menuIcon = themedIcon(menuLightIcon, darkThemeIcon, media, 'menu');
+  const branding = manifest.ovhAgentBranding && typeof manifest.ovhAgentBranding === 'object' && !Array.isArray(manifest.ovhAgentBranding)
+    ? manifest.ovhAgentBranding : {};
+  manifest.ovhAgentBranding = { ...branding, lightThemeIcon, darkThemeIcon };
   const locale = language.toLowerCase().split(/[-_]/)[0];
   const forced = commandTranslations[locale] ? locale : null;
   const ids = ['ovhAgent.start', 'ovhAgent.configureKey', 'ovhAgent.configureBilling'];
