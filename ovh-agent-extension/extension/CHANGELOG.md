@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.11 — 2026-10-22
+
+- Install ripgrep explicitly in release CI so diagnostic-path security tests run against the required trusted system binary.
+- Use the requested dark conversation-history preview exactly as supplied in the README.
+
 ## 1.17.10 — 2026-10-22
 
 - Keep bounded project text search available on systems without ripgrep while preserving hidden-file, dependency and symlink exclusions.

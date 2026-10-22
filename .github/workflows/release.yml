@@ -24,6 +24,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ovh-agent-extension/extension/package-lock.json
+      - name: Install system search dependency
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        working-directory: .
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: python3 ../../scripts/test-auto-update.py
