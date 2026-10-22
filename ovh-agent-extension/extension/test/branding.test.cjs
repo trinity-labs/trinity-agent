@@ -24,7 +24,7 @@ test('custom icons, safe SVG, cache refresh and default reset', () => {
     let pkg = JSON.parse(fs.readFileSync(manifest));
     const first = pkg.icon;
     assert.match(first, /^media\/ovh-agent-brand-/);
-    assert.match(pkg.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-/);
+    assert.match(pkg.contributes.viewsContainers.activitybar[0].icon, /^media\/custom-menu-/);
     assert.match(pkg.ovhAgentBranding.lightThemeIcon, /^media\/custom-app-/);
     assert.match(pkg.ovhAgentBranding.darkThemeIcon, /^media\/custom-theme-dark-/);
     const output = fs.readFileSync(path.join(root, pkg.ovhAgentBranding.lightThemeIcon), 'utf8');
@@ -79,7 +79,7 @@ test('missing overrides restore bundled branding and preserve localization keys'
     assert.equal(result.icon, 'media/trinity-icon.png');
     assert.equal(result.ovhAgentBranding.lightThemeIcon, 'media/trinity-icon.png');
     assert.equal(result.__metadata.publisherDisplayName, 'TRINITY');
-    assert.match(result.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-/);
+    assert.equal(result.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-activity.png');
     assert.equal(result.ovhAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.nls.fr.json')))['ovhAgent.performanceMode.auto'], 'Auto');
     process.env.OVH_AGENT_APP_ICON = '/missing/logo.svg';
@@ -101,7 +101,6 @@ test('webview header keeps application and dark-theme logos independent', () => 
   const html = buildChatHtml({extensionUri, brand:'TRINITY Agent', performanceMode:'max', env:{}, joinPath}, webview);
   assert.match(html, /header-app-logo header-app-logo-light[^>]+trinity-icon\.png/);
   assert.match(html, /header-app-logo header-app-logo-dark[^>]+trinity-activity\.png/);
-  const themed = fs.readFileSync(path.join(root, 'media/trinity-theme.svg'), 'utf8');
-  assert.equal((themed.match(/data:image\/png;base64/g) || []).length, 2);
-  assert.match(themed, /prefers-color-scheme:dark/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json')))
+    .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-activity.png');
 });

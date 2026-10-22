@@ -205,12 +205,13 @@ Custom icons
 ------------
 
 ``OVH_AGENT_APP_ICON`` selects the light-theme application header logo.
-``OVH_AGENT_MENU_ICON`` selects the light-theme VS Code navigation logo.
-``OVH_AGENT_DARK_THEME_ICON`` selects their shared dark and high-contrast logo.
+``OVH_AGENT_MENU_ICON`` selects the monochrome VS Code navigation logo.
+``OVH_AGENT_DARK_THEME_ICON`` selects the application header logo in dark and
+high-contrast themes.
 Paths must be absolute and accessible inside the container. Images are limited
-to 1 MiB; SVGs are restricted to static vectors. Custom image colors are
-preserved. Defaults form two complete sets: purple in light themes and the
-bundled white mark in dark themes.
+to 1 MiB; SVGs are restricted to static vectors. Header image colors are
+preserved; VS Code colors the navigation asset from its alpha channel. Defaults
+use the purple header in light themes and the bundled white mark in dark themes.
 
 Place images in the private, Git-ignored ``branding/`` directory beside the
 compose file, then set these variables in the compose project's ``.env``::
@@ -231,9 +232,11 @@ Controls use the outline variants of Bootstrap Icons (MIT), except the trash2-fi
 branding logo retains Font Awesome Free hexagon-nodes (CC BY 4.0), at 25% opacity.
 The configuration key is rotated 135 degrees with a local vertical mirror so its teeth face down. Licenses are included in media/.
 Only the selected SVG vectors are bundled and minified; no webfont or CDN is used.
-The application header and activity-bar logos switch with the active theme;
-the two light placement overrides and shared dark set remain configurable. The
-extension Marketplace identity stays on the bundled purple logo in every theme.
+The application header switches between the configured light and dark sets.
+The Activity Bar uses the supplied white TRINITY logo directly as its alpha mask,
+which VS Code tints for the active theme; this preserves its transparent symbol
+cut-outs. The extension Marketplace identity stays on the bundled purple logo
+in every theme.
 Native command icons have light/dark variants; the native status bar uses text.
 
 Rebuild the versioned assets with::

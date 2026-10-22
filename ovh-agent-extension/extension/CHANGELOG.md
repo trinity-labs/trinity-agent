@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.15 — 2026-10-22
+
+- Preserve the TRINITY symbol cut-outs in the dark VS Code Activity Bar instead of rendering the white logo as a solid hexagon.
+
 ## 1.17.14 — 2026-10-22
 
 - Keep the installed extension's Marketplace identity icon purple in every theme while retaining the white dark-theme logo in the application header and VS Code navigation.
