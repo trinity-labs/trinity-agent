@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     image: trinity-code-server-alpine:latest
     container_name: vscode
+    cpus: "${VSCODE_CPUS:-6}"
     ports:
       - "${IDE_BIND_ADDRESS:-127.0.0.1}:${IDE_PORT:-5734}:8080"
     extra_hosts:
@@ -45,7 +46,8 @@ services:
       OVH_AGENT_PREFLIGHT_CONTEXT_CHARS: "${OVH_AGENT_PREFLIGHT_CONTEXT_CHARS:-auto}"
       OVH_AGENT_PREFLIGHT_TIMEOUT_MS: "${OVH_AGENT_PREFLIGHT_TIMEOUT_MS:-2500}"
       # auto : CPU/affinité/quotas et mémoire disponible ; entier : plafond facultatif
-      OVH_AGENT_PERFORMANCE_MODE: "${OVH_AGENT_PERFORMANCE_MODE:-auto}"
+      OVH_AGENT_PERFORMANCE_MODE: "${OVH_AGENT_PERFORMANCE_MODE:-max}"
+      OVH_AGENT_RELEASE_JOBS: "${OVH_AGENT_RELEASE_JOBS:-3}"
       OVH_AGENT_PREFLIGHT_WORKERS: "${OVH_AGENT_PREFLIGHT_WORKERS:-auto}"
       OVH_AGENT_PREFLIGHT_MAX_FILES: "${OVH_AGENT_PREFLIGHT_MAX_FILES:-auto}"
       OVH_AGENT_PREFLIGHT_FILE_CHARS: "${OVH_AGENT_PREFLIGHT_FILE_CHARS:-auto}"

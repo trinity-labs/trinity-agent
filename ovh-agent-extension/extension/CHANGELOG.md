@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.12 — 2026-10-22
+
+- Replace the preview's baked checkerboard corners with a real antialiased alpha channel while preserving the requested screenshot content.
+- Use the supplied white TRINITY mark as the default application icon.
+- Persist the six-CPU Docker allocation and default local execution to maximum performance.
+
 ## 1.17.11 — 2026-10-22
 
 - Install ripgrep explicitly in release CI so diagnostic-path security tests run against the required trusted system binary.
