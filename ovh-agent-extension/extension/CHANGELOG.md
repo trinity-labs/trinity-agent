@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.7 — 2026-10-22
+
+- Refresh the conversation-history preview with neutral French project and conversation names, a fictional archive path, and a transparent rounded frame.
+
 ## 1.17.6 — 2026-10-22
 
 - Keep automatic selection cost-first without a preferred model family. Comparable local measurements and task capacity continue to constrain the eligible economic pool.
