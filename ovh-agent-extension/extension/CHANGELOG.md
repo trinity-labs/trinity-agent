@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.8 — 2026-10-22
+
+- Require the exported Git release to be pushed before local or Marketplace installation so README assets always resolve to the matching public version.
+
 ## 1.17.7 — 2026-10-22
 
 - Refresh the conversation-history preview with neutral French project and conversation names, a fictional archive path, and a transparent rounded frame.
