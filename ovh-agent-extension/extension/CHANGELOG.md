@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.22 — 2026-10-23
+
+- Load the bundled preview image directly in the locally installed extension README while keeping the Marketplace-hosted asset for public releases.
+
 ## 1.17.21 — 2026-10-23
 
 - Display the exact supplied AI workspace screenshot in both the extension README and the repository README.
