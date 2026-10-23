@@ -381,8 +381,9 @@ function restoreArchiveModel(data) {
   const events = data.timeline || data.messages || [];
   const execution = [...events].reverse().find(event =>
     ['model_active', 'model_routed'].includes(event.type) && event.model);
+  const changed = [...events].reverse().find(event => event.type === 'model_changed' && event.to_model);
   const request = [...events].reverse().find(event => event.type === 'user' && !event.steering);
-  selectedModel = normalizeModelSelection(execution?.selection || request?.selection || data.model || request?.model);
+  selectedModel = normalizeModelSelection(execution?.selection || changed?.to_model || request?.selection || data.model || request?.model);
   lastRoutedModel = selectedModel === 'auto-balanced'
     ? (execution?.model || data.active_model || '') : '';
   updateModelButton();
@@ -2419,7 +2420,12 @@ window.addEventListener("message", ({ data }) => {
     finishActivity({...data, success: data.passed === true, detail, completedOnly:true});
   }
   if (data.type === "file_change") addFileChange(data);
-  if (data.type === "model_changed") addModelChange(data);
+  if (data.type === "model_changed") {
+    selectedModel = normalizeModelSelection(data.to_model);
+    lastRoutedModel = "";
+    updateModelButton();
+    addModelChange(data);
+  }
   if (data.type === "model_active") {
     if (data.selection) selectedModel = data.selection;
     lastRoutedModel = selectedModel === "auto-balanced" ? (data.model || "") : "";

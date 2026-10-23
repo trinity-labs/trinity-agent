@@ -943,9 +943,13 @@ def emit_file_change(path: str, diff: str, created: bool = False) -> None:
     })
 
 
-def edit_file(path: str, old_text: str, new_text: str) -> str:
-    """Remplace une occurrence exacte dans un fichier texte existant après validation."""
+def edit_file(path: str, old_text: str = "", new_text: str | None = None) -> str:
+    """Remplace une occurrence exacte. Fournir path, old_text lu dans le fichier, puis new_text."""
     try:
+        if not old_text:
+            return "Modification refusée: old_text est requis. Lis le fichier puis recopie exactement le passage à remplacer."
+        if new_text is None:
+            return "Modification refusée: new_text est requis (utilise une chaîne vide pour supprimer le passage)."
         target = resolve_path(path)
         content = target.read_bytes().decode("utf-8")
         count = content.count(old_text)

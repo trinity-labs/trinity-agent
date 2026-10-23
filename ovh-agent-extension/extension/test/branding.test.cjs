@@ -20,17 +20,18 @@ test('custom icons, safe SVG, cache refresh and default reset', () => {
     process.env.OVH_AGENT_APP_ICON = svg;
     process.env.OVH_AGENT_MENU_ICON = svg;
     process.env.OVH_AGENT_DARK_THEME_ICON = svg;
+    process.env.OVH_AGENT_ICON_THEME = 'dark';
     applyManifest(manifest, 'Test');
     let pkg = JSON.parse(fs.readFileSync(manifest));
     const first = pkg.icon;
-    assert.match(first, /^media\/theme-app-/);
+    assert.match(first, /^media\/theme-app-dark-/);
     assert.match(pkg.contributes.viewsContainers.activitybar[0].icon, /^media\/custom-menu-/);
     assert.match(pkg.ovhAgentBranding.lightThemeIcon, /^media\/custom-app-/);
     assert.match(pkg.ovhAgentBranding.darkThemeIcon, /^media\/custom-theme-dark-/);
     const output = fs.readFileSync(path.join(root, pkg.ovhAgentBranding.lightThemeIcon), 'utf8');
     assert.ok(!/script|onclick|https:|<image/.test(output));
     assert.match(output, /viewBox/);
-    assert.match(fs.readFileSync(path.join(root, first), 'utf8'), /prefers-color-scheme:dark/);
+    assert.match(fs.readFileSync(path.join(root, first), 'utf8'), /viewBox/);
     fs.writeFileSync(svg, '<svg><circle r="10"/></svg>');
     applyManifest(manifest, 'Test');
     pkg = JSON.parse(fs.readFileSync(manifest));
@@ -40,15 +41,15 @@ test('custom icons, safe SVG, cache refresh and default reset', () => {
     process.env.OVH_AGENT_DARK_THEME_ICON = '';
     applyManifest(manifest, 'Test');
     pkg = JSON.parse(fs.readFileSync(manifest));
-    assert.match(pkg.icon, /^media\/theme-app-/);
+    assert.match(pkg.icon, /^media\/theme-app-dark-/);
     assert.match(pkg.ovhAgentBranding.lightThemeIcon, /^media\/ovh-agent-brand-/);
-    assert.equal(pkg.contributes.viewsContainers.activitybar[0].icon, 'media/ovh-activity.svg');
+    assert.match(pkg.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-dark-/);
     assert.equal(pkg.ovhAgentBranding.darkThemeIcon, 'media/ovh-activity.svg');
     process.env.OVH_AGENT_APP_ICON = '/nonexistent/icon.png';
     applyManifest(manifest, 'Test');
     assert.equal(JSON.parse(fs.readFileSync(manifest)).icon, pkg.icon);
   } finally {
-    for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_DARK_THEME_ICON']) {
+    for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_DARK_THEME_ICON', 'OVH_AGENT_ICON_THEME']) {
       if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
     }
     fs.rmSync(root, {recursive:true, force:true});
@@ -60,6 +61,7 @@ test('missing overrides restore bundled branding and preserve localization keys'
   const saved = {...process.env};
   try {
     for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_DARK_THEME_ICON', 'OVH_AGENT_PUBLISHER_NAME']) delete process.env[key];
+    process.env.OVH_AGENT_ICON_THEME = 'dark';
     fs.mkdirSync(path.join(root, 'media'));
     fs.copyFileSync(path.resolve(__dirname, '../media/ovh-agent.svg'), path.join(root, 'media/ovh-agent.svg'));
     fs.copyFileSync(path.resolve(__dirname, '../media/ovh-activity.svg'), path.join(root, 'media/ovh-activity.svg'));
@@ -75,17 +77,17 @@ test('missing overrides restore bundled branding and preserve localization keys'
     applyManifest(file, 'Customer Agent');
     const result = JSON.parse(fs.readFileSync(file));
     assert.equal(result.displayName, 'Customer Agent');
-    assert.match(result.icon, /^media\/theme-app-/);
+    assert.match(result.icon, /^media\/theme-app-dark-/);
     assert.equal(result.ovhAgentBranding.lightThemeIcon, 'media/trinity-icon.png');
     assert.equal(result.__metadata.publisherDisplayName, 'TRINITY');
-    assert.equal(result.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-activity.png');
+    assert.match(result.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-dark-/);
     assert.equal(result.ovhAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.nls.fr.json')))['ovhAgent.performanceMode.auto'], 'Auto');
     process.env.OVH_AGENT_APP_ICON = '/missing/logo.svg';
     process.env.OVH_AGENT_BRANDING_STRICT = 'true';
     assert.throws(() => applyManifest(file, 'Customer Agent'));
   } finally {
-    for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_DARK_THEME_ICON', 'OVH_AGENT_PUBLISHER_NAME', 'OVH_AGENT_BRANDING_STRICT']) {
+    for (const key of ['OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON', 'OVH_AGENT_DARK_THEME_ICON', 'OVH_AGENT_PUBLISHER_NAME', 'OVH_AGENT_BRANDING_STRICT', 'OVH_AGENT_ICON_THEME']) {
       if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
     }
     fs.rmSync(root, {recursive:true, force:true});

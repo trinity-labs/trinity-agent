@@ -9,8 +9,7 @@ import json
 import threading
 import unicodedata
 
-CORE = frozenset({'read_file','list_files','search_text','edit_file','write_file',
-                  'run_command','verification_plan','verify_changes','discover_tools',
+CORE = frozenset({'read_file','list_files','search_text','edit_file','write_file','discover_tools',
                   'search_memory','read_memory'})
 GROUPS = {
     'web': {'search_web','read_webpage'},
@@ -57,6 +56,10 @@ class ToolSelection:
                     self.enabled.update(names)
             if tokens & {'logo','logos','header','opacity','opacite','couleur','background','spinner','loading','chargement','style','styles'}:
                 self.enabled.update(GROUPS['styles'])
+            if re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|appliqu\w*|je veux|je souhaite|fix|add|remove|build)\b', prompt, re.I):
+                self.enabled.update({'run_command','verification_plan','verify_changes'})
+            if re.search(r'\b(?:reprends?|continue|mémoire|memoire|historique|previous|resume)\b', prompt, re.I):
+                self.enabled.update({'search_memory','read_memory'})
             if re.search(r'https?://|\b(?:documentation|sources|recherche web|internet)\b',prompt,re.I):
                 self.enabled.update(GROUPS['web'])
             if re.search(r'\b(?:refactor|audit|architecture|plusieurs|multi.file|autonomie)\w*',prompt,re.I):
@@ -74,7 +77,7 @@ class ToolSelection:
         # Conservative allowance grows when discovery expands the active schemas.
         # Before SDK preparation the fallback covers the unmeasured core catalogue.
         with self.lock:
-            return max(6500, sum(size for name,size in self.schema_sizes.items() if name in self.enabled) // 3 + 512)
+            return max(2500, sum(size for name,size in self.schema_sizes.items() if name in self.enabled) // 3 + 512)
 
 
     def visible(self,name):

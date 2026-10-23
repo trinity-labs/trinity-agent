@@ -67,6 +67,28 @@ function themedIcon(lightAsset, darkAsset, media, role) {
   fs.writeFileSync(path.join(media, filename), svg);
   return 'media/' + filename;
 }
+function configuredDarkTheme() {
+  const requested = String(process.env.OVH_AGENT_ICON_THEME || 'auto').trim().toLowerCase();
+  if (requested === 'dark') return true;
+  if (requested === 'light') return false;
+  const files = ['/home/coder/.vscode/settings.json', path.join(require('os').homedir(), '.local/share/code-server/User/settings.json')];
+  for (const file of files) {
+    try {
+      const value = JSON.parse(fs.readFileSync(file, 'utf8'))['workbench.colorTheme'];
+      if (typeof value === 'string') return /dark/i.test(value);
+    } catch {}
+  }
+  return false;
+}
+function staticThemeIcon(asset, media, role, dark) {
+  const match = /^media\/([a-z0-9_.-]+\.([a-z0-9]+))$/i.exec(String(asset));
+  if (!match) throw new Error('invalid local theme icon');
+  const content = fs.readFileSync(path.join(media, match[1]));
+  const digest = crypto.createHash('sha256').update(content).digest('hex').slice(0, 20);
+  const filename = `theme-${role}-${dark ? 'dark' : 'light'}-${digest}.${match[2]}`;
+  fs.writeFileSync(path.join(media, filename), content);
+  return 'media/' + filename;
+}
 function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'auto') {
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (manifest.name !== 'ovh-agent' || manifest.publisher !== 'trinity') return;
@@ -96,7 +118,8 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
     (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : menuIcon);
   // The published VSIX keeps its purple Marketplace icon. This local branding
   // pass runs only after installation and gives the installed app its dark set.
-  manifest.icon = themedIcon(lightThemeIcon, darkThemeIcon, media, 'app');
+  const darkTheme = configuredDarkTheme();
+  manifest.icon = staticThemeIcon(darkTheme ? darkThemeIcon : lightThemeIcon, media, 'app', darkTheme);
   const branding = manifest.ovhAgentBranding && typeof manifest.ovhAgentBranding === 'object' && !Array.isArray(manifest.ovhAgentBranding)
     ? manifest.ovhAgentBranding : {};
   manifest.ovhAgentBranding = { ...branding, lightThemeIcon, darkThemeIcon };
@@ -116,7 +139,8 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
       fs.writeFileSync(target, JSON.stringify({ ...catalog, ...updates }, null, 2) + '\n');
     }
   }
-  for (const view of manifest.contributes?.viewsContainers?.activitybar || []) { view.title = name; view.icon = menuIcon; }
+  const themedMenuIcon = menuOverride || staticThemeIcon(darkTheme ? darkThemeIcon : lightThemeIcon, media, 'menu', darkTheme);
+  for (const view of manifest.contributes?.viewsContainers?.activitybar || []) { view.title = name; view.icon = themedMenuIcon; }
   for (const view of manifest.contributes?.views?.ovhAgent || []) view.name = name;
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 }

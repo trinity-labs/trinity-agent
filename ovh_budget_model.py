@@ -4,7 +4,7 @@ from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 import re
 from pydantic_ai.models.wrapper import WrapperModel
-from pydantic_ai.messages import ToolCallPart
+from pydantic_ai.messages import PartDeltaEvent, PartEndEvent, PartStartEvent, ToolCallPart, ToolCallPartDelta
 
 
 _CHANNEL_SUFFIX = re.compile(r'<\|channel\|>(?:analysis|commentary|final)$')
@@ -29,6 +29,59 @@ def normalize_tool_call_names(response, model_request_parameters):
                 changed = True
         parts.append(part)
     return replace(response, parts=parts) if changed else response
+
+
+def _available_tool_names(model_request_parameters):
+    return {
+        definition.name
+        for definition in (
+            *model_request_parameters.function_tools,
+            *model_request_parameters.output_tools,
+        )
+    }
+
+
+def _normalize_tool_name(name, available):
+    base = _CHANNEL_SUFFIX.sub('', name)
+    return base if base != name and base in available else name
+
+
+def normalize_stream_event(event, model_request_parameters):
+    """Repair malformed tool names before the agent consumes stream events."""
+    available = _available_tool_names(model_request_parameters)
+    if isinstance(event, (PartStartEvent, PartEndEvent)) and isinstance(event.part, ToolCallPart):
+        name = _normalize_tool_name(event.part.tool_name, available)
+        if name != event.part.tool_name:
+            return replace(event, part=replace(event.part, tool_name=name))
+    if isinstance(event, PartDeltaEvent) and isinstance(event.delta, ToolCallPartDelta):
+        name = event.delta.tool_name_delta
+        if name:
+            normalized = _normalize_tool_name(name, available)
+            if normalized != name:
+                return replace(event, delta=replace(event.delta, tool_name_delta=normalized))
+    return event
+
+
+class NormalizedStream:
+    """Transparent stream proxy that sanitizes provider tool-call names."""
+    def __init__(self, stream, model_request_parameters):
+        self._stream = stream
+        self._parameters = model_request_parameters
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+    def __aiter__(self):
+        async def events():
+            async for event in self._stream:
+                yield normalize_stream_event(event, self._parameters)
+        return events()
+
+    def get(self):
+        return normalize_tool_call_names(self._stream.get(), self._parameters)
+
+    async def cancel(self):
+        return await self._stream.cancel()
 
 
 class BudgetedModel(WrapperModel):
@@ -102,7 +155,8 @@ class BudgetedModel(WrapperModel):
         response = None
         try:
             async with self.wrapped.request_stream(messages, model_settings, model_request_parameters, run_context) as stream:
-                yield stream
-                response = stream.get()
+                normalized = NormalizedStream(stream, model_request_parameters)
+                yield normalized
+                response = normalized.get()
         finally:
             self.finish(reservation, response)

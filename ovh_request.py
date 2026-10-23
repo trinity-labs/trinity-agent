@@ -135,6 +135,12 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
         r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you|veuillez)\s+)?"
         r"(?:applique(?:r|z|s)?|apply)\b", actionable))
     action = action or (apply_action and not question)
+    # A requested outcome is an edit even when the user describes the desired
+    # state without an imperative verb ("je veux que le texte soit plus grand").
+    requested_outcome = bool(re.search(
+        r"\b(?:je veux|je souhaite|j['’]aimerais|i want|i need|make sure)\s+(?:que\s+)?",
+        actionable))
+    action = action or (requested_outcome and not question and not readonly)
     # "Passe les boutons en ..." is an edit, while "passe en revue" is inspection.
     action = action or (not question and not readonly and bool(re.search(
         r'\b(?:passe|rends?)\s+(?:les?|la|ces?|cette)\s+[^.!?\n]{1,120}\s+(?:en|sans|transparent\w*|non[- ]fill)\b', actionable)))

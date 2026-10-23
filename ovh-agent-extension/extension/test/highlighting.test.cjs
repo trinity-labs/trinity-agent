@@ -290,6 +290,7 @@ test('manual model changes render and restore an inline conversation divider',()
   const {dom,w,emit}=browser();
   try {
     emit({type:'model_changed',from_model:'gpt-oss-120b',to_model:'Qwen3.8-27B'});
+    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.8-27B');
     let divider=w.document.querySelector('.model-change');
     assert(divider);assert.match(divider.textContent,/gpt-oss-120b/);assert.match(divider.textContent,/Qwen3\.8-27B/);
     assert.equal(divider.querySelectorAll('.model-change-line').length,2);
@@ -301,6 +302,7 @@ test('manual model changes render and restore an inline conversation divider',()
     ]});
     divider=w.document.querySelector('.model-change');
     assert(divider);assert.match(divider.textContent,/Qwen3\.6-27B/);
+    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.6-27B');
     const children=[...w.document.getElementById('messages').children];
     assert(children.indexOf(divider)>children.findIndex(node=>node.textContent.includes('Avant')));
     assert(children.indexOf(divider)<children.findIndex(node=>node.textContent.includes('Après')));

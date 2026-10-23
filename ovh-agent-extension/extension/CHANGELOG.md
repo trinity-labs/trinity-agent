@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.25 — 2026-10-23
+
+- Normalize malformed OVH Harmony channel suffixes before streamed tool calls reach the agent.
+- Keep model selection synchronized in the header after routing or a manual model change.
+- Reduce permanent prompt and tool-schema overhead while preserving on-demand capabilities.
+- Recognize requested outcomes as edits and return actionable feedback for incomplete edit calls.
+- Keep light and dark branding assets synchronized with the active editor theme.
+
 ## 1.17.24 — 2026-10-23
 
 - Prefix every remaining README section heading with the spaced black-square marker and use the same heading typography throughout.

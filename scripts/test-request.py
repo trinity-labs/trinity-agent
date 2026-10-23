@@ -43,7 +43,8 @@ class Preparation(unittest.TestCase):
 
     def test_actual_catalog_edit_requests_prepare_workspace(self):
         for prompt in ('Modernise la vue des modèles', 'Passe les bouton du catalogue de modèle en non fill',
-                       'Rends les boutons transparents', 'Agrandi légèrement le logo du header'):
+                       'Rends les boutons transparents', 'Agrandi légèrement le logo du header',
+                       'Dans le catalogue des modèles je veux que les tarifs soient en font-size 500px'):
             with self.subTest(prompt=prompt):
                 a = r.analyze_request(prompt)
                 self.assertEqual((a.intent, a.domain, a.needs_workspace), ('edit', 'ui', True))
