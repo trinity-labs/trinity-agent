@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.21 — 2026-10-23
+
+- Display the exact supplied AI workspace screenshot in both the extension README and the repository README.
+
 ## 1.17.20 — 2026-10-23
 
 - Replace the Marketplace preview with the exact user-supplied AI workspace screenshot.

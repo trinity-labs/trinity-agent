@@ -10,6 +10,14 @@ This repository does not contain OpenAI/Codex proprietary extension code.
 OpenAI, Codex and OVHcloud names and logos belong to their respective owners;
 the source-code license does not grant trademark rights.
 
+Preview
+-------
+
+.. image:: ovh-agent-extension/extension/media/history-demo.png
+   :alt: TRINITY Agent conversation history with AI workspace folders and demonstration titles
+
+The screenshot uses fictional conversation titles and a fictional mount path.
+
 Features
 --------
 
