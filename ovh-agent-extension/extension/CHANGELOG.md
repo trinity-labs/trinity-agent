@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.20 — 2026-10-23
+
+- Replace the Marketplace preview with the exact user-supplied AI workspace screenshot.
+
 ## 1.17.19 — 2026-10-23
 
 - Serve the preview screenshot as an addressable Marketplace asset so VS Code does not depend on an external image host.

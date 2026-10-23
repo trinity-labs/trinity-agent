@@ -8,7 +8,7 @@ An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with
 
 ## ⬛ Preview
 
-![TRINITY Agent conversation history with demonstration titles and mount path](https://stopyz.gallery.vsassets.io/_apis/public/gallery/publisher/stopyz/extension/ovh-agent/1.17.19/assetbyname/Microsoft.VisualStudio.Services.Content.Images.HistoryDemo)
+![TRINITY Agent conversation history with demonstration titles and mount path](https://stopyz.gallery.vsassets.io/_apis/public/gallery/publisher/stopyz/extension/ovh-agent/1.17.20/assetbyname/Microsoft.VisualStudio.Services.Content.Images.HistoryDemo)
 
 *Edited demonstration screenshot: conversation titles and the mount path are fictional.*
 
