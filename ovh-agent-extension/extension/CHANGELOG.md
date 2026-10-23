@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.32 — 2026-10-23
+
+- Remove inherited code-server parent IPC identity from command processes so CLI operations can run independently.
+- Treat tag and release creation during delivery as execution of existing work, while retaining verification for requested source edits.
+
 ## 1.17.31 — 2026-10-23
 
 - Return explicit, structured failures for missing or non-unique edit arguments, with a bounded suggestion for rereading the target.

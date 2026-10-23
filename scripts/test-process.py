@@ -83,6 +83,18 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(environment['PROJECT_MODE'], 'test')
         self.assertNotIn('PRIVATE_FIXTURE_DO_NOT_LEAK', json.dumps(result))
 
+    def test_child_does_not_inherit_code_server_parent_identity_without_ipc(self):
+        with patch.dict(os.environ, {'CODE_SERVER_PARENT_PID': '12345',
+                                     'VSCODE_IPC_HOOK_CLI': '/tmp/editor-cli.sock'}):
+            result = self.run_python('import os,json; print(json.dumps({k:os.environ.get(k) for k in '
+                                     '["CODE_SERVER_PARENT_PID","VSCODE_IPC_HOOK_CLI"]}))')
+        self.assertTrue(result['passed'], result)
+        environment = json.loads(result['output'])
+        self.assertIsNone(environment['CODE_SERVER_PARENT_PID'])
+        # The editor CLI socket is valid across commands; only the inherited
+        # parent identity requires a process.send IPC channel we do not pass.
+        self.assertEqual(environment['VSCODE_IPC_HOOK_CLI'], '/tmp/editor-cli.sock')
+
     def test_timeout_kills_shell_and_ordinary_descendants(self):
         source = ('import subprocess,sys,time; child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"]); '
                   'print(child.pid,flush=True); time.sleep(60)')

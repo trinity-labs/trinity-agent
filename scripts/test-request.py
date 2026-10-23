@@ -80,6 +80,23 @@ class Preparation(unittest.TestCase):
                        'Build en lecture seule', 'La compilation est terminée'):
             self.assertNotEqual(r.analyze_request(prompt).intent, 'execute')
 
+    def test_creating_release_metadata_is_execution_without_requiring_source_edits(self):
+        for prompt in ('Installe et publie le paquet prêt. Crée le tag annoté v1.2.3 sur ce commit.',
+                       'Publie la version : crée un tag Git et une release GitHub.',
+                       'Build and publish the existing package, then create the annotated tag v1.2.3.',
+                       'Crée le tag v1.2.3 puis publie la release.'):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(r.analyze_request(prompt).intent, 'execute')
+        for prompt in ('Crée release.py puis publie la version.',
+                       'Crée le fichier tag.js puis installe le paquet.',
+                       'Modifie le CSS puis crée le tag et publie.',
+                       'Crée une fonction tag puis build.'):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(r.analyze_request(prompt).intent, 'edit')
+        for prompt in ('Comment créer le tag puis publier ?',
+                       'Lecture seule : inspecte la release, ne crée pas le tag.'):
+            self.assertNotEqual(r.analyze_request(prompt).intent, 'execute')
+
     def test_apply_requests_are_edits_without_promoting_descriptions_or_prohibitions(self):
         for prompt in ('applique une opacity 0.5 au logo', 'Applique une opacité de 50 % au logo',
                        'ok applique la prochaine correction au logo', 'Peux-tu appliquer cette couleur au logo ?',

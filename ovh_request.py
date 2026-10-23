@@ -127,7 +127,6 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     actionable = re.sub(r'\b(?:aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', current)
     # Describing previous modifications is not a request to perform new ones.
     actionable = re.sub(r'\b(?:modifications?|changements?|creations?|suppressions?|ameliorations?|transformations?|optimisations?)\b', '', actionable)
-    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|diminu\w*|augment\w*|agrand\w*|elargi\w*|retreci\w*|fix|add|remove|refactor\w*)\b', actionable)) and not question
     # Delivery executes existing work; it does not require a fresh source edit.
     execution = not question and not readonly and bool(re.search(
         r"(?:^|\b(?:et|puis|and|then)\s+)\s*"
@@ -136,6 +135,14 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
         r"(?:install(?:e[rz]?|er)?|publie[rz]?|publish|deploy(?:er)?|deploie[rz]?|"
         r"build|rebuild|compile[rz]?|construis|reconstruis|"
         r"redemarre[rz]?|restart|lance[rz]?|execute[rz]?|run)\b", current))
+    if execution:
+        # Creating delivery metadata does not require editing source files.
+        # Keep other requested edits, including files named tag.js/release.py.
+        actionable = re.sub(
+            r'\b(?:cree(?:r|z|s)?|create)\s+(?:(?:un|une|le|la|les|des|the|a|an)\s+)?'
+            r'(?:(?:nouveau|nouvelle|new|git|github|annotated|annote)\s+)*'
+            r'(?:tags?|releases?)\b(?![./]\w)', '', actionable)
+    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|diminu\w*|augment\w*|agrand\w*|elargi\w*|retreci\w*|fix|add|remove|refactor\w*)\b', actionable)) and not question
     # Applying a requested value is an edit. Keep this imperative bounded so
     # "l'application", "j'ai appliqué" and "comment appliquer" stay descriptive.
     apply_action = bool(re.match(

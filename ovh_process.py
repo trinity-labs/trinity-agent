@@ -26,7 +26,9 @@ _SENSITIVE_NAME = re.compile(r'(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_KE
 _PROVIDER_PREFIXES = ('OVH_', 'OVHCLOUD_', 'OPENAI_', 'ANTHROPIC_', 'GEMINI_', 'DEEPSEEK_',
                       'MISTRAL_', 'TOGETHER_', 'GITHUB_', 'GH_', 'VSCE_', 'GIT_CONFIG_')
 _UNSAFE_ENV = {'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_SSH_COMMAND',
-               'BASH_ENV', 'ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'PYTHONSTARTUP', 'PYTHONPATH', 'PYTHONHOME'}
+               'BASH_ENV', 'ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'PYTHONSTARTUP', 'PYTHONPATH', 'PYTHONHOME',
+               # Commands are new processes without code-server's parent IPC.
+               'CODE_SERVER_PARENT_PID'}
 
 
 def sanitized_environment(environment=None):

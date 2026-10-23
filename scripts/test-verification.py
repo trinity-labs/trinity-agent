@@ -128,7 +128,9 @@ class Verification(unittest.TestCase):
             self.guard.validate_summary('Le changement a été effectué et la règle CSS a été appliquée.')
 
     def test_build_turn_does_not_require_source_mutation_or_direct_a_fake_write(self):
-        self.guard.task_intent = 'execute'
+        from ovh_request import analyze_request
+        self.guard.task_intent = analyze_request(
+            'Installe et publie le paquet déjà construit. Crée le tag annoté v1.2.3 sur le commit public.').intent
         text = 'Compilation exécutée sur les sources existantes.'
         self.assertEqual(self.guard.validate_summary(text), text)
         with self.assertRaisesRegex(VerificationError, 'ne réécris pas'):
