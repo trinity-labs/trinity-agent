@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.30 — 2026-10-23
+
+- Invalidate verification receipts when declared wildcard inputs are added, removed or modified, including changes during a check.
+- Preserve existing behavior outside the requested change and reuse successful checks only while their recorded inputs remain unchanged.
+
 ## 1.17.29 — 2026-10-23
 
 - Restore model-catalog prices to their previous 10px font size and apply the intended font weight of 500.

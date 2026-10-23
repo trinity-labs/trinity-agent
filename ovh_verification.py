@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import fnmatch
+import glob
 import hashlib
 import json
 import os
@@ -181,6 +182,7 @@ class Check:
     protected: dict[str, str | None]
     timeout: int = 120
     kind: str = "functional"
+    project: Path | None = None
 
 
 class ChangeGuard:
@@ -288,7 +290,7 @@ class ChangeGuard:
                         key = f"{folder}:{index}"
                         discovered[key] = Check(str(definition.get("name", key)), cwd, argv,
                                                  [str(folder / pattern) for pattern in patterns],
-                                                 protected, timeout, kind)
+                                                 protected, timeout, kind, folder)
                     self.checks.update(discovered)
                     self.projects.add(folder)
                     return
@@ -324,9 +326,18 @@ class ChangeGuard:
 
     def _evidence_files(self, check: Check) -> dict:
         paths = set(self.observed) | {Path(p) for p in self.state["changes"]} | {Path(p) for p in check.protected}
-        # Literal declared subjects matter even when a compliant task needs no edit.
+        # Freeze all declared subjects, including files the model did not read.
+        # Re-enumeration detects additions/removals as well as content changes.
         for pattern in check.patterns:
-            if not any(marker in pattern for marker in ('*', '?', '[')):
+            if any(marker in pattern for marker in ('*', '?', '[')):
+                for name in glob.iglob(pattern, recursive=True):
+                    path = Path(name)
+                    if not path.is_file():
+                        continue
+                    if not path.resolve().is_relative_to(check.project or check.root):
+                        raise VerificationError('Entrée de contrôle hors projet : ' + name)
+                    paths.add(path)
+            else:
                 path = (check.root / pattern).resolve()
                 if self.allow_external or path.is_relative_to(self.workspace):
                     paths.add(path)
@@ -712,6 +723,9 @@ class ChangeGuard:
             after = {path: digest(contents(Path(path))) for path in subjects}
             if actual != after:
                 problems.append("Des fichiers ont changé pendant les contrôles ; résultats périmés.")
+            for receipt in receipts:
+                if not self._fresh(receipt):
+                    problems.append("Entrées modifiées pendant le contrôle : " + receipt['check'])
             for item in syntax_checks:
                 for receipt in receipts:
                     check = self.checks[receipt["key"]]

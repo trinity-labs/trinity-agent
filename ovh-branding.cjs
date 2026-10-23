@@ -161,4 +161,4 @@ if (require.main === module) {
   fs.writeFileSync(registryFile + '.branding.tmp', JSON.stringify(registry));
   fs.renameSync(registryFile + '.branding.tmp', registryFile);
 }
-module.exports = { applyManifest };
+module.exports = { applyManifest, configuredDarkTheme };

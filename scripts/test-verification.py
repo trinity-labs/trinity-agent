@@ -342,6 +342,59 @@ class Verification(unittest.TestCase):
         self.guard.require_verified()
         self.assertGreater(len(self.guard.state['receipts']), count)
 
+    def test_unread_glob_inputs_invalidate_cached_success(self):
+        parts = self.workspace / 'parts'
+        parts.mkdir()
+        dependency = parts / 'settings.json'
+        dependency.write_text('"ok"')
+        self.check.write_text("from pathlib import Path\nassert all(p.read_text() == '\"ok\"' for p in Path('parts').glob('*.json'))\nassert Path('parts/settings.json').is_file()\n")
+        policy = json.loads(self.policy.read_text())
+        policy['checks'][0]['paths'].append('parts/*.json')
+        self.policy.write_text(json.dumps(policy))
+        self.edit(2)
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+        count = len(self.guard.state['receipts'])
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+        self.assertEqual(len(self.guard.state['receipts']), count)
+        dependency.write_text('"broken"')
+        with self.assertRaises(VerificationError):
+            self.guard.require_verified()
+        dependency.write_text('"ok"')
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+        extra = parts / 'new.json'
+        extra.write_text('"broken"')
+        with self.assertRaises(VerificationError):
+            self.guard.require_verified()
+        extra.unlink()
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+        dependency.unlink()
+        with self.assertRaises(VerificationError):
+            self.guard.require_verified()
+
+    def test_glob_input_changed_during_check_cannot_pass(self):
+        dependency = self.workspace / 'dependency.json'
+        dependency.write_text('1')
+        policy = json.loads(self.policy.read_text())
+        policy['checks'][0]['paths'].append('*.json')
+        self.policy.write_text(json.dumps(policy))
+        self.edit(2)
+        def runner(*args):
+            result = run_check(*args)
+            dependency.write_text('2')
+            return result
+        self.guard.runner = runner
+        with self.assertRaises(VerificationError):
+            self.guard.require_verified()
+
+    def test_glob_inputs_remain_relative_to_project_when_check_uses_subdirectory(self):
+        (self.workspace / 'tests').mkdir()
+        policy = json.loads(self.policy.read_text())
+        policy['checks'][0].update(paths=['*.py'], cwd='tests', argv=['{python}', '-c',
+            "from pathlib import Path; assert 'VALUE = 2' in Path('../app.py').read_text()"])
+        self.policy.write_text(json.dumps(policy))
+        self.edit(2)
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+
     def test_readonly_audit_can_report_executed_failures_without_claiming_success(self):
         self.guard.require_checks = True
         self.guard.observe(self.file)
