@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.28 — 2026-10-23
+
+- Keep command execution and verification tools available for short build, installation and publication requests.
+- Treat delivery follow-ups as execution of existing work, without requiring an unrelated source edit.
+- Give execution-specific validation feedback instead of prompting the model to rewrite an already completed change.
+
 ## 1.17.27 — 2026-10-23
 
 - Escalate automatically from an economical model to gpt-oss-120b when a tool call cannot be serialized and no mutation has started.

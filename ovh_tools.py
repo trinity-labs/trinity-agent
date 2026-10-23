@@ -10,7 +10,7 @@ import threading
 import unicodedata
 
 CORE = frozenset({'read_file','list_files','search_text','edit_file','write_file','discover_tools',
-                  'search_memory','read_memory'})
+                  'search_memory','read_memory','run_command','verification_plan','verify_changes'})
 GROUPS = {
     'web': {'search_web','read_webpage'},
     'memory': {'search_memory','read_memory','search_project_memory','read_project_memory','remember_context','inspect_json','inspect_conversation_archives'},
@@ -56,8 +56,9 @@ class ToolSelection:
                     self.enabled.update(names)
             if tokens & {'logo','logos','header','opacity','opacite','couleur','background','spinner','loading','chargement','style','styles'}:
                 self.enabled.update(GROUPS['styles'])
-            if re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|appliqu\w*|je veux|je souhaite|fix|add|remove|build)\b', prompt, re.I):
-                self.enabled.update({'run_command','verification_plan','verify_changes'})
+            # Command execution and checks are fundamental coding capabilities.
+            # Keep them visible even for short follow-ups; execution permissions
+            # still apply independently in prepare_tool_for_request/controller.
             if re.search(r'\b(?:reprends?|continue|mémoire|memoire|historique|previous|resume)\b', prompt, re.I):
                 self.enabled.update({'search_memory','read_memory'})
             if re.search(r'https?://|\b(?:documentation|sources|recherche web|internet)\b',prompt,re.I):

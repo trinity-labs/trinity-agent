@@ -11,6 +11,40 @@ from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 
 
 class Discovery(unittest.TestCase):
+    def test_sdk_runs_build_on_short_delivery_followup_without_discovery(self):
+        import tempfile
+        import subprocess
+        with tempfile.TemporaryDirectory() as folder:
+            workspace = Path(folder)
+            (workspace / 'source.txt').write_text('existing change')
+            (workspace / 'build.py').write_text(
+                "from pathlib import Path\nPath('artifact.txt').write_text(Path('source.txt').read_text())\n")
+            for prompt in ('ok install et publie', 'ok build', 'oui continue', 'install and publish'):
+                with self.subTest(prompt=prompt):
+                    selection = ToolSelection(prompt)
+                    self.assertTrue(selection.visible('verification_plan'))
+                    self.assertTrue(selection.visible('verify_changes'))
+                    async def prepare(ctx, definition):
+                        selection.register(definition.name, definition.description)
+                        return definition if selection.visible(definition.name) else None
+                    calls = []
+                    def run_command(command: str) -> str:
+                        """Build a local fixture."""
+                        self.assertEqual(command, 'build')
+                        calls.append(command)
+                        result = subprocess.run([sys.executable, 'build.py'], cwd=workspace,
+                                                capture_output=True, text=True, check=True)
+                        return result.stdout or 'exit=0'
+                    def model(messages, info):
+                        self.assertIn('run_command', {tool.name for tool in info.function_tools})
+                        if not calls:
+                            return ModelResponse(parts=[ToolCallPart('run_command', {'command': 'build'})])
+                        return ModelResponse(parts=[TextPart('Build complete.')])
+                    result = Agent(FunctionModel(model), tools=[Tool(run_command, prepare=prepare)]).run_sync(prompt)
+                    self.assertEqual(result.output, 'Build complete.')
+                    self.assertEqual((workspace / 'artifact.txt').read_text(), 'existing change')
+                    self.assertEqual(calls, ['build'])
+
     def test_sdk_discovers_tool_on_following_round(self):
         selection=ToolSelection('Read a file')
         observed=[]

@@ -527,6 +527,8 @@ class ChangeGuard:
             and not re.search(r"\baucun(?:e)?\b|\b(?:ne|n[’'])[^,]{0,70}\bpas\b|\b(?:not|no)\b", clause, re.I)
             for clause in clauses)
         if not self.state["changes"] and affirmative_change:
+            if self.task_intent == 'execute':
+                raise VerificationError("Aucune nouvelle modification de source n’a été enregistrée pendant cette demande d’exécution. Distingue les changements déjà présents du résultat de compilation, installation ou publication. Utilise run_command pour réaliser les étapes demandées et rapporte leurs résultats ; ne réécris pas les fichiers uniquement pour satisfaire ce contrôle.")
             raise VerificationError("La réponse annonce une modification, mais aucun changement n’a été enregistré par les outils suivis. Effectue la modification avec edit_file/write_file ou indique explicitement qu’aucune modification n’a été effectuée.")
         if self.task_intent == "edit" and not self.state["changes"]:
             # A truthful blocker/no-op is allowed; a plan presented as completion is not.

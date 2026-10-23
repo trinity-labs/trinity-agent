@@ -127,6 +127,14 @@ class Verification(unittest.TestCase):
         with self.assertRaisesRegex(VerificationError, 'aucun changement'):
             self.guard.validate_summary('Le changement a été effectué et la règle CSS a été appliquée.')
 
+    def test_build_turn_does_not_require_source_mutation_or_direct_a_fake_write(self):
+        self.guard.task_intent = 'execute'
+        text = 'Compilation exécutée sur les sources existantes.'
+        self.assertEqual(self.guard.validate_summary(text), text)
+        with self.assertRaisesRegex(VerificationError, 'ne réécris pas'):
+            self.guard.validate_summary('Modification appliquée : le CSS contient la valeur demandée.')
+        self.assertFalse(self.guard.state['changes'])
+
     def test_negated_change_is_allowed_without_masking_a_separate_success_claim(self):
         for text in ('Aucune modification effectuée.', 'Le fichier n’a pas été modifié.',
                      'No changes made.', 'Aucune modification appliquée : accès refusé.'):

@@ -66,6 +66,20 @@ class Preparation(unittest.TestCase):
         self.assertTrue(security.needs_web)
         self.assertFalse(security.needs_workspace)
 
+    def test_delivery_followup_executes_existing_changes_without_requiring_new_edits(self):
+        previous = ['Corrige la taille dans `chat.css`']
+        for prompt in ('ok install et publie', 'ok build', 'Compile le projet',
+                       'Install and publish', 'Peux-tu installer la version ?', 'Redémarre le service'):
+            with self.subTest(prompt=prompt):
+                analysis = r.analyze_request(prompt, previous)
+                self.assertEqual(analysis.intent, 'execute')
+                self.assertTrue(analysis.needs_workspace)
+        self.assertEqual(r.analyze_request('ok install et publie', previous).paths, ('chat.css',))
+        self.assertEqual(r.analyze_request('Corrige le CSS puis build', previous).intent, 'edit')
+        for prompt in ('Pourquoi le build a échoué ?', 'Ne publie pas', 'Comment installer ?',
+                       'Build en lecture seule', 'La compilation est terminée'):
+            self.assertNotEqual(r.analyze_request(prompt).intent, 'execute')
+
     def test_apply_requests_are_edits_without_promoting_descriptions_or_prohibitions(self):
         for prompt in ('applique une opacity 0.5 au logo', 'Applique une opacité de 50 % au logo',
                        'ok applique la prochaine correction au logo', 'Peux-tu appliquer cette couleur au logo ?',

@@ -127,7 +127,15 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     actionable = re.sub(r'\b(?:aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', current)
     # Describing previous modifications is not a request to perform new ones.
     actionable = re.sub(r'\b(?:modifications?|changements?|creations?|suppressions?|ameliorations?|transformations?|optimisations?)\b', '', actionable)
-    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|deploi\w*|redemarr\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|diminu\w*|augment\w*|agrand\w*|elargi\w*|retreci\w*|fix|add|remove|refactor\w*|build|restart)\b', actionable)) and not question
+    action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|diminu\w*|augment\w*|agrand\w*|elargi\w*|retreci\w*|fix|add|remove|refactor\w*)\b', actionable)) and not question
+    # Delivery executes existing work; it does not require a fresh source edit.
+    execution = not question and not readonly and bool(re.search(
+        r"(?:^|\b(?:et|puis|and|then)\s+)\s*"
+        r"(?:(?:ok|oui|yes|maintenant|now|please|s['’]il te plait)[\s,!:.]+)*"
+        r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you|veuillez)\s+)?"
+        r"(?:install(?:e[rz]?|er)?|publie[rz]?|publish|deploy(?:er)?|deploie[rz]?|"
+        r"build|rebuild|compile[rz]?|construis|reconstruis|"
+        r"redemarre[rz]?|restart|lance[rz]?|execute[rz]?|run)\b", current))
     # Applying a requested value is an edit. Keep this imperative bounded so
     # "l'application", "j'ai appliqué" and "comment appliquer" stay descriptive.
     apply_action = bool(re.match(
@@ -181,11 +189,11 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     research = bool(re.search(r'\b(?:documentation|documente|actualite|cherche sur|recherche sur|look up|latest)\b', current))
     wide = bool(re.search(r'\b(?:architecture|migration|refactor\w*|audit\w*|synthese|compar\w*|strategie|plusieurs fichiers|tout le projet|entire project|multi.?file)\b', current)
                 or inspection and re.search(r'\b(?:complet\w*|entier\w*|tout|agent|projet|project)\b', current))
-    intent = 'research' if research and not action else 'edit' if action else 'diagnose' if re.search(r'\b(?:bug|erreur|error|pourquoi|debug\w*|diagnosti\w*)\b', current) else 'question'
-    if inherit and not question and not action and not fact_check and not readonly:
+    intent = 'research' if research and not action and not execution else 'edit' if action else 'execute' if execution else 'diagnose' if re.search(r'\b(?:bug|erreur|error|pourquoi|debug\w*|diagnosti\w*)\b', current) else 'question'
+    if inherit and not question and not action and not execution and not fact_check and not readonly:
         intent = previous_analysis.intent
         wide = previous_analysis.scope == 'project'
-    needs_workspace = bool(paths or local_reference or (domain != 'general' and
+    needs_workspace = bool(execution or paths or local_reference or (domain != 'general' and
                            (action or inspection or (followup and previous_analysis and previous_analysis.needs_workspace))))
     if research and not action and not paths and not local_reference:
         needs_workspace = False

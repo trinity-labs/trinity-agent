@@ -2889,7 +2889,7 @@ def prepare_task_context(history: list, prompt: str, image_count: int = 0, *, co
     query = analysis.query
     # Mutation tasks need current files, not top-ranked unverified assistant prose.
     # Historical evidence remains available through explicit memory tools.
-    history = history_with_memory(history, query, include_excerpts=analysis.intent != "edit", context_card=context_card)
+    history = history_with_memory(history, query, include_excerpts=analysis.intent not in {"edit", "execute"}, context_card=context_card)
     retrieval_root = ALLOWED_ROOT if FULL_ACCESS else WORKSPACE
     prepared = prepare_request(prompt, history, WORKSPACE, retrieval_root, image_count,
                                navigation_root=ALLOWED_ROOT, context_card=context_card)
