@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.19 — 2026-10-23
+
+- Serve the preview screenshot as an addressable Marketplace asset so VS Code does not depend on an external image host.
+
 ## 1.17.18 — 2026-10-23
 
 - Serve the preview screenshot through the Marketplace-compatible repository image path.

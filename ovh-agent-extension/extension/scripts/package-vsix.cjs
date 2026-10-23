@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '..');
 const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json')));
 const publisher = process.env.MARKETPLACE_PUBLISHER || 'stopyz';
+const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.HistoryDemo';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
 try {
@@ -50,5 +51,17 @@ try {
   execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
     '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',
     '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension'], {cwd:stage,stdio:'inherit'});
+  if (publisher !== 'trinity') {
+    const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-asset-'));
+    try {
+      execFileSync('unzip', ['-q', output, '-d', unpacked]);
+      const vsixManifest = path.join(unpacked, 'extension.vsixmanifest');
+      const xml = fs.readFileSync(vsixManifest, 'utf8');
+      const asset = `    <Asset Type="${previewAssetType}" Path="extension/media/history-demo.png" Addressable="true" />\n`;
+      if (!xml.includes(previewAssetType)) fs.writeFileSync(vsixManifest, xml.replace(/([\t ]*)<\/Assets>/, `${asset}$&`));
+      fs.rmSync(output);
+      execFileSync('zip', ['-qr', output, '.'], {cwd:unpacked});
+    } finally { fs.rmSync(unpacked,{recursive:true,force:true}); }
+  }
   console.log(`Packaged ${publisher}.${manifest.name} ${manifest.version}: ${output}`);
 } finally { fs.rmSync(stage,{recursive:true,force:true}); }
