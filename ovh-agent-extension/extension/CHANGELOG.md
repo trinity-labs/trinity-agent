@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.18 — 2026-10-23
+
+- Serve the preview screenshot through the Marketplace-compatible repository image path.
+
 ## 1.17.17 — 2026-10-23
 
 - Replace the history preview with the requested white-logo screenshot, renamed folders and neutral conversation titles while preserving folder colors.
