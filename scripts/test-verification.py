@@ -607,6 +607,81 @@ class Verification(unittest.TestCase):
             self.assertIn('Bilan des contrôles calculé par le backend', summary)
             self.assertEqual(backend.validate_task_output(summary), summary)
 
+    def test_edit_rejection_is_structured_and_points_to_a_bounded_reread(self):
+        from ovh_execution import WorkflowController
+        original = 'Introduction\nHeading\n  keep indentation\nvalue\n' + ('untouched\n' * 200)
+        target = self.workspace / 'notes.txt'
+        target.write_text(original)
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'VERIFICATION_GUARD', self.guard):
+            with patch.object(backend, 'request_approval') as approve:
+                result = backend.edit_file('notes.txt', 'Heading\n keep indentation\nvalue', 'replacement')
+                receipt = json.loads(result)
+                self.assertEqual(receipt['status'], 'failed')
+                self.assertEqual(receipt['category'], 'invalid_arguments')
+                self.assertFalse(receipt['executed'])
+                self.assertEqual(receipt['occurrences'], 0)
+                self.assertEqual(receipt['candidate_lines'], [2])
+                self.assertEqual(receipt['recovery']['tool'], 'read_file')
+                arguments = receipt['recovery']['arguments']
+                self.assertEqual(arguments['path'], 'notes.txt')
+                self.assertLessEqual(arguments['start_line'], 2)
+                self.assertLessEqual(arguments['end_line'] - arguments['start_line'], 40)
+                self.assertLess(len(result), 1200)
+                self.assertEqual(WorkflowController._outcome('edit_file', result, [])[0], 'invalid_arguments')
+                approve.assert_not_called()
+        self.assertEqual(target.read_text(), original)
+
+    def test_invalid_edit_arguments_never_fall_back_to_inexact_or_multiple_replacement(self):
+        original = self.file.read_text()
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'VERIFICATION_GUARD', self.guard):
+            for old, new in [('', 'replacement'), ('VALUE = 1', None), ('NOT IN FILE', 'replacement')]:
+                with self.subTest(old=old, new=new):
+                    receipt = json.loads(backend.edit_file('app.py', old, new))
+                    self.assertFalse(receipt['executed'])
+                    self.assertEqual(receipt['category'], 'invalid_arguments')
+                    self.assertEqual(self.file.read_text(), original)
+            self.file.write_text('VALUE = 1\nVALUE = 1\n')
+            receipt = json.loads(backend.edit_file('app.py', 'VALUE = 1', 'VALUE = 2'))
+            self.assertEqual(receipt['occurrences'], 2)
+            self.assertEqual(receipt['candidate_lines'], [1, 2])
+            self.assertEqual(self.file.read_text(), 'VALUE = 1\nVALUE = 1\n')
+
+    def test_tool_loop_recovers_from_an_edit_mismatch_without_sdk_retry_budget(self):
+        from pydantic_ai import Agent
+        from pydantic_ai.models.function import FunctionModel
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+        calls = []
+        def model(messages, info):
+            calls.append(messages)
+            if len(calls) == 1:
+                return ModelResponse(parts=[ToolCallPart('edit_file', {
+                    'path': 'app.py', 'old_text': 'VALUE=1', 'new_text': 'VALUE = 2'}, tool_call_id='bad-edit')])
+            if len(calls) == 2:
+                response = next(part for message in reversed(messages) for part in message.parts
+                                if isinstance(part, ToolReturnPart) and part.tool_name == 'edit_file')
+                self.assertEqual(json.loads(response.content)['category'], 'invalid_arguments')
+                self.assertEqual(self.file.read_text(), 'VALUE = 1\n# existing user change\n')
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path': 'app.py'}, tool_call_id='reread')])
+            if len(calls) == 3:
+                return ModelResponse(parts=[ToolCallPart('edit_file', {
+                    'path': 'app.py', 'old_text': 'VALUE = 1', 'new_text': 'VALUE = 2'}, tool_call_id='exact-edit')])
+            return ModelResponse(parts=[TextPart('Corrected and verified.')])
+        with ExitStack() as stack:
+            for name, value in {'WORKSPACE': self.workspace, 'VERIFICATION_GUARD': self.guard,
+                                'JSON_MODE': False}.items():
+                stack.enter_context(patch.object(backend, name, value))
+            for name in ('activity_start', 'activity_end', 'emit'):
+                stack.enter_context(patch.object(backend, name))
+            agent = Agent(FunctionModel(model), tools=[backend.read_file, backend.edit_file], retries=0)
+            @agent.output_validator
+            def validate(output: str) -> str:
+                self.guard.require_verified()
+                return output
+            result = agent.run_sync('Set VALUE to 2, preserving the existing comment.')
+        self.assertEqual(result.output, 'Corrected and verified.')
+        self.assertEqual(result.usage.requests, 4)
+        self.assertEqual(self.file.read_text(), 'VALUE = 2\n# existing user change\n')
+
     def test_real_backend_final_gate_and_recovery_without_paid_provider(self):
         archive = self.root / 'archive' / 'workspace' / 'conversation'
         archive.mkdir(parents=True)

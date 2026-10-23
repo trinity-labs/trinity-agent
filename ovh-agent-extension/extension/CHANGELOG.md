@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.31 — 2026-10-23
+
+- Return explicit, structured failures for missing or non-unique edit arguments, with a bounded suggestion for rereading the target.
+- Preserve exact-match edits while allowing the tool loop to correct its arguments without consuming SDK exception retries.
+
 ## 1.17.30 — 2026-10-23
 
 - Invalidate verification receipts when declared wildcard inputs are added, removed or modified, including changes during a check.

@@ -944,17 +944,35 @@ def emit_file_change(path: str, diff: str, created: bool = False) -> None:
 
 
 def edit_file(path: str, old_text: str = "", new_text: str | None = None) -> str:
-    """Remplace une occurrence exacte. Fournir path, old_text lu dans le fichier, puis new_text."""
+    """Remplace une occurrence exacte. Fournir path, un old_text court et unique lu dans le fichier (sans numéros de ligne), puis new_text."""
+    def reject(message, **details):
+        return json.dumps({'status': 'failed', 'category': 'invalid_arguments',
+                           'executed': False, 'message': message, **details}, ensure_ascii=False)
     try:
         if not old_text:
-            return "Modification refusée: old_text est requis. Lis le fichier puis recopie exactement le passage à remplacer."
+            return reject("Modification refusée: old_text est requis. Lis le fichier puis recopie exactement le passage à remplacer.")
         if new_text is None:
-            return "Modification refusée: new_text est requis (utilise une chaîne vide pour supprimer le passage)."
+            return reject("Modification refusée: new_text est requis (utilise une chaîne vide pour supprimer le passage).")
         target = resolve_path(path)
         content = target.read_bytes().decode("utf-8")
         count = content.count(old_text)
         if count != 1:
-            return f"Modification refusée: {count} occurrence(s), exactement 1 attendue."
+            # Locate a bounded reread only. Whitespace normalization must never
+            # authorize an approximate edit or choose between duplicate targets.
+            anchor = next((line.strip() for line in old_text.splitlines() if line.strip()), '')
+            candidates = list(islice((number for number, line in enumerate(content.splitlines(), 1)
+                                      if anchor and line.strip() == anchor), 5))
+            if candidates:
+                start = max(1, candidates[0] - 2)
+                recovery = {'tool': 'read_file', 'arguments': {
+                    'path': path, 'start_line': start,
+                    'end_line': start + min(40, max(10, old_text.count('\n') + 4))}}
+            else:
+                recovery = {'tool': 'search_text', 'arguments': {
+                    'path': path, 'query': re.escape(anchor[:160] or old_text[:160])}}
+            return reject(f"Modification refusée: {count} occurrence(s), exactement 1 attendue. "
+                          "Aucun changement appliqué. Relis la cible puis utilise un passage court, exact et unique.",
+                          occurrences=count, candidate_lines=candidates, recovery=recovery)
         updated = content.replace(old_text, new_text, 1)
         name = relative_name(target)
         diff = make_diff(name, content, updated)
