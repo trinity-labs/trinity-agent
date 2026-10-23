@@ -8,7 +8,7 @@ An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with
 
 ## ⬛ Preview
 
-![TRINITY Agent conversation history with demonstration titles and mount path](media/history-demo.png)
+![TRINITY Agent conversation history with demonstration titles and mount path](https://cdn.jsdelivr.net/gh/trinity-labs/trinity-agent@v1.17.17/ovh-agent-extension/extension/media/history-demo.png)
 
 *Edited demonstration screenshot: conversation titles and the mount path are fictional.*
 

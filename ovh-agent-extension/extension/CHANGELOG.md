@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.17 — 2026-10-23
+
+- Replace the history preview with the requested white-logo screenshot, renamed folders and neutral conversation titles while preserving folder colors.
+- Serve the preview from the immutable release tag through jsDelivr so Marketplace and web clients can display it reliably.
+
 ## 1.17.16 — 2026-10-22
 
 - Keep the published Marketplace icon purple while switching the locally installed application icon to the white set in dark themes.
