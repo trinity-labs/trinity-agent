@@ -185,7 +185,7 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   font-size: 8px;
 }
 .model-item.selected .model-title span { border-color: var(--ovh-primary); color: var(--ovh-primary-text); }
-.model-price { margin-top: 5px; color: var(--ovh-primary-text); font-size: 500px; }
+.model-price { margin-top: 5px; color: var(--ovh-primary-text); font-size: 10px; font-weight: 500; }
 .model-meta { margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 9px; }
 .model-empty { padding: 18px 10px; color: var(--vscode-descriptionForeground); text-align: center; }
 #model-availability { white-space: normal; }

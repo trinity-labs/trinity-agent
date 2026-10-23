@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.29 — 2026-10-23
+
+- Restore model-catalog prices to their previous 10px font size and apply the intended font weight of 500.
+
 ## 1.17.28 — 2026-10-23
 
 - Keep command execution and verification tools available for short build, installation and publication requests.
