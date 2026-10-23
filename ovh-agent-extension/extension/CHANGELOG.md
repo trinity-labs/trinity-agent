@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.34 — 2026-10-23
+
+- Add an optional official GEPA experiment using fixed TRINITY file checks, disjoint optimization and final scenarios, and a shared OVH request/cost budget.
+- Add a depth-one RLM prototype that explores external document context through isolated Python and bounded subordinate calls, with direct-context comparison and source-quote checks.
+- Document both experiments in the repository and extension README. Neither experiment changes chat routing, user permissions, production instructions or model weights automatically.
+
 ## 1.17.33 — 2026-10-23
 
 - Deduplicate successfully loaded instruction sources before automatic memory retrieval, while preserving explicit access and skipped-document fallback.

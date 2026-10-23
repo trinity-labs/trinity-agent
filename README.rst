@@ -740,6 +740,60 @@ correctness must be reviewed separately. A three-case sample is not a universal
 
 Restart the extension backend after an update to load Python changes.
 
+GEPA and recursive-context experiments
+-------------------------------------
+
+These are opt-in contributor experiments, not additional chat instructions or
+automatic production routing. They do not change model weights, user permissions
+or the deployed assistant's prompts. No optimized candidate is applied automatically.
+
+``scripts/experiment-gepa.py`` integrates the official `GEPA optimizer
+<https://github.com/gepa-ai/gepa>`_ with TRINITY's existing fixture evaluator.
+Only a short technical suggestion can vary; source-file oracles, permissions and
+user requests remain fixed. Training and selection validation are separate from
+the final comparison cases. The JSON report preserves failed attempts and the
+reference/candidate results. Install its optional dependency in a laboratory
+virtual environment with ``pip install -r scripts/requirements-research.txt``.
+It is not installed by the application or bundled in the VSIX.
+
+Run the offline GEPA integration and then, if desired, an explicitly paid comparison::
+
+  python scripts/experiment-gepa.py --output /tmp/gepa-offline.json
+  python scripts/experiment-gepa.py --real-model gpt-oss-20b --max-cost-eur 0.25 --output /tmp/gepa-live.json
+
+The same 120-request ceiling and EUR budget cover candidate evaluations,
+reflection and both final comparison arms. The default is five optimization
+evaluations, followed by three reserved scenarios for the reference and candidate.
+This is an integration experiment, not enough samples to select a production prompt.
+
+``scripts/experiment-rlm.py`` implements a minimal depth-one prototype of the
+`RLM external-context mechanism <https://github.com/alexzhang13/rlm>`_. The corpus
+stays in a Python variable in an ephemeral container. The root model can inspect
+it programmatically and call a subordinate model on selected excerpts. This is
+not the upstream ``rlms`` library or a reproduction of its published benchmark.
+The container has no network, host mounts, Docker socket or credentials. Subcalls
+pass through a bounded host-side bridge and share the root model's OVH budget.
+Exact quotations are checked against their named documents; this verifies source
+presence, not semantic relevance or truth.
+
+For the RLM protocol check, first make a Python container image available locally,
+then run::
+
+  python scripts/experiment-rlm.py --image python:3.12-alpine --output /tmp/rlm-offline.json
+
+Paid inference requires explicit ``--real-model <OVH-model-id>``. This compares
+direct full-context inference with external-context exploration on identical
+seeded synthetic corpora. A single shared cost ceiling covers both arms and all
+subcalls. ``--corpus /path/documents.json --question "..."`` instead supplies an
+explicit JSON list of ``{"name": "file.md", "text": "..."}`` documents, bounded
+to 128 entries and 4 MB; no workspace or archive is automatically scanned.
+External corpora have no independent answer oracle and receive no success score.
+
+Offline runs validate the evaluation machinery, not model quality. Small live
+experiments cannot establish general autonomy or justify promoting a prompt.
+Use new report paths to preserve evidence, and compare correctness, regressions,
+total calls, tokens, cost and latency before considering any production change.
+
 Affichage et maîtrise des tours d'outils
 --------------------------------------
 

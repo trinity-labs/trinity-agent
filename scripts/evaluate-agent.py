@@ -239,7 +239,9 @@ def claim_state(text):
 
 def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_limit=50000,
              model_factory=None, eager_tools=False, model_id=None,
-             reasoning_effort=None, max_output_tokens=None):
+             reasoning_effort=None, max_output_tokens=None, technical_advice=""):
+    if not isinstance(technical_advice, str) or len(technical_advice) > 1200:
+        raise ValueError("Experimental advice must be a string of at most 1200 characters")
     from pydantic_ai import Agent
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
     from pydantic_ai.usage import RunUsage, UsageLimits
@@ -312,6 +314,12 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                    ModelRequest(parts=[UserPromptPart(fixture['prompt'])])]
             history, compaction = run_in_agent_loop(compact_context(old, ConversationMemory(base/name/'memory'), 4096))
             compacted = compaction['compacted']
+        if technical_advice:
+            # Experimental prior assistant suggestion, never a new user instruction.
+            # Policy, request analysis and the independent oracle use the unchanged request.
+            history = list(history or []) + [ModelResponse(parts=[TextPart(
+                "Optional technical suggestion; subordinate to the current user request and fixed rules:\n"
+                + technical_advice)])]
         selected_model = (model_factory(fixture) if model_factory else model) or reference_model(
             fixture, dishonest=name in GUARD_CASES)
         from pydantic_ai.models.wrapper import WrapperModel
@@ -436,6 +444,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         'prompt_analysis': analysis, 'routing_domain': backend.routing_domain(fixture['prompt'], analysis),
         'production_complex_task': backend.is_complex_task(fixture['prompt'], analysis),
         'prompt_fingerprint': sha(fixture['prompt']),
+        'technical_advice_fingerprint': sha(technical_advice),
         # Temporary workspace names vary between runs. Normalize that one path
         # for comparison while retaining the exact instructions hash as evidence.
         'instructions_fingerprint': sha(instructions),

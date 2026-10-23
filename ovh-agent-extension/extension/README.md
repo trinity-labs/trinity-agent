@@ -126,6 +126,8 @@ The local lookup is bounded to avoid blocking on slow mounts. No budgets change.
 
 ## ⬛ Contributing to the extension flow
 
+The repository also provides opt-in **GEPA prompt optimization** and **recursive-context (RLM) experiments**. They compare candidates against fixed checks and measure OVH calls, usage and latency; they do not activate new chat behavior or apply generated prompts automatically. See the [repository research experiments](https://github.com/trinity-labs/trinity-agent#gepa-and-recursive-context-experiments) for setup, limits and evaluation commands.
+
 See [Architecture and contribution](ARCHITECTURE.md) for the message flow, module
 responsibilities, cache rules and minified frontend generation.
 

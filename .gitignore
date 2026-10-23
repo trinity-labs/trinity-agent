@@ -160,3 +160,10 @@
 
 !/ovh_limits.py
 !/scripts/test-limits.py
+
+# Explicit research experiments and their independent contract checks.
+!/scripts/experiment-gepa.py
+!/scripts/experiment-rlm.py
+!/scripts/test-gepa.py
+!/scripts/test-rlm.py
+!/scripts/requirements-research.txt

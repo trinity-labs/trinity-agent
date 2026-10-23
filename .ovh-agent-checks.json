@@ -364,6 +364,34 @@
       "protect": [
         "scripts/test-limits.py"
       ]
+    },
+    {
+      "name": "Experiment: GEPA",
+      "paths": [
+        "scripts/experiment-gepa.py",
+        "scripts/test-gepa.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-gepa.py"
+      ],
+      "protect": [
+        "scripts/test-gepa.py"
+      ]
+    },
+    {
+      "name": "Experiment: RLM",
+      "paths": [
+        "scripts/experiment-rlm.py",
+        "scripts/test-rlm.py"
+      ],
+      "argv": [
+        "{python}",
+        "scripts/test-rlm.py"
+      ],
+      "protect": [
+        "scripts/test-rlm.py"
+      ]
     }
   ]
 }
