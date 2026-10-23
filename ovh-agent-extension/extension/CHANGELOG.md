@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.27 — 2026-10-23
+
+- Escalate automatically from an economical model to gpt-oss-120b when a tool call cannot be serialized and no mutation has started.
+- Keep failed edit attempts interrupted instead of recording their explanatory response as completed work.
+- Set model-catalog prices to the requested 500px display size.
+
 ## 1.17.26 — 2026-10-23
 
 - Update the bundled Markdown renderer to markdown-it 15.0.3 and clear the production dependency audit.

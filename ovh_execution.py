@@ -128,6 +128,10 @@ class WorkflowController:
         from ovh_operations import OperationSuite
         self.transactions = TaskJournal(self.directory / 'transactions')
         self.operations = OperationSuite(self.workspace, runner=operation_runner, journal=self.transactions)
+        # Journals persist for recovery across requests. Fallback safety must
+        # inspect only operations started by this controller/request.
+        self.initial_action_ids = {row['id'] for row in self.journal.snapshot()['operations']}
+        self.initial_transaction_ids = {row['id'] for row in self.transactions.snapshot()['operations']}
         self.local = threading.local()
         self.lock = threading.RLock()
         self.failures = FailureTracker()

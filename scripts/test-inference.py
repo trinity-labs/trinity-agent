@@ -131,6 +131,27 @@ assert a.MODEL_SPECS['gpt-oss-120b']['active_parameters_b'] == 5.1
 assert a.qwen_timeout_fallback_allowed('Qwen3.8-27B', TimeoutError('timed out'), None)
 assert not a.qwen_timeout_fallback_allowed('gpt-oss-120b', TimeoutError('timed out'), None)
 assert not a.qwen_timeout_fallback_allowed('Qwen3.8-27B', RuntimeError('invalid response'), None)
+assert a.tool_protocol_failure("Tool 'edit_file' exceeded max retries count of 2")
+assert a.tool_protocol_failure("Tool 'edit_file<|channel|>commentary' exceeded max retries count of 2")
+assert a.tool_protocol_failure("Le JSON passé à edit_file est invalide à cause d’un guillemet non terminé")
+assert not a.tool_protocol_failure("Le test CSS a échoué à cause d’une assertion")
+assert a.automatic_fallback_reason(
+    'gpt-oss-20b', RuntimeError("Tool 'edit_file' exceeded max retries count of 2"), None, None)
+assert not a.automatic_fallback_reason(
+    'gpt-oss-120b', RuntimeError("Tool 'edit_file' exceeded max retries count of 2"), None, None)
+class JournalFixture:
+    def __init__(self, operations): self.operations = operations
+    def snapshot(self): return {'operations': self.operations}
+class ControllerFixture:
+    def __init__(self, actions):
+        self.journal = JournalFixture(actions)
+        self.transactions = JournalFixture([])
+        self.initial_action_ids = {'old'}
+        self.initial_transaction_ids = set()
+historical = ControllerFixture([{'id': 'old', 'mutation': True}])
+assert a.no_mutation_started(historical)
+historical.journal.operations.append({'id': 'new', 'mutation': True})
+assert not a.no_mutation_started(historical)
 assert a.MODEL_SPECS['Qwen3.5-397B-A17B']['active_parameters_b'] == 17
 assert len(a.MODEL_SPECS) == 10
 assert a.is_complex_task('PoC de vulnérabilité')

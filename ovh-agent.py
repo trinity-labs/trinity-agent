@@ -1691,13 +1691,58 @@ def qwen_timeout_fallback_allowed(model_id, error, controller) -> bool:
     if not any(isinstance(item, TimeoutError) or re.search(r'\b(?:timed out|timeout)\b', str(item), re.I)
                for item in chain):
         return False
+    return no_mutation_started(controller)
+
+
+def no_mutation_started(controller=None, guard=None) -> bool:
+    """A model retry is safe only before a tracked filesystem/operation change."""
+    if guard is not None:
+        try:
+            if guard.state.get("changes"):
+                return False
+        except (AttributeError, TypeError):
+            return False
     if controller is None:
         return True
     try:
-        operations = controller.journal.snapshot().get('operations', [])
-        return not any(row.get('mutation') for row in operations)
-    except (OSError, ValueError, KeyError, TypeError):
+        actions = controller.journal.snapshot().get("operations", [])
+        transactions = controller.transactions.snapshot().get("operations", [])
+        initial_actions = set(getattr(controller, "initial_action_ids", ()))
+        initial_transactions = set(getattr(controller, "initial_transaction_ids", ()))
+        current = ([row for row in actions if row.get("id") not in initial_actions]
+                   + [row for row in transactions if row.get("id") not in initial_transactions])
+        return not any(row.get("mutation") for row in current)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return False
+
+
+def tool_protocol_failure(value) -> bool:
+    """Recognise provider/SDK tool-call serialization failures, not task failures."""
+    chain = []
+    current = value
+    while isinstance(current, BaseException) and current is not None and len(chain) < 8:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    text = "\n".join(f"{type(item).__name__}: {item}" for item in chain) if chain else str(value)
+    return bool(re.search(
+        r"tool ['\"`]?.{0,100}(?:exceeded max retries|validation error|invalid json)|"
+        r"(?:invalid json|json invalide|jsondecodeerror|unterminated string|guillemet non termin[ée]).{0,180}(?:tool|outil|edit_file)|"
+        r"(?:tool|outil|edit_file).{0,180}(?:invalid json|json invalide|jsondecodeerror|unterminated string|guillemet non termin[ée])|"
+        r"edit_file<\|channel\|>|"
+        r"(?:n['’]a pas pu être|could not be).{0,120}(?:appliqu[ée]e?|r[ée]alis[ée]e?).{0,180}(?:outil|tool|fonctions? de texte)",
+        text, re.IGNORECASE | re.DOTALL,
+    ))
+
+
+def automatic_fallback_reason(model_id, failure, controller=None, guard=None) -> str:
+    """Return a bounded fallback reason when replay cannot duplicate effects."""
+    if model_id == 'gpt-oss-120b' or not no_mutation_started(controller, guard):
+        return ""
+    if isinstance(failure, BaseException) and qwen_timeout_fallback_allowed(model_id, failure, controller):
+        return "timeout Qwen sans mutation ; reprise automatique fiable"
+    if tool_protocol_failure(failure):
+        return "appel d’outil invalide sans mutation ; reprise automatique fiable"
+    return ""
 
 
 def projected_model_cost(model: dict[str, object], input_tokens: int, output_tokens: int) -> float:
@@ -3559,8 +3604,10 @@ def main_json_lines() -> None:
                 )
             except Exception as primary_error:
                 fallback_model = 'gpt-oss-120b'
+                fallback_reason = automatic_fallback_reason(
+                    active_model, primary_error, TASK_ENGINE, VERIFICATION_GUARD)
                 if (selected_model != AUTO_MODEL
-                        or not qwen_timeout_fallback_allowed(active_model, primary_error, TASK_ENGINE)
+                        or not fallback_reason
                         or not is_selectable_model(fallback_model)):
                     raise
                 previous_model = active_model
@@ -3569,10 +3616,48 @@ def main_json_lines() -> None:
                 emit({"type": "model_active", "model": active_model, "selection": selected_model,
                       "automatic": True})
                 emit({"type": "model_routed", "model": active_model, "previous_model": previous_model,
-                      "reason": "timeout Qwen sans mutation ; reprise automatique fiable",
+                      "reason": fallback_reason,
                       "fallback": True, "duration_ms": 0})
+                fallback_status = (f"{previous_model} a expiré"
+                                   if fallback_reason.startswith("timeout")
+                                   else f"{previous_model} n’a pas pu exécuter l’appel d’outil")
                 emit({"type": "status", "conversation": CONVERSATION_ID,
-                      "text": f"{previous_model} a expiré ; {active_model} reprend la demande…"})
+                      "text": f"{fallback_status} ; {active_model} reprend la demande…"})
+                stream = ResponseStream()
+                settings = generation_settings(active_model, prompt, preparation.get('analysis'))
+                result = get_agent(active_model).run_sync(
+                    user_content, message_history=request_history,
+                    model_settings=settings,
+                    usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
+                    event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
+                )
+            fallback_model = 'gpt-oss-120b'
+            fallback_reason = automatic_fallback_reason(
+                active_model, str(result.output), TASK_ENGINE, VERIFICATION_GUARD)
+            if (selected_model == AUTO_MODEL and fallback_reason
+                    and is_selectable_model(fallback_model)):
+                previous_model = active_model
+                primary_usage = result.usage
+                primary_cost = record_model_usage(
+                    previous_model, primary_usage.input_tokens, primary_usage.output_tokens)
+                emit({
+                    "type": "usage", "model": previous_model,
+                    "input_tokens": primary_usage.input_tokens,
+                    "output_tokens": primary_usage.output_tokens,
+                    "requests": primary_usage.requests, "cost_eur": primary_cost,
+                    "currency": "EUR", "fallback_attempt": True,
+                    "duration_ms": round((time.monotonic() - stream.started) * 1000),
+                    "first_text_ms": stream.first_text_ms,
+                    "reasoning_effort": settings.get("openai_reasoning_effort"),
+                })
+                active_model = fallback_model
+                update_metadata(active_model=active_model)
+                emit({"type": "model_active", "model": active_model, "selection": selected_model,
+                      "automatic": True})
+                emit({"type": "model_routed", "model": active_model, "previous_model": previous_model,
+                      "reason": fallback_reason, "fallback": True, "duration_ms": 0})
+                emit({"type": "status", "conversation": CONVERSATION_ID,
+                      "text": f"{previous_model} a signalé un appel d’outil invalide ; {active_model} reprend la demande…"})
                 stream = ResponseStream()
                 settings = generation_settings(active_model, prompt, preparation.get('analysis'))
                 result = get_agent(active_model).run_sync(
@@ -3602,7 +3687,8 @@ def main_json_lines() -> None:
             if result.response.finish_reason == "length":
                 raise RuntimeError("Réponse tronquée par la limite de tokens ; la tâche reste à reprendre.")
             emit({"type": "response", "text": output, "verification": verification})
-            incomplete = TASK_ENGINE is not None and TASK_ENGINE.incomplete
+            incomplete = ((TASK_ENGINE is not None and TASK_ENGINE.incomplete)
+                          or tool_protocol_failure(output))
             save_task_state(status="interrupted" if incomplete else "completed", verification=verification,
                             acceptance=TASK_ENGINE.last_acceptance if TASK_ENGINE else None)
             with FOLLOWUP_LOCK:
