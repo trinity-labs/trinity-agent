@@ -993,6 +993,11 @@ Leur contenu reste dans les fichiers d'origine : la vue ``MEMORY.md`` en reprend
 au plus 4 000 caractères par document et conserve les liens vers les sources.
 Une documentation n'est pas une preuve que le code actuel fonctionne.
 
+Les extraits de fichiers actuels sont distingués des archives historiques.
+Un fichier de consignes déjà chargé intégralement n'est pas réinjecté dans le
+rappel automatique ; il reste indexé et lisible explicitement. Une modification
+d'un Markdown déjà indexé invalide immédiatement son cache de recherche.
+
 ``REGRESSIONS.md`` regroupe les 40 contrôles historiques les plus récents des
 sources indexées : résultat, date, conversation, code de sortie et source.
 Les affirmations des réponses de modèle ne sont pas comptées comme des contrôles.

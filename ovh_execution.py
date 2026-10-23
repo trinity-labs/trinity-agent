@@ -76,6 +76,12 @@ def read_only_policy(prompt, previous=False):
         r'\b(?:indique|reponds?(?: avec)?|affiche|dis|say|report|respond(?: with)?|output)\s*[:=]?\s*'
         r'["«“`\']?\s*(?:aucune modification(?: effectuee)?|no (?:edits|changes)(?: made)?)'
         r'(?=\s*(?:["»”`\']|[.!?,;:\n]|$))', '', text)
+    from ovh_request import execution_requested, SOURCE_ONLY_PROHIBITION
+    execution = execution_requested(text)
+    if execution:
+        # Preserving source files does not prohibit an explicitly requested
+        # build/install. Global read-only prohibitions below still take priority.
+        text = re.sub(SOURCE_ONLY_PROHIBITION, '', text)
     if re.search(r'\b(?:lecture seule|lis uniquement|aucune modification|sans rien modifier|read[ -]only|no (?:edits|changes))\b', text):
         return True
     # A global prohibition takes precedence over a positive verb concerning an
@@ -93,6 +99,8 @@ def read_only_policy(prompt, previous=False):
                 return True
             if not scoped_tests and not scoped_paths:
                 return True
+    if execution:
+        return False
     if re.match(
         r"^\s*(?:(?:oui|ok|okay|yes|now|maintenant|please|d['’]accord|s['’]il te plait)[\s,!:.]+)*"
         r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you)\s+(?:maintenant\s+)?)?"

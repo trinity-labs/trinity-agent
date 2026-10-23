@@ -80,6 +80,24 @@ class Preparation(unittest.TestCase):
                        'Build en lecture seule', 'La compilation est terminée'):
             self.assertNotEqual(r.analyze_request(prompt).intent, 'execute')
 
+    def test_delivery_preserves_sources_without_disabling_execution_tools(self):
+        from ovh_execution import read_only_policy
+        for prompt in ['Installe et publie la release sans modifier les sources.',
+                       'Livraison de 1.17.33. Ne modifie pas les sources. Installe puis publie.',
+                       'Build and install the release. Do not modify the source code.',
+                       'Publie la release sans changer le code.']:
+            with self.subTest(prompt=prompt):
+                self.assertEqual(r.analyze_request(prompt).intent, 'execute')
+                self.assertFalse(read_only_policy(prompt))
+                self.assertFalse(read_only_policy(prompt, True))
+        for prompt in ['Lecture seule : installe sans modifier les sources.',
+                       'Read-only. Build the release. Do not modify the source code.',
+                       'Ne modifie pas les fichiers. Installe la release.',
+                       'Explique comment installer sans modifier les sources.',
+                       'Ne modifie pas les sources.']:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(read_only_policy(prompt))
+
     def test_creating_release_metadata_is_execution_without_requiring_source_edits(self):
         for prompt in ('Installe et publie le paquet prêt. Crée le tag annoté v1.2.3 sur ce commit.',
                        'Publie la version : crée un tag Git et une release GitHub.',
@@ -553,6 +571,47 @@ class SourceEvidence(unittest.TestCase):
             missing=self.backend.read_webpage(self.source,query='nonexistent')
             self.assertIn('non trouvé',missing)
         self.assertEqual(self.review.pages[-1]['characters'],0)
+
+    def test_web_reader_prefers_article_and_does_not_count_navigation_as_evidence(self):
+        page = ('<header>Site chrome</header><nav>imaginary_feature Navigation</nav>'
+                '<main><nav>More menus</nav><h1>Tool retries</h1><p>Retry contract.</p>'
+                '<script>secret script</script><div hidden>invisible</div>'
+                '<svg><text>decoration</text></svg><aside>Documented API limitation.</aside>'
+                '<footer>Article references.</footer><br><p>End of article.</p></main>'
+                '<footer>Footer content</footer>').encode()
+        with patch.object(self.backend, 'fetch_web_document', return_value=(page, 'utf-8')):
+            result = self.backend.read_webpage(self.source)
+            self.assertIn('Retry contract.', result)
+            self.assertIn('End of article.', result)
+            self.assertIn('Documented API limitation.', result)
+            self.assertIn('Article references.', result)
+            for ignored in ('Site chrome', 'Navigation', 'menus', 'script', 'invisible', 'decoration', 'Footer'):
+                self.assertNotIn(ignored, result)
+            self.assertIn('non trouvé', self.backend.read_webpage(self.source, query='imaginary_feature'))
+            self.assertEqual(self.review.pages[-1]['characters'], 0)
+        for html, expected in [('<article>Article fallback</article>', 'Article fallback'),
+                               ('<div role="main">Main role</div>', 'Main role'),
+                               ('Plain text reference', 'Plain text reference'),
+                               ('<main><script>empty</script></main><p>Fallback text</p>', 'Fallback text')]:
+            parser = self.backend.WebTextParser()
+            parser.feed(html)
+            self.assertEqual(parser.text(), expected)
+
+    def test_large_documentation_shell_is_read_but_transfer_remains_bounded(self):
+        import io
+        from email.message import Message
+        shell = b'<script>' + b'x' * 1_100_000 + b'</script><main>Actual API contract.</main>'
+        headers = Message(); headers['Content-Type'] = 'text/html; charset=utf-8'
+        for body, accepted in [(shell, True), (b'x' * 4_000_001, False)]:
+            response = io.BytesIO(body); response.headers = headers
+            with patch.object(self.backend.urllib.request, 'urlopen', return_value=response):
+                if accepted:
+                    result = self.backend.read_webpage(self.source)
+                    self.assertIn('Actual API contract.', result)
+                    self.assertLess(len(result), 600)
+                else:
+                    self.assertIn('Page trop volumineuse', self.backend.read_webpage(self.source))
+                    self.assertEqual(self.review.pages[-1]['characters'], 0)
 
     def test_review_instructions_are_injected_then_removed_for_the_next_request(self):
         history = [ModelRequest(parts=[UserPromptPart('Explique Docker')])]

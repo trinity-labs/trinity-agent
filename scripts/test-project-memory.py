@@ -166,6 +166,23 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertIn('amarante',self.ctx.read('project',reference))
         self.assertNotIn('vermillon',self.ctx.search('vermillon',budget=3000,automatic=True))
 
+    def test_instruction_exclusion_keeps_index_and_distinct_sources_intact(self):
+        instruction = self.work/'AGENTS.md'; instruction.write_text('Cobalt instruction exact text.')
+        documentation = self.work/'DESIGN.md'; documentation.write_text(instruction.read_text())
+        alias = self.root/'instruction-alias'; alias.symlink_to(instruction)
+        # Equal content does not imply equal provenance. Canonical path exclusion
+        # must remove only the source already supplied as instructions.
+        result = self.ctx.search('cobalt instruction', automatic=True, exclude_paths={alias})
+        self.assertNotIn(str(instruction), result)
+        self.assertIn(str(documentation), result)
+        self.assertIn('statut=current_source', result)
+        self.assertIn('type=project-document', result)
+        self.assertIn(str(instruction), self.ctx.search('cobalt instruction'))
+        self.assertIn('Cobalt', self.ctx.read('project', self.memory.document_reference(instruction)))
+        self.assertTrue(all(row['status']=='current_source' for row in self.memory.index()['rows'] if row['kind']=='project-document'))
+        documentation.write_text('Cobalt updated source, not an old conversation.')
+        self.assertIn('updated source', self.ctx.search('cobalt', automatic=True, exclude_paths={alias}))
+
     def test_project_markdown_falls_back_when_ripgrep_is_unavailable(self):
         source=self.work/'DESCRIPTION.md';source.write_text('Contrat indigo du projet.')
         dependency=self.work/'node_modules'/'package';dependency.mkdir(parents=True)

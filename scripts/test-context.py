@@ -262,6 +262,57 @@ with tempfile.TemporaryDirectory() as folder:
         assert any(isinstance(p, UserPromptPart) and p.content == 'Keep EXACT-42' for m in managed for p in m.parts)
 print('PASS: real summary deadline cancels pending call, reports fallback and resumes with exact archive')
 
+# The actual SDK request must not demote or duplicate current instruction files
+# as historical recall. Exercise warm caches, source edits and skipped documents.
+with tempfile.TemporaryDirectory() as folder:
+    base = Path(folder); work = base/'work'; work.mkdir()
+    data = base/'data'; archive = data/'conversation'
+    rules = work/'AGENTS.md'; rules.write_text('RULE_MARKER: preserve the current typography.\n' + 'Detail. ' * 250)
+    document = work/'ARCHITECTURE.md'; document.write_text('SOURCE_MARKER: typography uses chat.css.\n')
+    with patch.object(a, 'WORKSPACE', work), patch.object(a, 'ALLOWED_ROOT', base), \
+         patch.object(a, 'DATA_ROOT', data), patch.object(a, 'conversation_dir', return_value=archive), \
+         patch.dict('os.environ', {'OVH_AGENT_MEMORY_INDEX_DIR': str(base/'cache')}):
+        def inspect_context(messages, info):
+            combined = str(info.instructions) + '\n'.join(
+                part.content for message in messages for part in message.parts if isinstance(part, SystemPromptPart))
+            assert combined.count('RULE_MARKER') == 1, 'Loaded instructions duplicated in recall'
+            assert 'SOURCE_MARKER' in combined and 'statut=current_source' in combined
+            assert 'Extraits d’échanges anciens retrouvés' not in combined
+            return ModelResponse(parts=[TextPart('Checked')])
+        prepared = a.history_with_memory([], 'typography RULE_MARKER SOURCE_MARKER')
+        agent = Agent(FunctionModel(inspect_context))
+        agent.instructions(a.load_infrastructure_instructions)
+        agent.run_sync('Check typography', message_history=prepared)
+        # Re-preparation replaces the prior recall block instead of accumulating it.
+        rules.write_text('NEW_RULE_MARKER: typography must preserve font-size:10px.\n')
+        refreshed = a.history_with_memory(prepared, 'typography SOURCE_MARKER')
+        assert str(refreshed).count('[TRINITY retrieved sources]') == 1
+        assert 'NEW_RULE_MARKER' in a.load_infrastructure_instructions()
+        assert 'NEW_RULE_MARKER' not in str(refreshed)
+        # An explicit source request still reads every instruction file.
+        shared = a.WorkspaceContext(data, work)
+        assert 'NEW_RULE_MARKER' in shared.search('typography NEW_RULE_MARKER')
+        # A file not successfully loaded as instructions must remain retrievable.
+        rules.write_text('OVERSIZED_RULE: typography exception.\n' + 'x' * 33000)
+        instructions, loaded = a.infrastructure_context()
+        assert 'Contexte non chargé' in instructions and not loaded
+        assert 'OVERSIZED_RULE' in str(a.history_with_memory([], 'OVERSIZED_RULE typography'))
+        rules.write_text('UNREADABLE_RULE: typography exception.\n')
+        original_reader = a.read_text_cached
+        def unavailable(path, **kwargs):
+            if Path(path) == rules:
+                raise PermissionError('fixture')
+            return original_reader(path, **kwargs)
+        with patch.object(a, 'read_text_cached', side_effect=unavailable):
+            instructions, loaded = a.infrastructure_context()
+            assert 'Contexte indisponible' in instructions and not loaded
+            assert 'UNREADABLE_RULE' in str(a.history_with_memory([], 'UNREADABLE_RULE typography'))
+        # Canonical aliases are included only once, with no content-based deletion.
+        (base/'AGENT.md').symlink_to(rules)
+        instructions, loaded = a.infrastructure_context()
+        assert instructions.count('UNREADABLE_RULE') == 1 and loaded == {rules.resolve()}
+print('PASS: SDK context provenance, instruction deduplication, refresh, explicit recall and skipped-file fallback')
+
 # Reproduce poisoned summaries and assistant prose carried from Qwen to GPT-OSS.
 from ovh_context import valid_summary, SUMMARY_VERSION
 assert not valid_summary('Je dois ajouter du code. </think> chatcmpl-tool-edit_file')

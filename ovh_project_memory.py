@@ -239,8 +239,15 @@ class ProjectMemory:
 
     def index(self,refresh=False):
         disk_index_bytes, max_index, document_chars = memory_index_limits()
-        generation=self.generation();key=('project-markdown-v4',str(self.data),self.project)
-        signature=(generation, document_chars, max_index, disk_index_bytes, int(time.time()/max(1,SCAN_SECONDS)))
+        generation=self.generation();key=('project-markdown-v5',str(self.data),self.project)
+        # Re-stat known sources without re-reading their bodies. A source edit
+        # must invalidate its index immediately, even inside the scan interval.
+        source_signatures=[]
+        for path in self.root_documents():
+            try: stamp=file_signature(path)
+            except OSError: stamp=None
+            source_signatures.append((str(path),stamp))
+        signature=(generation, tuple(source_signatures), document_chars, max_index, disk_index_bytes, int(time.time()/max(1,SCAN_SECONDS)))
         cached=None if refresh else CACHE.get(key,signature)
         if cached is not None: return cached
         self.cache.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -250,7 +257,7 @@ class ProjectMemory:
             try:
                 if disk_index_bytes and self.index_file.stat().st_size<=disk_index_bytes:
                     with gzip.open(self.index_file,'rt',encoding='utf-8') as stream: payload=json.loads(stream.read(max_index+1))
-                    if isinstance(payload,dict) and payload.get('version')==4 and payload.get('document_chars')==document_chars:
+                    if isinstance(payload,dict) and payload.get('version')==5 and payload.get('document_chars')==document_chars:
                         previous={r['path']:r for r in payload['rows']}
             except (OSError,ValueError,KeyError,TypeError,EOFError): pass
             rows=[];used=0;partial=False
@@ -272,14 +279,14 @@ class ProjectMemory:
                             except ValueError: pass
                         row={'path':relative,'conversation':conversation,'reference':reference,'kind':kind,
                              'body':body,'tokens':sorted(tokens),'signature':stamp,'partial':len(raw)>document_chars,
-                             'scope':note['scope'] if note else 'project','status':note['status'] if note else 'historical',
+                             'scope':note['scope'] if note else 'project','status':note['status'] if note else ('current_source' if kind=='project-document' else 'historical'),
                              'timestamp':note['timestamp'] if note else file.stat().st_mtime}
                     if row['partial']: partial=True
                     size=len(json.dumps(row,ensure_ascii=False).encode())
                     if used+size>max_index-4096: partial=True;break
                     used+=size;rows.append(row)
                 except (OSError,ValueError): continue
-            payload={'version':4,'document_chars':document_chars,'generation':generation,'rows':rows,'partial':partial}
+            payload={'version':5,'document_chars':document_chars,'generation':generation,'rows':rows,'partial':partial}
             encoded=json.dumps(payload,ensure_ascii=False).encode()
             if self.generation()!=generation: return self._compile(rows,True)
             if disk_index_bytes and len(encoded)<=disk_index_bytes:
@@ -381,14 +388,16 @@ class ProjectMemory:
                          + f" · modifiée le {match['modified']}.\nExtrait documentaire ; aucune nouvelle vérification exécutée.")
         return match
 
-    def search(self,query,budget=4000,current='',*,automatic=False):
+    def search(self,query,budget=4000,current='',*,automatic=False,exclude_paths=()):
         if budget<=0:return ''
+        excluded={Path(path).resolve() for path in exclude_paths}
         index=self.index();words=terms(query);inverted=index['inverted']
         candidates=set().union(*(inverted.get(word,set()) for word in words))
         ranked=sorted(candidates,key=lambda i:(index['rows'][i]['kind'] in {'manual','project-document','note'},len(words.intersection(index['rows'][i]['tokens'])),index['rows'][i]['timestamp']),reverse=True)
         parts=[];used=0
         for i in ranked:
             row=index['rows'][i]
+            if row['kind']=='project-document' and Path(row['path']).resolve() in excluded:continue
             # Current project Markdown files are authoritative inputs.
             # Historical notes and assistant prose stay excluded;
             # only controller-backed execution evidence may return automatically.
@@ -400,7 +409,7 @@ class ProjectMemory:
             first=next((m.start() for m in re.finditer(r'[\w-]{3,}',text) if m.group().casefold() in words),0)
             start=max(0,first-180)
             excerpt=text[start:start+1000]
-            header=f"[{'Recherche partielle ; ' if index['partial'] else ''}Projet {self.project}; conversation {row['conversation']}; référence {row['reference']}; offset={start}; statut={row['status']}; source={row['path']}]\n"
+            header=f"[{'Recherche partielle ; ' if index['partial'] else ''}Projet {self.project}; conversation {row['conversation']}; référence {row['reference']}; offset={start}; type={row['kind']}; statut={row['status']}; source={row['path']}]\n"
             remaining=budget-used
             if remaining<=len(header)+40:break
             part=(header+excerpt)[:remaining];parts.append(part);used+=len(part)+2

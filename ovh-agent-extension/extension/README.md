@@ -101,8 +101,10 @@ state. Project files remain their own sources of truth.
 Before calling the model, automatic memory retrieval selects sourced user preferences
 and dated execution receipts. Previous assistant answers, transcripts and hypotheses
 remain available through explicit memory searches but are not injected automatically.
-Current project instructions and source files are loaded separately. Historical receipts
-are not proof that today's code still passes its checks.
+Current project files are labelled as current sources. Instruction files already loaded
+in full are excluded from automatic recall by their canonical path; they remain indexed
+and explicitly readable. Changes to known Markdown sources invalidate their cached index
+immediately. Historical receipts are not proof that today's code still passes its checks.
 
 An exact, standalone informational question matching a Markdown heading in a root
 `.md` file or the project's `NOTES.md` can be answered locally. For example:

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.33 — 2026-10-23
+
+- Deduplicate successfully loaded instruction sources before automatic memory retrieval, while preserving explicit access and skipped-document fallback.
+- Distinguish current project files from historical evidence and refresh known Markdown sources immediately after edits.
+- Preserve execution tools for explicit build/install requests that prohibit source edits; global read-only requests still block execution.
+- Read documentation pages up to a bounded 4 MB and prefer article content over navigation; missing query terms remain unavailable evidence.
+- Add regressions for the actual SDK context, cache invalidation, instruction aliases, oversized sources and documentation extraction.
+
 ## 1.17.32 — 2026-10-23
 
 - Remove inherited code-server parent IPC identity from command processes so CLI operations can run independently.

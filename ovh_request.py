@@ -118,23 +118,37 @@ class RequestAnalysis:
     web_allowed: bool = True
 
 
+SOURCE_ONLY_PROHIBITION = (
+    r'\b(?:sans (?:modifier|changer)|ne (?:modifie|change) (?:pas|plus)|do not (?:modify|edit|change)|'
+    r'without (?:modifying|editing|changing))\s+(?:(?:les?|la|the)\s+)?'
+    r'(?:sources?|code(?: source)?|source (?:code|files))(?=\s*(?:[.;!?\n]|$))')
+
+
+def execution_requested(text):
+    """Recognize affirmative execution directives, not explanatory questions."""
+    if re.match(r'\s*(?:pourquoi|comment|what|why|how|expliqu\w*|explain)\b', text):
+        return False
+    return bool(re.search(
+        r"(?:^|[.;\n]|\b(?:et|puis|and|then)\s+)\s*"
+        r"(?:(?:ok|oui|yes|maintenant|now|please|s['’]il te plait)[\s,!:.]+)*"
+        r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you|veuillez)\s+)?"
+        r"(?:install(?:e[rz]?|er)?|publie[rz]?|publish|deploy(?:er)?|deploie[rz]?|"
+        r"build|rebuild|compile[rz]?|construis|reconstruis|livraison|"
+        r"redemarre[rz]?|restart|lance[rz]?|execute[rz]?|run)\b(?!\s+(?:pas|jamais|not)\b)", text))
+
+
 def analyze_request(prompt, recent_prompts=(), image_count=0):
     current = normalized(prompt)
     paths = explicit_paths(prompt)
     question = bool(re.match(r'\s*(?:pourquoi|comment|qu[\s’\']|quel\w*|est.ce|what|why|how|expliqu\w*|explain)\b', current))
     # Negated edits must not turn a read-only request into an edit or inherit one.
-    readonly = bool(re.search(r'\b(?:lecture seule|aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit)|read.only)\b', current))
-    actionable = re.sub(r'\b(?:aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', current)
+    execution_text = re.sub(SOURCE_ONLY_PROHIBITION, '', current) if execution_requested(current) else current
+    readonly = bool(re.search(r'\b(?:lecture seule|aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit)|read.only)\b', execution_text))
+    actionable = re.sub(r'\b(?:aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', execution_text)
     # Describing previous modifications is not a request to perform new ones.
     actionable = re.sub(r'\b(?:modifications?|changements?|creations?|suppressions?|ameliorations?|transformations?|optimisations?)\b', '', actionable)
     # Delivery executes existing work; it does not require a fresh source edit.
-    execution = not question and not readonly and bool(re.search(
-        r"(?:^|\b(?:et|puis|and|then)\s+)\s*"
-        r"(?:(?:ok|oui|yes|maintenant|now|please|s['’]il te plait)[\s,!:.]+)*"
-        r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you|veuillez)\s+)?"
-        r"(?:install(?:e[rz]?|er)?|publie[rz]?|publish|deploy(?:er)?|deploie[rz]?|"
-        r"build|rebuild|compile[rz]?|construis|reconstruis|"
-        r"redemarre[rz]?|restart|lance[rz]?|execute[rz]?|run)\b", current))
+    execution = not question and not readonly and execution_requested(current)
     if execution:
         # Creating delivery metadata does not require editing source files.
         # Keep other requested edits, including files named tag.js/release.py.

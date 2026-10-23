@@ -137,13 +137,13 @@ class WorkspaceContext:
         try: return result.get_nowait()
         except queue.Empty: return None
 
-    def search(self, query, current='', budget=8000, *, automatic=False):
+    def search(self, query, current='', budget=8000, *, automatic=False, exclude_paths=()):
         global _reader
         if budget <= 0 or not terms(query): return ''
         partial = "Recherche mémoire du projet incomplète (stockage lent ou indisponible) ; ne pas conclure à une absence de solution. Utiliser search_project_memory si nécessaire."
         result = queue.Queue(maxsize=1)
         def run():
-            try: result.put(self._search(query, current, budget, automatic))
+            try: result.put(self._search(query, current, budget, automatic, exclude_paths))
             except (OSError, ValueError, TypeError): result.put(partial)
         with _reader_lock:
             if _reader is not None and _reader.is_alive(): return partial
@@ -154,13 +154,13 @@ class WorkspaceContext:
         try: return result.get_nowait()
         except queue.Empty: return partial
 
-    def _search(self, query, current='', budget=8000, automatic=False):
+    def _search(self, query, current='', budget=8000, automatic=False, exclude_paths=()):
         started = time.monotonic()
         deadline = started + 1.0
         words = terms(query)
         results = []
         # Project solutions and documents precede global preferences.
-        project = ProjectMemory(self.data,self.id,self.workspace).search(query,max(0,budget- min(1000,budget//4)),current,automatic=automatic)
+        project = ProjectMemory(self.data,self.id,self.workspace).search(query,max(0,budget- min(1000,budget//4)),current,automatic=automatic,exclude_paths=exclude_paths)
         # Explicit user notes alone may cross project boundaries. Source conversation
         # owns each note: deleting that conversation also deletes its shared memory.
         for folder in self.folders(all_projects=True):
