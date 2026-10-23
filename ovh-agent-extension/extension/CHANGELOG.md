@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.26 — 2026-10-23
+
+- Update the bundled Markdown renderer to markdown-it 15.0.3 and clear the production dependency audit.
+
 ## 1.17.25 — 2026-10-23
 
 - Normalize malformed OVH Harmony channel suffixes before streamed tool calls reach the agent.
