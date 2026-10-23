@@ -51,23 +51,14 @@ try {
   execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
     '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',
     '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension'], {cwd:stage,stdio:'inherit'});
-  {
+  if (publisher !== 'trinity') {
     const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-finalize-'));
     try {
       execFileSync('unzip', ['-q', output, '-d', unpacked]);
-      if (publisher === 'trinity') {
-        const readme = path.join(unpacked, 'extension', 'readme.md');
-        const markdown = fs.readFileSync(readme, 'utf8').replace(
-          /https:\/\/stopyz\.gallery\.vsassets\.io\/_apis\/public\/gallery\/publisher\/stopyz\/extension\/ovh-agent\/[^/)]+\/assetbyname\/Microsoft\.VisualStudio\.Services\.Content\.Images\.HistoryDemo/g,
-          'media/history-demo.png'
-        );
-        fs.writeFileSync(readme, markdown);
-      } else {
       const vsixManifest = path.join(unpacked, 'extension.vsixmanifest');
       const xml = fs.readFileSync(vsixManifest, 'utf8');
       const asset = `    <Asset Type="${previewAssetType}" Path="extension/media/history-demo.png" Addressable="true" />\n`;
       if (!xml.includes(previewAssetType)) fs.writeFileSync(vsixManifest, xml.replace(/([\t ]*)<\/Assets>/, `${asset}$&`));
-      }
       fs.rmSync(output);
       execFileSync('zip', ['-qr', output, '.'], {cwd:unpacked});
     } finally { fs.rmSync(unpacked,{recursive:true,force:true}); }

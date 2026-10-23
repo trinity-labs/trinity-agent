@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.23 — 2026-10-23
+
+- Use the validated Marketplace asset URL in the locally installed extension details because code-server does not resolve the bundled relative README image path.
+
 ## 1.17.22 — 2026-10-23
 
 - Load the bundled preview image directly in the locally installed extension README while keeping the Marketplace-hosted asset for public releases.
