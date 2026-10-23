@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.24 — 2026-10-23
+
+- Prefix every remaining README section heading with the spaced black-square marker and use the same heading typography throughout.
+
 ## 1.17.23 — 2026-10-23
 
 - Use the validated Marketplace asset URL in the locally installed extension details because code-server does not resolve the bundled relative README image path.

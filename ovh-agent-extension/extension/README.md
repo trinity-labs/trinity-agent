@@ -8,7 +8,7 @@ An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with
 
 ## ⬛ Preview
 
-![TRINITY Agent conversation history with AI workspace folders and demonstration titles](https://stopyz.gallery.vsassets.io/_apis/public/gallery/publisher/stopyz/extension/ovh-agent/1.17.23/assetbyname/Microsoft.VisualStudio.Services.Content.Images.HistoryDemo)
+![TRINITY Agent conversation history with AI workspace folders and demonstration titles](https://stopyz.gallery.vsassets.io/_apis/public/gallery/publisher/stopyz/extension/ovh-agent/1.17.24/assetbyname/Microsoft.VisualStudio.Services.Content.Images.HistoryDemo)
 
 *Edited demonstration screenshot: conversation titles and the mount path are fictional.*
 
@@ -60,7 +60,7 @@ verification labels and the disclaimer use 50% opacity, and diffs color the full
 line. These settings and the newer controls also require an up-to-date backend.
 
 
-### Markdown memory
+## ⬛ Markdown memory
 
 In the project selector, **Edit project memory** opens the manually maintained
 `NOTES.md`. **Aggregate project memories** lets you select several projects and
@@ -74,7 +74,7 @@ Search stays targeted and can be partial. Notes from another project are not
 injected automatically, except for user-scoped preferences.
 
 
-### Conversation organization
+## ⬛ Conversation organization
 
 History groups only the conversations you choose into collapsible folders. Drag
 a folder handle or title to reorder it; the marker shows whether it will be
@@ -96,7 +96,7 @@ folders also show root Markdown paths and available memory views. `REGRESSIONS.m
 stores sourced historical check results; rerun the tests to validate the current
 state. Project files remain their own sources of truth.
 
-### Project memory before inference
+## ⬛ Project memory before inference
 
 Before calling the model, automatic memory retrieval selects sourced user preferences
 and dated execution receipts. Previous assistant answers, transcripts and hypotheses
@@ -122,12 +122,12 @@ path with relevant memory. Source files are reread through metadata-validated
 caches; generated summaries and old model answers cannot become direct answers.
 The local lookup is bounded to avoid blocking on slow mounts. No budgets change.
 
-## Contributing to the extension flow
+## ⬛ Contributing to the extension flow
 
 See [Architecture and contribution](ARCHITECTURE.md) for the message flow, module
 responsibilities, cache rules and minified frontend generation.
 
-### Provider-based budgets (1.14.3)
+## ⬛ Provider-based budgets (1.14.3)
 
 Update the companion backend together with the extension. Configure OVH billing
 access through the balance control before sending paid requests. The budget now
