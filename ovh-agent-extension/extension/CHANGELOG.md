@@ -2,8 +2,11 @@
 
 ## 1.17.35 — 2026-10-24
 
-- Update backend scripts (ovh-agent.py, ovh_execution.py, ovh_request.py) and related test suites to improve execution handling, resume functionality, and validation.
-- Align extension version with backend changes and ensure compatibility.
+- Fixed execution handling in ovh-agent.py.
+- Improved resume functionality in ovh_execution.py.
+- Updated request validation logic in ovh_request.py.
+- Added unit tests for execution and resume pathways.
+- Updated documentation for the backend changes.
 
 ## 1.17.34 — 2026-10-23
 
