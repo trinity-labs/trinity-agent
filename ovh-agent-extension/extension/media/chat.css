@@ -751,7 +751,7 @@ button:disabled { cursor: default; opacity: .45; }
   font-weight: 500;
 }
 .error-message :is(strong, b), .warning-message :is(strong, b) { font-weight: 500; }
-.diagnostic-icon { display: inline-block; margin-right: .4em; vertical-align: -.15em; }
+.diagnostic-icon { display: inline-block; width: 1em; height: 1em; margin-right: .4em; vertical-align: -.15em; }
 .content.markdown > .diagnostic-icon + p { display: inline; }
 .message.error .run-indicator { color: #d32f2f; }
 .message.warning .run-indicator { color: #d97706; }

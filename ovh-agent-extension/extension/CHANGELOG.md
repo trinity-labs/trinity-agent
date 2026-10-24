@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.48 — 2026-10-24
+
+- Size diagnostic icons to the surrounding text in live messages, status notices and archived conversations.
+
 ## 1.17.47 — 2026-10-24
 
 - Keep the diagnostic icon bundle within its compressed size budget while retaining the bundled license references. Includes the unlimited-call default and warning/error styling from 1.17.46.
