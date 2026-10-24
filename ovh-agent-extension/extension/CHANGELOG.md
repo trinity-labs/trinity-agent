@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.47 — 2026-10-24
+
+- Keep the diagnostic icon bundle within its compressed size budget while retaining the bundled license references. Includes the unlimited-call default and warning/error styling from 1.17.46.
+
 ## 1.17.46 — 2026-10-24
 
 - Disable the default model-call count ceiling; `OVH_AGENT_REQUEST_LIMIT=0` allows unlimited calls.
