@@ -29,7 +29,8 @@ services:
       OVH_AGENT_EMOJI_MODE: "${OVH_AGENT_EMOJI_MODE:-1}"
       # Délais et nombre maximal d’étapes : protections explicites de l’exécution
       OVH_AGENT_TASK_CHECKPOINT_SECONDS: "${OVH_AGENT_TASK_CHECKPOINT_SECONDS:-300}"
-      OVH_AGENT_REQUEST_LIMIT: "${OVH_AGENT_REQUEST_LIMIT:-200}"
+      # 0 disables the model-call count ceiling.
+      OVH_AGENT_REQUEST_LIMIT: "${OVH_AGENT_REQUEST_LIMIT:-0}"
       # Compaction, mémoire et résultats d’outils : budgets adaptatifs
       OVH_AGENT_SUMMARY_TOKENS: "${OVH_AGENT_SUMMARY_TOKENS:-auto}"
       OVH_AGENT_SUMMARY_SOURCE_CHARS: "${OVH_AGENT_SUMMARY_SOURCE_CHARS:-auto}"

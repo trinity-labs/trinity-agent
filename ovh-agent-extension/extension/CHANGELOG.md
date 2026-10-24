@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.46 — 2026-10-24
+
+- Disable the default model-call count ceiling; `OVH_AGENT_REQUEST_LIMIT=0` allows unlimited calls.
+- Show release blocks with an orange Bootstrap exclamation triangle and errors with a red exclamation diamond, at font weight 500, including archived messages.
+
 ## 1.17.44 — 2026-10-24
 
 - Add a collapse chevron button at the bottom of the activity journal block to fold/unfold the action details.

@@ -588,22 +588,36 @@ function formatElapsed(startedAt) {
   return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
 }
 
+function diagnosticSeverity(text) {
+  return /\bBLOCAGE RELEASE\b/i.test(String(text || '')) ? 'warning' : 'error';
+}
+
+function decorateDiagnostic(element, severity) {
+  element.classList.toggle('error-message', severity === 'error');
+  element.classList.toggle('warning-message', severity === 'warning');
+  element.dataset.status = severity;
+  element.querySelector(':scope > .diagnostic-icon')?.remove();
+  element.insertAdjacentHTML('afterbegin', uiIcon(severity, 'diagnostic-icon'));
+}
+
 function paintNotice(element, text, severity = 'info') {
   window.clearTimeout(noticeTimers.get(element));
   noticeTimers.delete(element);
   const kind = ['success','warning','error','info'].includes(severity) ? severity : 'info';
   element.style.opacity = '';
   element.textContent = text;
+  element.classList.remove('error-message', 'warning-message');
   if (text) {
     element.dataset.status = kind;
+    if (kind === 'warning' || kind === 'error') decorateDiagnostic(element, kind);
     noticeTimers.set(element, window.setTimeout(() => paintNotice(element, ''), 7000));
   } else {
     delete element.dataset.status;
-    element.classList.remove('error-message');
+    element.classList.remove('error-message', 'warning-message');
   }
 }
 function setStatus(text, failed = false) {
-  const severity = failed === true ? 'error' : typeof failed === 'string' ? failed : 'info';
+  const severity = failed === true ? diagnosticSeverity(text) : typeof failed === 'string' ? failed : 'info';
   paintNotice(status, presentationText(text), severity);
   status.classList.toggle('error-message', severity === 'error');
 }
@@ -702,6 +716,11 @@ function addArchivedAssistant(html, failed = false, timestamp = null) {
   content.className = "content markdown";
   content.innerHTML = safeHtml(html);
   enhanceMarkdown(content);
+  if (failed) {
+    const severity = diagnosticSeverity(content.textContent);
+    decorateDiagnostic(content, severity);
+    article.classList.toggle('warning', severity === 'warning');
+  }
   article.append(label, content);
   stamp(article, timestamp);
   messages.appendChild(article);
@@ -1460,7 +1479,7 @@ function updateRunSummary(run, state = "") {
     ? t(state === "done" ? "Terminé · {0}" : state === "error" ? "Échec · {0}" : "Interrompu · {0}", actionLabel)
     : (run.currentAction || t("Réflexion en cours…"));
   run.summaryText.textContent = activityLabel(run.summaryText.textContent);
-  run.indicator.innerHTML = uiIcon(state === "done" ? "check" : state === "error" ? "error" : iconForTool(run.currentTool || "model"));
+  run.indicator.innerHTML = uiIcon(state === "done" ? "check" : state === "error" ? (run.article.classList.contains('warning') ? 'warning' : 'error') : iconForTool(run.currentTool || "model"));
   run.summaryText.title = `${run.summaryText.textContent} · ${elapsed}${state ? "" : ` · ${actionLabel}`}`;
 }
 
@@ -1650,6 +1669,11 @@ function iconForTool(tool) {
 // Saved conversations retain their content while adopting the current layout/icons.
 function upgradeSnapshotPresentation(root) {
   cleanActivityLabels(root);
+  for (const element of root.querySelectorAll('.error-message, .warning-message, .message.failure > .content')) {
+    const severity = diagnosticSeverity(element.textContent);
+    decorateDiagnostic(element, severity);
+    element.closest('.message')?.classList.toggle('warning', severity === 'warning');
+  }
   for (const article of root.querySelectorAll(".message.assistant")) {
     const content = article.querySelector(":scope > .content");
     const activity = article.querySelector(":scope > .activity");
@@ -1662,7 +1686,7 @@ function upgradeSnapshotPresentation(root) {
     const actions = indicator.closest(".activity")?.querySelectorAll(".activity-icon .icon-terminal, .activity-icon .icon-read, .activity-icon .icon-edit, .activity-icon .icon-search, .activity-icon .icon-list");
     const lastAction = actions?.[actions.length - 1];
     indicator.innerHTML = article?.classList.contains("done") ? uiIcon("check")
-      : article?.classList.contains("error") ? uiIcon("error") : lastAction?.outerHTML || uiIcon("model");
+      : article?.classList.contains("error") ? uiIcon(article.classList.contains('warning') ? 'warning' : 'error') : lastAction?.outerHTML || uiIcon("model");
   }
   for (const icon of root.querySelectorAll(".file-change-icon")) {
     if (!icon.querySelector(".agent-icon")) icon.innerHTML = uiIcon(icon.textContent.trim() === "+" ? "plus" : "edit");
@@ -2579,12 +2603,14 @@ window.addEventListener("message", ({ data }) => {
     const detail = String(data.text || t("Erreur inconnue"));
     const run = ensureRun();
     const errorMessage = document.createElement("p");
-    errorMessage.className = "error-message";
-    errorMessage.textContent = t("Erreur : {0}", detail);
+    const severity = diagnosticSeverity(detail);
+    errorMessage.textContent = severity === 'warning' ? detail : t("Erreur : {0}", detail);
+    decorateDiagnostic(errorMessage, severity);
+    run.article.classList.toggle('warning', severity === 'warning');
     run.content.appendChild(errorMessage);
     finishRun("error");
     status.title = detail;
-    setBusy(false, t("La requête a échoué : {0}", detail), true);
+    setBusy(false, severity === 'warning' ? detail : t("La requête a échoué : {0}", detail), severity);
   }
   if (data.type === "idle") {
     stopping = false;

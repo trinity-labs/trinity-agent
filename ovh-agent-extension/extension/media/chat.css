@@ -740,10 +740,21 @@ button:disabled { cursor: default; opacity: .45; }
 .error-message,
 #status.error-message,
 .message.failure .content,
-.message.error .run-summary {
-  color: var(--vscode-errorForeground, #d32f2f);
+.message.error .activity-summary-text {
+  color: #d32f2f;
   font-weight: 500;
 }
+.warning-message,
+.message.failure .content.warning-message,
+.message.warning .activity-summary-text {
+  color: #d97706;
+  font-weight: 500;
+}
+.error-message :is(strong, b), .warning-message :is(strong, b) { font-weight: 500; }
+.diagnostic-icon { display: inline-block; margin-right: .4em; vertical-align: -.15em; }
+.content.markdown > .diagnostic-icon + p { display: inline; }
+.message.error .run-indicator { color: #d32f2f; }
+.message.warning .run-indicator { color: #d97706; }
 
 
 .header-leading { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1184,14 +1195,14 @@ body:is(.vscode-dark, .vscode-high-contrast) .followups button:not(.followup-dra
 /* Semantic notifications: tinted surface with fully legible status text. */
 body {
   --notice-success: #16713a;
-  --notice-warning: #995000;
-  --notice-error: #bc2525;
+  --notice-warning: #d97706;
+  --notice-error: #d32f2f;
   --notice-info: #2459b8;
 }
 body:is(.vscode-dark, .vscode-high-contrast) {
   --notice-success: #83d69e;
-  --notice-warning: #f2b45f;
-  --notice-error: #f18b8b;
+  --notice-warning: #f59e0b;
+  --notice-error: #ef5350;
   --notice-info: #8bb9f4;
 }
 [data-status="success"] { --notice-color: var(--notice-success); }
@@ -1204,7 +1215,10 @@ body:is(.vscode-dark, .vscode-high-contrast) {
   border-radius: 4px;
   padding: 6px 10px;
   opacity: 1;
+  font-weight: 500;
 }
+body:is(.vscode-dark, .vscode-high-contrast) :is(.error-message, .message.error .activity-summary-text, .message.error .run-indicator) { color: #ef5350; }
+body:is(.vscode-dark, .vscode-high-contrast) :is(.warning-message, .message.warning .activity-summary-text, .message.warning .run-indicator) { color: #f59e0b; }
 #archive-notice[data-status] { margin: 8px 12px 0; }
 
 .project-editor .project-path-label { flex: 1 0 100%; }
@@ -1246,3 +1260,6 @@ body:is(.vscode-dark, .vscode-high-contrast) .markdown.streaming::after {
 
 /* Resume continuations are system-made prompts: a divider, not a user bubble. */
 .resume-divider { margin: 6px 0; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; border-top: 1px dashed var(--vscode-panel-border); padding-top: 6px; }
+
+.message:is(.error, .warning) :is(.activity-summary-text, .run-indicator) { opacity: 1; font-weight: 500; }
+.run-indicator :is(.icon-error, .icon-warning) { fill: currentColor; stroke: none; }

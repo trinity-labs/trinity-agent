@@ -150,7 +150,7 @@ COMPLEX_OUTPUT_TOKENS = limit_setting("OVH_AGENT_COMPLEX_OUTPUT_TOKENS")
 SUMMARY_GENERATION_TOKENS = limit_setting("OVH_AGENT_SUMMARY_GENERATION_TOKENS")
 # Compaction is an auxiliary call: fail over quickly instead of stalling the task.
 SUMMARY_TIMEOUT_SECONDS = budget_setting("OVH_AGENT_SUMMARY_TIMEOUT_SECONDS", 15)
-REQUEST_LIMIT = None if AI_PROVIDER == 'deepseek' else budget_setting("OVH_AGENT_REQUEST_LIMIT", 200)
+REQUEST_LIMIT = None if AI_PROVIDER == 'deepseek' else (budget_setting("OVH_AGENT_REQUEST_LIMIT", 0, 0) or None)
 EMOJI_MODE = min(3, budget_setting("OVH_AGENT_EMOJI_MODE", 1, 0))
 TASK_CHECKPOINT_SECONDS = budget_setting("OVH_AGENT_TASK_CHECKPOINT_SECONDS", 300, 30)
 MAX_MEMORY_CHARS = limit_setting("OVH_AGENT_MEMORY_CHARS")

@@ -555,7 +555,7 @@ not update the environment of an existing container.
 * ``OVH_AGENT_MEMORY_CHARS=auto`` and ``OVH_AGENT_SHARED_MEMORY_CHARS=auto``:
   retrieval allowances derived from the context, not from the machine’s RAM.
 * ``OVH_AGENT_SUMMARY_TIMEOUT_SECONDS=15``: explicit summary timeout.
-* ``OVH_AGENT_REQUEST_LIMIT=200``: explicit upper bound on model steps per run;
+* ``OVH_AGENT_REQUEST_LIMIT=0``: no model-call count ceiling by default; positive values set an explicit upper bound per run;
   separate summary calls and transport retries are not counted in this bound.
 
 For adaptive allowances, ``auto`` or an omitted value computes a finite budget;
