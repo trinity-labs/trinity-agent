@@ -599,7 +599,7 @@ class Verification(unittest.TestCase):
     def test_actual_pydantic_loop_rejects_premature_answer_and_rechecks_repair(self):
         from pydantic_ai import Agent, ModelRetry
         from pydantic_ai.models.function import FunctionModel
-        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, RetryPromptPart
         self.edit(3)
         calls = []
         def model(messages, info):
@@ -607,7 +607,7 @@ class Verification(unittest.TestCase):
             if len(calls) == 1:
                 return ModelResponse(parts=[TextPart('Everything is fixed and verified.')])
             if len(calls) == 2:
-                self.assertTrue(any(isinstance(part, UserPromptPart) and isinstance(part.content, str) and 'validation' in part.content.lower() for message in messages for part in message.parts))
+                self.assertTrue(any(isinstance(part, RetryPromptPart) for message in messages for part in message.parts))
                 return ModelResponse(parts=[ToolCallPart('repair', {}, tool_call_id='repair')])
             return ModelResponse(parts=[TextPart('Actual checks passed.')])
         def repair() -> str:

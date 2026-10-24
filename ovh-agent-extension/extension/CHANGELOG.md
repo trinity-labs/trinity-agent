@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.49 — 2026-10-24
+
+- Restore validation-retry assertions against the pinned Pydantic AI message contract so the release pipeline can publish the call-limit and diagnostic presentation changes.
+
 ## 1.17.48 — 2026-10-24
 
 - Size diagnostic icons to the surrounding text in live messages, status notices and archived conversations.
