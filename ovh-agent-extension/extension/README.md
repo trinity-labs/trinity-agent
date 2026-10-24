@@ -2,7 +2,7 @@
 
 # 🟪 TRINITY Agent
 
-An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with conversation archives, tool approvals, task resumption, steering and a persistent follow-up queue.
+An independent, open-source coding assistant for **OVHcloud AI Endpoints and DeepSeek**, with conversation archives, tool approvals, task resumption, steering and a persistent follow-up queue.
 
 **This extension is the client for the self-hosted TRINITY Agent backend. Installing this VSIX alone does not install Python, the agent backend or an OVH account.** Use it in the supplied Linux Docker environment, or connect VS Code Remote to that environment. It is not an official OVHcloud or OpenAI extension.
 
@@ -17,10 +17,12 @@ An independent, open-source coding assistant for **OVHcloud AI Endpoints**, with
 1. Deploy the companion backend using the [repository installation guide](https://github.com/trinity-labs/trinity-agent/blob/main/README.rst) and its Docker Compose example. The backend and Python dependencies must be installed on the same host as the VS Code extension.
 2. Install this extension in that environment. With VS Code Remote, install it on the remote host.
 3. If you use a different installation path, set `ovhAgent.backendPath` in **User settings** to the absolute path of `ovh-agent.sh`. The launcher must implement the bundled JSON-lines protocol and load the backend dependencies and secrets.
-4. Configure your OVHcloud AI key through the extension command. The supplied Docker deployment persists it in its configured secret directory; never commit it to Git.
+4. Select `ovhAgent.provider` in **User settings** (`ovhcloud` or `deepseek`) or run **TRINITY Agent: Choose the inference provider**, then configure that provider's API key through the extension command. The supplied Docker deployment persists it in its configured secret directory; never commit it to Git. A provider change restarts an idle backend and applies to the next message; an active task finishes first.
 5. Open a trusted workspace and start a conversation. The backend can read and modify files and run commands with the permissions of its container. Review the access mode and container mounts.
 
-The extension itself is free and licensed under **0BSD**. OVHcloud API usage and any hosting are charged by their providers. No model subscription or API credit is included.
+The extension itself is free and licensed under **0BSD**. API usage and any hosting are charged by their providers. No model subscription or API credit is included.
+
+With **DeepSeek**, local inference budgets, request-count limits, configured context/output token caps, repeated-tool-failure cutoffs and model request timeouts are disabled. Tool corrections are no longer cut off after two SDK retries. The provider's context/output capacities, account balance and rate limits still apply. File backups, permission checks and verification remain active. Automatic routing starts economically; Flash and Pro are available for explicit selection. Costs are estimated in USD at peak/cache-miss rates; the account balance is fetched directly from DeepSeek. Keys, model caches and usage accounting are separate from OVH.
 
 ## ⬛ Features
 

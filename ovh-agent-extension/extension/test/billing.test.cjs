@@ -6,6 +6,19 @@ const {JSDOM} = require('jsdom');
 const i18n = require('../media/i18n');
 
 const source = fs.readFileSync(path.join(__dirname, '../media/chat.js'), 'utf8');
+test('DeepSeek shows the provider balance in USD without OVH billing instructions', () => {
+  const dom = billingView(), w = dom.window;
+  try {
+    w.applyBillingStatus({provider:'deepseek', configured:true, available:true,
+      currency:'USD', credit_available:12.34, last_update:'2026-10-24', refresh_seconds:60});
+    assert.match(w.liveBalance.textContent,/DeepSeek.*12,34/);
+    assert.doesNotMatch(w.liveBalance.title,/OVH|EUR/);
+    assert(w.billing.classList.contains('connected'));
+    w.applyBillingStatus({provider:'deepseek', configured:true, available:false, error:'DeepSeek unavailable'});
+    assert.equal(w.liveBalance.textContent,'DeepSeek · —');
+    assert(w.billing.classList.contains('failed'));
+  } finally { dom.window.close(); }
+});
 function billingView() {
   const dom = new JSDOM('<button id="billing"></button><button id="balance"></button>', {runScripts: 'outside-only'});
   const w = dom.window;

@@ -3,6 +3,7 @@
   "ovhAgent.configureKey.title": "TRINITY Agent: OVH-Schlüssel konfigurieren",
   "ovhAgent.configureBilling.title": "TRINITY Agent: Guthaben und Abrechnung konfigurieren",
   "ovhAgent.selectProject.title": "Projekt auswählen oder erstellen",
+  "ovhAgent.selectProvider.title": "TRINITY Agent: Inferenzanbieter wählen",
   "ovhAgent.editProfile.title": "Gemeinsamen Benutzerkontext bearbeiten",
   "ovhAgent.performanceMode.description": "Lokale Leistung. Der Chat-Wähler übernimmt Änderungen sofort; Änderungen hier gelten beim nächsten Backend-Start.",
   "ovhAgent.performanceMode.auto": "Automatische Dimensionierung mit moderaten Grenzen.",

@@ -37,6 +37,40 @@ class Sessions(unittest.TestCase):
         self.events = self.folder / 'events.jsonl'
         self.events.write_text(json.dumps({'type': 'user', 'text': 'Analyse\n  le projet docker_trinity'}) + '\n')
 
+    def test_plan_before_first_prompt_stays_inside_its_conversation(self):
+        with patch.object(a, 'CONVERSATION_ID', ''), patch.object(a, 'POINTER_FILE', self.root/'current'), patch.object(a, 'emit'):
+            result = json.loads(a.update_plan(['Inspect', 'Correct', 'Verify']))
+            self.assertEqual(result['current_step'], 0)
+            self.assertTrue(a.CONVERSATION_ID)
+            self.assertTrue((a.conversation_dir()/'plan.json').is_file())
+            self.assertFalse((a.ARCHIVE_ROOT/'plan.json').exists())
+
+    def test_corrupted_event_does_not_hide_later_events_or_certify_snapshot(self):
+        self.events.write_text('\n'.join([json.dumps({'type':'user','text':'before'}),
+            '{broken', 'null', '[]', json.dumps({'type':'response','text':'after'})])+'\n')
+        for timeline in (False, True):
+            events = a.read_archive('conversation', timeline_only=timeline)
+            self.assertEqual([event['type'] for event in events], ['user', 'response'])
+            self.assertEqual(a.ARCHIVE_READ_REVISIONS['conversation'], '')
+
+    def test_activity_finishes_once_and_does_not_replace_another_active_tool(self):
+        with patch.object(a, 'emit') as emit, patch.object(a, 'read_task_state', return_value={'status':'running','last_tool':{'id':'another'}}), patch.object(a, 'save_task_state') as save:
+            with a.ACTIVITY_LOCK:
+                a.ACTIVITY_STARTED['fixture'] = 0.0
+            a.activity_end('fixture', 'finished')
+            a.activity_end('fixture', 'duplicate')
+            a.activity_end('', 'invalid')
+            self.assertEqual(emit.call_count, 1)
+            save.assert_not_called()
+
+    def test_snapshot_size_limit_counts_utf8_bytes(self):
+        self.meta.write_text('{}')
+        a.save_snapshot('current', False, a.AUTO_MODEL, a.archive_revision())
+        snapshot = self.folder/'snapshot.json'
+        before = snapshot.read_bytes()
+        a.save_snapshot('🙂' * (5 * 1024 * 1024), False, a.AUTO_MODEL, a.archive_revision())
+        self.assertEqual(snapshot.read_bytes(), before)
+
     def run_failed_queue(self, initial, prepare=None):
         """Drive the real dispatcher and disk queue without a model/provider."""
         outputs, calls, channels = [], [], {}
@@ -208,7 +242,7 @@ class Sessions(unittest.TestCase):
         self.assertEqual(outputs[2]['duration_ms'], 300)
         self.assertFalse(outputs[2]['success'])
         self.assertEqual(outputs[3]['duration_ms'], 1250)
-        self.assertIsNone(outputs[4]['duration_ms'])
+        self.assertEqual(len(outputs), 4, 'An unknown activity must not emit an unpaired completion')
         self.assertNotIn(first, a.ACTIVITY_STARTED)
         self.assertNotIn(second, a.ACTIVITY_STARTED)
 

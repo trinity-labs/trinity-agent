@@ -16,14 +16,16 @@ from ovh_budget import BudgetLedger, OvhBalanceLedger
 from ovh_budget_model import BudgetedModel
 from ovh_vision import read_images, parse_reading, visual_context, without_historical_images, is_image_generation_request
 from ovh_evaluation import load_evidence, routing_domain, prefer_evaluated, measured_latency, measured_settings, routing_price_factor
-from typing import Literal
+from typing import Annotated, Literal
+from pydantic import Field
 from ovh_verification import ChangeGuard, VerificationError, run_check
 from ovh_execution import WorkflowController, guarded_tool, READ_ONLY_TOOLS, read_only_policy, command_is_read_only
 from ovh_repository import repository_map
 from ovh_vision import run_reader_sync
-from ovh_process import run_process
+from ovh_process import run_process, command_is_destructive
 from ovh_tools import ToolSelection
 import base64
+import binascii
 import difflib
 import hashlib
 import errno
@@ -32,6 +34,7 @@ from contextlib import contextmanager
 from html.parser import HTMLParser
 import xml.etree.ElementTree as ET
 import json
+import math
 from itertools import islice
 import os
 import queue
@@ -52,6 +55,7 @@ from pathlib import Path
 
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ovhcloud import OVHcloudProvider
+from pydantic_ai.providers.deepseek import DeepSeekProvider
 from pydantic_ai import Agent, ModelRetry, RunContext, Tool
 from pydantic_ai.usage import UsageLimits
 from ovh_limits import limit_setting, resolve_limits
@@ -76,9 +80,16 @@ WORKSPACE = Path(os.environ.get("OVH_AGENT_WORKSPACE", "/home/coder")).resolve()
 ALLOWED_ROOT = Path("/home/coder").resolve()
 DATA_ROOT = Path(os.environ.get("OVH_AGENT_DATA_ROOT", str(Path.home() / ".ovh-agent")))
 STATE_ROOT = DATA_ROOT / "sessions"
-DEFAULT_MODEL = "gpt-oss-120b"
+AI_PROVIDER = os.environ.get('OVH_AGENT_PROVIDER', 'ovhcloud').strip().lower()
+if AI_PROVIDER not in {'ovhcloud', 'deepseek'}:
+    raise ValueError('OVH_AGENT_PROVIDER doit être ovhcloud ou deepseek.')
+PROVIDER_CURRENCY = 'USD' if AI_PROVIDER == 'deepseek' else 'EUR'
+USAGE_COST_FIELD = 'cost_usd' if AI_PROVIDER == 'deepseek' else 'cost_eur'
+DEFAULT_MODEL = 'deepseek-flash' if AI_PROVIDER == 'deepseek' else 'gpt-oss-120b'
 AUTO_MODEL = "auto-balanced"
 def configured_ai_base_url() -> str:
+    if AI_PROVIDER == 'deepseek':
+        return 'https://api.deepseek.com'
     value = os.environ.get("OVH_AI_BASE_URL", "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1").strip().rstrip("/")
     parsed = urllib.parse.urlsplit(value)
     if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -104,7 +115,7 @@ class ConfiguredOVHProvider(OVHcloudProvider):
     def base_url(self) -> str:
         return AI_API_BASE_URL
 
-MODEL_CACHE_FILE = DATA_ROOT / "model-catalog.json"
+MODEL_CACHE_FILE = DATA_ROOT / ('model-catalog-deepseek.json' if AI_PROVIDER == 'deepseek' else 'model-catalog.json')
 MODEL_CACHE_SECONDS = 300
 MODEL_CATALOG_EXPIRES = 0.0
 BILLING_CACHE_SECONDS = budget_setting("OVH_AGENT_BILLING_CACHE_SECONDS", 60)
@@ -139,7 +150,7 @@ COMPLEX_OUTPUT_TOKENS = limit_setting("OVH_AGENT_COMPLEX_OUTPUT_TOKENS")
 SUMMARY_GENERATION_TOKENS = limit_setting("OVH_AGENT_SUMMARY_GENERATION_TOKENS")
 # Compaction is an auxiliary call: fail over quickly instead of stalling the task.
 SUMMARY_TIMEOUT_SECONDS = budget_setting("OVH_AGENT_SUMMARY_TIMEOUT_SECONDS", 15)
-REQUEST_LIMIT = budget_setting("OVH_AGENT_REQUEST_LIMIT", 200)
+REQUEST_LIMIT = None if AI_PROVIDER == 'deepseek' else budget_setting("OVH_AGENT_REQUEST_LIMIT", 200)
 EMOJI_MODE = min(3, budget_setting("OVH_AGENT_EMOJI_MODE", 1, 0))
 TASK_CHECKPOINT_SECONDS = budget_setting("OVH_AGENT_TASK_CHECKPOINT_SECONDS", 300, 30)
 MAX_MEMORY_CHARS = limit_setting("OVH_AGENT_MEMORY_CHARS")
@@ -160,6 +171,9 @@ MODEL_CAPABILITIES: dict[tuple[str, str], dict] = {}
 
 
 def model_capabilities(model_id: str) -> dict:
+    if AI_PROVIDER == 'deepseek':
+        return {'tools': True, 'reasoning': True, 'stream': True,
+                'response_formats': ['json_object'], 'reasoning_efforts': ['low', 'high', 'max']}
     key = (AI_API_BASE_URL, model_id)
     if key in MODEL_CAPABILITIES:
         return MODEL_CAPABILITIES[key]
@@ -466,9 +480,11 @@ def activity_start(tool: str, title: str, detail: str) -> str:
 def activity_end(activity_id: str, detail: str, success: bool = True) -> None:
     with ACTIVITY_LOCK:
         started = ACTIVITY_STARTED.pop(activity_id, None)
-    duration_ms = round(max(0, time.monotonic() - started) * 1000) if started is not None else None
+    if started is None:
+        return
+    duration_ms = round(max(0, time.monotonic() - started) * 1000)
     state = read_task_state()
-    if state.get("status") == "running":
+    if state.get("status") == "running" and state.get("last_tool", {}).get("id") == activity_id:
         previous = state.get("last_tool", {})
         save_task_state(last_tool={**previous, "id": activity_id, "detail": detail[:2000],
                                    "state": "completed" if success else "failed"})
@@ -605,13 +621,14 @@ def read_file(path: str, start_line: int = 1, end_line: int = 400) -> str:
 
 
 def search_text(query: str, path: str = ".") -> str:
-    """Recherche du texte avec ripgrep dans l'espace de travail."""
+    """Recherche les sources du projet ; un chemin ciblé inclut aussi ses fichiers ignorés par Git."""
     try:
         target = resolve_path(path)
         activity_id = activity_start("search", "Recherche dans le projet", f"{query} · {relative_name(target)}")
         try:
             result = subprocess.run(
-                ["rg", "--no-config", "--no-ignore-vcs", "--line-number", "--color", "never", "--max-count", "100",
+                ["rg", "--no-config", *(["--no-ignore-vcs"] if target != WORKSPACE else []),
+                 "--line-number", "--color", "never", "--max-count", "100",
                  "--max-columns", "500", "--max-columns-preview",
                  *(["--glob", "!*.min.js", "--glob", "!*.map", "--glob", "!package-lock.json",
                     "--glob", "!**/node_modules/**", "--glob", "!**/.git/**",
@@ -710,6 +727,10 @@ def begin_verification(prompt: str = "", fact_check: bool | None = None) -> Chan
         publish=emit, receipts=lambda: VERIFICATION_GUARD.state.get('receipts', []) if VERIFICATION_GUARD else [],
         allow_external=FULL_ACCESS, operation_runner=run_operation_stage, trusted_diagnostics=True)
     TASK_ENGINE.focus(prompt)
+    if AI_PROVIDER == 'deepseek':
+        # Keep failure receipts, but let the model decide how many repairs to try.
+        TASK_ENGINE.failures.exact_limit = None
+        TASK_ENGINE.failures.equivalent_limit = None
     ACTIVE_TOOLS = ToolSelection(prompt)
     save_task_state(verification_id=identifier)
     if VERIFICATION_GUARD.require_checks:
@@ -762,9 +783,9 @@ def execute_operation(name: str) -> str:
     """Exécute un plan nommé configuré : effet, postcondition, rollback et contrôle du rollback. Jamais de commande improvisée ici."""
     if TASK_ENGINE is None:
         return 'Erreur outil : aucune tâche active.'
+    TASK_ENGINE.last_acceptance = None
     try:
         result = TASK_ENGINE.operations.execute(name)
-        TASK_ENGINE.last_acceptance = None
         if result.get('executed') and result.get('verified') and result.get('status') == 'applied':
             TASK_ENGINE.progress += 1
         return json.dumps(result, ensure_ascii=False)
@@ -810,7 +831,7 @@ def task_checkpoint(ctx: RunContext, messages: list) -> list:
     """Append bounded milestones without rewriting reusable context on each call."""
     started = time.monotonic()
     guard = VERIFICATION_GUARD
-    if guard is None or not hasattr(guard, "checkpoints"):
+    if guard is None or not hasattr(guard, "checkpoints") or REQUEST_LIMIT is None:
         return messages
     used = ctx.usage.requests
     remaining = max(0, REQUEST_LIMIT - used)
@@ -848,6 +869,7 @@ def verify_changes() -> str:
 
 def validate_task_output(output: str) -> str:
     """A final model answer cannot bypass executable verification."""
+    historical_notice = ""
     if VERIFICATION_GUARD is not None:
         try:
             review = getattr(VERIFICATION_GUARD, "source_review", None)
@@ -858,7 +880,14 @@ def validate_task_output(output: str) -> str:
             raise ModelRetry(str(error)) from error
     if TASK_ENGINE is not None:
         status = TASK_ENGINE.final_status()
-        if status['incomplete']:
+        historical_diagnostic = (TASK_ENGINE.read_only and bool(status['unresolved'])
+            and set(status['unresolved']) <= set(status.get('historical_unresolved', []))
+            and not any(status.get(key) for key in ('running', 'failed_files', 'failed_checks'))
+            and status['criteria_status'] in {'passed', 'not_configured'})
+        if historical_diagnostic:
+            historical_notice = (f"Historique : {len(status['unresolved'])} opération(s) antérieure(s) "
+                "conservent des effets non vérifiés ; ce diagnostic ne les valide pas et ne les rejoue pas.")
+        if status['incomplete'] and not historical_diagnostic:
             detail = json.dumps(status, ensure_ascii=False)
             if TASK_ENGINE._validation_retries < 1 and not status['unresolved']:
                 TASK_ENGINE._validation_retries += 1
@@ -886,6 +915,8 @@ def validate_task_output(output: str) -> str:
                 output = validate_summary(output)
         except (VerificationError, ValueError) as error:
             raise ModelRetry(str(error)) from error
+    if historical_notice and historical_notice not in output:
+        output = output.rstrip() + "\n\n" + historical_notice
     deletion_paths = read_task_state().get("deleted_paths", [])
     if isinstance(deletion_paths, list) and deletion_paths:
         paths = list(dict.fromkeys(str(path) for path in deletion_paths if str(path).strip()))[:500]
@@ -997,12 +1028,16 @@ def edit_file(path: str, old_text: str = "", new_text: str | None = None) -> str
 
 
 def write_file(path: str, content: str) -> str:
-    """Crée ou remplace un fichier texte après validation."""
+    """Crée un nouveau fichier texte. Pour modifier un fichier existant, utiliser edit_file avec le texte source exact."""
     try:
         target = resolve_path(path)
         before = target.read_bytes().decode("utf-8") if target.exists() else ""
         name = relative_name(target)
         created = not target.exists()
+        if not created and before != content:
+            return json.dumps({"executed": False, "passed": False, "error": "file_exists",
+                "message": "Fichier existant inchangé. Utilise read_file puis edit_file avec le texte exact à remplacer."},
+                ensure_ascii=False)
         title = "Créer un fichier" if created else "Remplacer un fichier"
         diff = make_diff(name, before, content)
         if not request_approval("write", title, name, diff):
@@ -1026,13 +1061,14 @@ def command_not_executed(reason: str, detail: str) -> str:
                        "error": reason, "output": detail}, ensure_ascii=False)
 
 
-def run_command(command: str, cwd: str = ".") -> str:
-    """Exécute dans le conteneur IDE uniquement. Pour Xen, lbu ou un service distant, utiliser run_host_command. cwd ne change pas la machine d’exécution."""
+def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0, le=86400)] = 120) -> str:
+    """Exécute dans le conteneur IDE. timeout est la durée maximale en secondes ; prévoir assez de temps pour les builds et suites longues. Les contrôles configurés gardent leur propre délai. Pour un service distant, utiliser run_host_command ; cwd ne change pas la machine."""
     execution_entered = False
+    if type(timeout) is not int or not 0 < timeout <= 86400:
+        return command_not_executed("invalid_process_arguments", "timeout doit être un entier entre 1 et 86400 secondes.")
     try:
         working_dir = resolve_path(cwd)
-        blocked = ("rm -rf /", "mkfs", "shutdown", "reboot", ":(){", "dd if=")
-        if any(pattern in command.lower() for pattern in blocked):
+        if command_is_destructive(command):
             return command_not_executed("policy_denied", "Commande refusée car elle est potentiellement destructive.")
         dynamic_deletion = re.search(r'\bxargs\b[^\n]*\brm\b|\bfind\b[^\n]*\s-delete\b', command)
         if dynamic_deletion and not re.search(r'\btee\b', command):
@@ -1070,7 +1106,7 @@ def run_command(command: str, cwd: str = ".") -> str:
         result = run_process(
             diagnostic_argv if diagnostic else
             ["sh", "-lc", "export PATH=" + shlex.quote(project_bins) + ':"$PATH"\n' + command],
-            working_dir, workspace=WORKSPACE,
+            working_dir, timeout=timeout, workspace=WORKSPACE,
             profile=os.environ.get("OVH_AGENT_COMMAND_PROFILE", "approved"))
         if result['passed']:
             deleted = deleted_paths_from_command(command, result.get('output', ''))
@@ -1097,14 +1133,15 @@ REMOTE_SSH_CONFIG = "/home/coder/TRINITY-DOCKER/root/.ssh/config"
 REMOTE_KNOWN_HOSTS = "/home/coder/TRINITY-DOCKER/root/.ssh/known_hosts"
 
 
-def run_host_command(host: str, command: str, cwd: str = "/") -> str:
-    """Exécute par SSH sur une machine de l’infrastructure. Exemple : host='TRINITY-EDGE', command='xl list'. cwd est un chemin absolu SUR LA CIBLE, pas le chemin SSHFS de l’IDE. Utiliser pour Xen, services, lbu et création de VM sur le Dom0 choisi."""
+def run_host_command(host: str, command: str, cwd: str = "/", timeout: Annotated[int, Field(gt=0, le=86400)] = 120) -> str:
+    """Exécute par SSH sur une machine de l’infrastructure. cwd est absolu SUR LA CIBLE, sans préfixe SSHFS. timeout est la durée maximale en secondes ; l’expiration du client ne garantit pas l’arrêt distant."""
+    if type(timeout) is not int or not 0 < timeout <= 86400:
+        return command_not_executed("invalid_process_arguments", "timeout doit être un entier entre 1 et 86400 secondes.")
     if host not in REMOTE_HOSTS:
         return command_not_executed("invalid_command_target", "Erreur outil : machine inconnue. Cibles : " + ", ".join(sorted(REMOTE_HOSTS)))
     if not cwd.startswith("/") or cwd.startswith("/home/coder/"):
         return command_not_executed("invalid_command_target", "Erreur outil : cwd doit être un chemin absolu sur la machine cible, par exemple /etc/xen, sans préfixe /home/coder/<HOST>.")
-    blocked = ("rm -rf /", "mkfs", "shutdown", "reboot", ":(){", "dd if=")
-    if any(pattern in command.lower() for pattern in blocked):
+    if command_is_destructive(command):
         return command_not_executed("policy_denied", "Commande refusée car elle est potentiellement destructive.")
     detail = f"Cible SSH : {host} · cwd={cwd}\n{command}"
     if not request_approval("command", f"Exécuter sur {host}", detail):
@@ -1117,7 +1154,7 @@ def run_host_command(host: str, command: str, cwd: str = "/") -> str:
              "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={REMOTE_KNOWN_HOSTS}",
              "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
              host, "cd " + shlex.quote(cwd) + " && sh -c " + shlex.quote(command)],
-            WORKSPACE)
+            WORKSPACE, timeout=timeout)
     except OSError as error:
         activity_end(activity_id, str(error), False)
         return local_tool_error(error)
@@ -1144,6 +1181,8 @@ def model_kind(model_id: str) -> str:
 
 
 def model_supports_vision(model_id: str) -> bool:
+    if AI_PROVIDER == 'deepseek':
+        return model_id == 'deepseek-flash'
     documented = DISCOVERY_MODELS.get(model_id.casefold())
     if documented:
         return "image" in documented.get("metadata", {}).get("model_specs", {}).get("capabilities", {}).get("input_modality", [])
@@ -1339,9 +1378,38 @@ def install_catalog_capabilities(cards: list[dict]) -> None:
 
 def normalise_model(raw: dict[str, object]) -> dict[str, object]:
     model_id = str(raw.get("id", ""))
+    if AI_PROVIDER == 'deepseek':
+        # Published peak/cache-miss rates, checked 2026-10-24. Displayed costs
+        # are conservative estimates, not the provider bill or a spend limit.
+        prices = {'deepseek-flash': (0.30, 1.20), 'deepseek-v4-pro': (1.32, 3.96)}
+        if model_id not in prices:
+            raise ValueError('DeepSeek model pricing not yet reviewed')
+        incoming, outgoing = prices[model_id]
+        return {'id': model_id, 'owner': 'DeepSeek', 'provider': 'deepseek', 'kind': 'chat',
+                'selectable': True, 'vision': 'image' in raw.get('input_modalities', []),
+                'supports_tools': True, 'supports_reasoning': True, 'supports_streaming': True,
+                'context_length': int(raw['context_window']),
+                'max_completion_tokens': int(raw['max_output_tokens']),
+                'currency': 'USD', 'input_per_million': incoming, 'output_per_million': outgoing,
+                'hourly': None, 'free': False, 'pricing_estimate': True,
+                'pricing_source': 'https://api-docs.deepseek.com/quick_start/pricing/'}
     pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else {}
-    prompt_price = float(pricing.get("prompt", 0) or 0)
-    completion_price = float(pricing.get("completion", 0) or 0)
+    prices = [pricing.get(key, 0) for key in ('prompt', 'completion')]
+    if any(isinstance(value, bool) or not isinstance(value, (int, float, str)) for value in prices):
+        raise ValueError('Invalid model pricing')
+    prompt_price, completion_price = map(float, prices)
+    if not all(math.isfinite(value) and value >= 0 and math.isfinite(value * 1_000_000)
+               for value in (prompt_price, completion_price)):
+        raise ValueError('Invalid model pricing')
+    limits = {}
+    for name in ('context_length', 'max_completion_tokens'):
+        value = raw.get(name)
+        if value is None:
+            limits[name] = 0
+        elif isinstance(value, bool) or not isinstance(value, (int, str)) or int(value) < 0:
+            raise ValueError('Invalid model capacity')
+        else:
+            limits[name] = int(value)
     kind = model_kind(model_id)
     hourly_price = None
     if model_id == "whisper-large-v3":
@@ -1355,8 +1423,7 @@ def normalise_model(raw: dict[str, object]) -> dict[str, object]:
         "kind": kind,
         "selectable": kind == "chat" and model_id not in UNAVAILABLE_AGENT_MODELS,
         "vision": kind == "chat" and model_supports_vision(model_id),
-        "context_length": int(raw.get("context_length", 0) or 0),
-        "max_completion_tokens": int(raw.get("max_completion_tokens", 0) or 0),
+        **limits,
         "currency": str(pricing.get("currency_unit", "USD")),
         "input_per_million": round(prompt_price * 1_000_000, 6),
         "output_per_million": round(completion_price * 1_000_000, 6),
@@ -1380,10 +1447,11 @@ def fetch_model_catalog(force: bool = False) -> list[dict[str, object]]:
                 return MODEL_CATALOG
         except (OSError, ValueError, KeyError, TypeError):
             pass
-    api_key = os.environ.get("OVH_AI_API_KEY") or os.environ.get("OVHCLOUD_API_KEY")
+    api_key = (os.environ.get('DEEPSEEK_API_KEY') if AI_PROVIDER == 'deepseek' else
+               os.environ.get("OVH_AI_API_KEY") or os.environ.get("OVHCLOUD_API_KEY"))
     try:
         if not api_key:
-            raise ValueError("Clé OVH absente")
+            raise ValueError("Clé API du fournisseur absente")
         request = urllib.request.Request(
             MODEL_API_URL,
             headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
@@ -1399,7 +1467,20 @@ def fetch_model_catalog(force: bool = False) -> list[dict[str, object]]:
                     index_discovery_catalog(discovery)
             except (OSError, ValueError):
                 pass
-        models = [enrich_catalog_model(normalise_model(item)) for item in payload.get("data", []) if item.get("id")]
+        if not isinstance(payload, dict) or not isinstance(payload.get('data'), list):
+            raise ValueError('Invalid model catalogue')
+        models = []
+        for item in payload['data']:
+            if not isinstance(item, dict) or not item.get('id'):
+                continue
+            try:
+                models.append(enrich_catalog_model(normalise_model(item)))
+            except (KeyError, TypeError, ValueError, OverflowError):
+                # One malformed provider row must neither discard healthy rows
+                # nor be relabelled as a zero-cost model.
+                continue
+        if not models:
+            raise ValueError('No valid model catalogue entries')
         install_catalog_capabilities(models)
         models.sort(key=lambda item: (not bool(item["selectable"]), str(item["id"]).lower()))
         MODEL_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -1424,6 +1505,8 @@ def fetch_model_catalog(force: bool = False) -> list[dict[str, object]]:
                 if item.get("id") in UNAVAILABLE_AGENT_MODELS:
                     item["selectable"] = False
         except (OSError, ValueError, KeyError, TypeError):
+            if AI_PROVIDER == 'deepseek':
+                raise ValueError('Catalogue DeepSeek indisponible : vérifier la clé API et la connexion.')
             fallback = normalise_model({
                 "id": DEFAULT_MODEL,
                 "owned_by": "OpenAI",
@@ -1466,7 +1549,7 @@ def auto_model_card() -> dict[str, object]:
         "vision": True,
         "context_length": None,  # Auto is a selector, not a model with one window.
         "max_completion_tokens": 0,
-        "currency": "EUR",
+        "currency": PROVIDER_CURRENCY,
         "input_per_million": 0,
         "output_per_million": 0,
         "hourly": None,
@@ -1475,11 +1558,11 @@ def auto_model_card() -> dict[str, object]:
 
 
 def router_file() -> Path:
-    return ARCHIVE_ROOT / "router.json"
+    return ARCHIVE_ROOT / ('router-deepseek.json' if AI_PROVIDER == 'deepseek' else 'router.json')
 
 
 def billing_file() -> Path:
-    return ARCHIVE_ROOT / "billing.json"
+    return ARCHIVE_ROOT / ('billing-deepseek.json' if AI_PROVIDER == 'deepseek' else 'billing.json')
 
 
 def billing_configured() -> bool:
@@ -1574,6 +1657,37 @@ def billing_balance(status: dict[str, object]) -> dict[str, object]:
 
 
 def fetch_billing_status(force: bool = False) -> dict[str, object]:
+    if AI_PROVIDER == 'deepseek':
+        key = os.environ.get('DEEPSEEK_API_KEY')
+        status = {'provider': 'deepseek', 'configured': bool(key), 'available': False,
+                  'currency': 'USD', 'refresh_seconds': BILLING_CACHE_SECONDS}
+        if not key:
+            return status
+        cached = read_billing_cache()
+        if not force and cached and 0 <= time.time() - cached.get('cached_at', 0) < BILLING_CACHE_SECONDS:
+            return cached
+        try:
+            request = urllib.request.Request(AI_API_BASE_URL + '/user/balance',
+                headers={'Authorization': 'Bearer ' + key})
+            with urllib.request.urlopen(request, timeout=15) as response:
+                payload = json.load(response)
+            row = next(item for item in payload['balance_infos'] if item['currency'] == 'USD')
+            balance = Decimal(str(row['total_balance']))
+            if not balance.is_finite():
+                raise ValueError('Invalid balance')
+            status.update(available=True, credit_available=float(balance),
+                          account_available=bool(payload['is_available']), cached_at=time.time(), last_update=now_iso())
+            try:
+                # Before the first conversation archive exists, its directory is
+                # absent: a cache failure must not contradict a successful read.
+                ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
+                atomic_write(billing_file(), json.dumps(status))
+                billing_file().chmod(0o600)
+            except OSError:
+                status.pop('cached_at', None)
+        except (OSError, ValueError, KeyError, TypeError, StopIteration, InvalidOperation) as error:
+            status['error'] = 'DeepSeek balance unavailable: ' + type(error).__name__
+        return status
     if not billing_configured():
         return billing_balance({"configured": False, "available": False})
     project = os.environ["OVH_CLOUD_PROJECT"]
@@ -1766,7 +1880,7 @@ def tool_protocol_failure(value) -> bool:
 
 def automatic_fallback_reason(model_id, failure, controller=None, guard=None) -> str:
     """Return a bounded fallback reason when replay cannot duplicate effects."""
-    if model_id == 'gpt-oss-120b' or not no_mutation_started(controller, guard):
+    if AI_PROVIDER == 'deepseek' or model_id == 'gpt-oss-120b' or not no_mutation_started(controller, guard):
         return ""
     if isinstance(failure, BaseException) and qwen_timeout_fallback_allowed(model_id, failure, controller):
         return "timeout Qwen sans mutation ; reprise automatique fiable"
@@ -1794,13 +1908,13 @@ def choose_cost_effective_model(
     candidates = [
         item for item in fetch_model_catalog()
         if item.get("selectable")
-        and item.get("currency") == "EUR"
+        and item.get("currency") == PROVIDER_CURRENCY
         and item.get("id") not in UNAVAILABLE_AGENT_MODELS
         and (model_capabilities(str(item["id"]))["tools"] or vision_question)
         and (not image_count or item.get("vision"))
     ]
     if not candidates:
-        raise ValueError("Aucun modèle OVHcloud compatible avec un tarif natif en euros n’est disponible.")
+        raise ValueError("Aucun modèle compatible avec un tarif connu dans la devise du fournisseur n’est disponible.")
 
     prompt_tokens = text_tokens(prompt)
     overhead = context_overhead()
@@ -1919,8 +2033,8 @@ def choose_cost_effective_model(
         "reason": reason,
         "estimated_input_tokens": estimated_inputs[selected_id],
         "estimated_output_tokens": estimated_output,
-        "projected_cost_eur": projected[selected_id],
-        "previous_cost_eur": float(selected_usage.get("cost_eur", 0) or 0),
+        'projected_' + USAGE_COST_FIELD: projected[selected_id],
+        'previous_' + USAGE_COST_FIELD: float(selected_usage.get(USAGE_COST_FIELD, 0) or 0),
         "previous_requests": int(selected_usage.get("requests", 0) or 0),
         "parameters_b": selected.get("parameters_b"),
         "active_parameters_b": selected.get("active_parameters_b"),
@@ -1950,7 +2064,7 @@ def record_model_usage(model_id: str, input_tokens: int, output_tokens: int) -> 
     entry["requests"] = int(entry.get("requests", 0) or 0) + 1
     entry["input_tokens"] = int(entry.get("input_tokens", 0) or 0) + input_tokens
     entry["output_tokens"] = int(entry.get("output_tokens", 0) or 0) + output_tokens
-    entry["cost_eur"] = float(Decimal(str(entry.get("cost_eur", 0) or 0)) + Decimal(str(cost)))
+    entry[USAGE_COST_FIELD] = float(Decimal(str(entry.get(USAGE_COST_FIELD, 0) or 0)) + Decimal(str(cost)))
     save_router_state(state)
     return cost
 
@@ -1977,14 +2091,26 @@ def fetch_web_document(url: str) -> tuple[bytes, str]:
         "User-Agent": "Mozilla/5.0 (compatible; OVHAgent/1.0)",
         "Accept": "text/html,application/xhtml+xml,application/xml,text/plain,*/*;q=0.5",
     })
+    deadline = time.monotonic() + 30
     with urllib.request.urlopen(request, timeout=15) as response:
         # Documentation shells can exceed 1 MB before their useful article
         # (including the OVH model catalogue). Keep a bounded transfer, then
         # select the article rather than injecting the site's navigation.
-        content = response.read(4_000_001)
-        if len(content) > 4_000_000:
-            raise ValueError("Page trop volumineuse (limite : 4 Mo).")
-        return content, response.headers.get_content_charset() or "utf-8"
+        content = bytearray()
+        while True:
+            if time.monotonic() >= deadline:
+                raise ValueError("Page trop lente (délai de lecture dépassé).")
+            # read1 performs at most one underlying read, unlike read(n), which
+            # can keep filling indefinitely when a server trickles bytes. The
+            # 30s deadline is checked between reads; each read has a 15s idle cap.
+            chunk = response.read1(min(65536, 4_000_001 - len(content)))
+            if time.monotonic() >= deadline:
+                raise ValueError("Page trop lente (délai de lecture dépassé).")
+            if not chunk:
+                return bytes(content), response.headers.get_content_charset() or "utf-8"
+            content.extend(chunk)
+            if len(content) > 4_000_000:
+                raise ValueError("Page trop volumineuse (limite : 4 Mo).")
 
 
 def search_web(query: str, source_type: Literal["official", "issues", "other"] = "official") -> str:
@@ -2377,6 +2503,9 @@ def apply_steering(messages: list) -> list:
 
 
 def routing_billing_status() -> dict:
+    if AI_PROVIDER == 'deepseek':
+        # Account balance is displayed independently; it never gates routing.
+        return {'provider': 'deepseek', 'available': False, 'currency': 'USD'}
     cached = read_billing_cache()
     if cached and cached.get("project") == os.environ.get("OVH_CLOUD_PROJECT"):
         age = time.time() - float(cached.get("cached_at", 0) or 0)
@@ -2413,6 +2542,8 @@ def usable_context_window(window: int) -> int:
 
 
 def current_limits(card=None, *, complex_task=False, overhead=0, context_budget=None):
+    if AI_PROVIDER == 'deepseek' and not card:
+        card = next(item for item in fetch_model_catalog() if item['id'] == DEFAULT_MODEL)
     return resolve_limits(card, complex_task=complex_task, overhead=overhead, context_budget=context_budget,
         settings={'OVH_AGENT_CONTEXT_TOKENS': CONTEXT_TOKEN_CAP,
                   'OVH_AGENT_CONTEXT_RESERVE_TOKENS': CONTEXT_RESERVE_TOKENS,
@@ -2434,6 +2565,9 @@ def generation_settings(model_id: str, prompt: str, analysis: dict | None = None
     # on the first request. Qwen 3.5/3.6 expose reasoning but no effort controls;
     # an explicit empty list must not inherit GPT's low/medium knob.
     card = next((item for item in fetch_model_catalog() if item["id"] == model_id), {})
+    if AI_PROVIDER == 'deepseek':
+        # Let DeepSeek choose reasoning effort; use its advertised output ceiling.
+        return {'max_tokens': card['max_completion_tokens'], 'timeout': None}
     capabilities = model_capabilities(model_id)
     if capabilities["reasoning"]:
         effort = "medium" if complex_task else "low"
@@ -2521,6 +2655,9 @@ def publish_budget(status):
 
 
 def current_budget_status():
+    if AI_PROVIDER == 'deepseek':
+        return {'provider': 'deepseek', 'currency': 'USD', 'blocked': False,
+                'enforced': False, 'periods': {}, 'pending_requests': 0}
     try:
         return budget_ledger().status()
     except (OSError, ValueError, RuntimeError) as error:
@@ -2620,6 +2757,12 @@ def agent_tools() -> list[Tool]:
 
 def get_budgeted_model(model_id):
     """Share provider and budget enforcement between the executor and visual reader."""
+    if AI_PROVIDER == 'deepseek':
+        provider = DeepSeekProvider(api_key=os.environ.get('DEEPSEEK_API_KEY'))
+        # SDK 2.56 predates the new Flash alias. Keep V4's documented thinking
+        # and tool-return contract when using the current official model ID.
+        profile = provider.model_profile('deepseek-v4-flash' if model_id == 'deepseek-flash' else model_id)
+        return OpenAIChatModel(model_id, provider=provider, profile=profile)
     return BudgetedModel(OpenAIChatModel(
                 model_id,
                 provider=ConfiguredOVHProvider(api_key=os.environ.get("OVH_AI_API_KEY") or os.environ.get("OVHCLOUD_API_KEY")),
@@ -2633,14 +2776,28 @@ def get_budgeted_model(model_id):
                 publish=publish_budget)
 
 
+def vision_reader_model() -> str:
+    """Validated reader per provider; never name a model the provider lacks."""
+    override = os.environ.get("OVH_AGENT_VISION_READER", "").strip()
+    if override:
+        return override
+    if AI_PROVIDER == 'deepseek':
+        readers = [item for item in fetch_model_catalog()
+                   if item.get('selectable') and item.get('vision')]
+        if readers:
+            return str(max(readers, key=lambda item: int(item.get('context_length') or 0))['id'])
+    return "Qwen3.6-27B"
+
+
 def extract_visual_context(prompt, images):
     # The 27B reader passed both OCR and multi-image layout checks; the 9B
     # reader miscounted shapes. Do not silently fall back to an unvalidated reader.
-    model = os.environ.get("OVH_AGENT_VISION_READER", "Qwen3.6-27B")
+    model = vision_reader_model()
     card = next((c for c in fetch_model_catalog() if c['id'] == model), {})
-    if (not card.get('selectable') or not card.get('vision')
-            or 'json_schema' not in model_capabilities(model).get('response_formats', [])):
-        raise ValueError(f"Lecteur Vision {model} indisponible ou incompatible avec la sortie structurée.")
+    if not card.get('selectable') or not card.get('vision'):
+        raise ValueError(f"Lecteur Vision {model} indisponible pour ce fournisseur ; joindre le texte de la capture ou changer de fournisseur.")
+    if 'json_schema' not in model_capabilities(model).get('response_formats', []):
+        raise ValueError(f"Lecteur Vision {model} sans sortie structurée sur ce fournisseur ; joindre le texte de la capture ou lire les images avec OVH AI Endpoints.")
     started = time.monotonic()
     emit({"type": "status", "text": f"{model} lit les captures avant le modèle principal…"})
     try:
@@ -2651,7 +2808,7 @@ def extract_visual_context(prompt, images):
     cost = record_model_usage(model, usage.input_tokens, usage.output_tokens)
     emit({"type": "usage", "purpose": "vision", "model": model,
           "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
-          "requests": usage.requests, "cost_eur": cost, "currency": "EUR",
+          "requests": usage.requests, USAGE_COST_FIELD: cost, "currency": PROVIDER_CURRENCY,
           "duration_ms": round((time.monotonic() - started) * 1000)})
     if result.response.finish_reason == "length":
         raise ValueError("Lecture Vision tronquée ; la tâche n’a pas été transmise au modèle principal.")
@@ -2691,7 +2848,8 @@ def get_agent(model_id: str, *, output_validator=None) -> Agent:
             get_budgeted_model(model_id),
             instructions=emoji_instructions(EMOJI_MODE) + execution_instructions(WORKSPACE),
             tools=agent_tools() if model_capabilities(model_id)["tools"] else [],
-            retries=2,
+            # The SDK requires an integer; DeepSeek has no practical retry ceiling.
+            retries=sys.maxsize if AI_PROVIDER == 'deepseek' else 2,
             capabilities=[ProcessHistory(apply_steering), ProcessHistory(task_checkpoint), ProcessHistory(manage_model_context)],
         )
         AGENTS[model_id].instructions(load_infrastructure_instructions)
@@ -2806,6 +2964,7 @@ def update_plan(steps: list[str], current_step: int = 0) -> str:
         return "Erreur outil : 1 à 12 étapes non vides, de 500 caractères maximum."
     if not 0 <= current_step <= len(steps):
         return "Erreur outil : current_step doit être compris entre 0 et le nombre d'étapes."
+    ensure_conversation()
     data = {"steps": [s.strip() for s in steps], "current_step": current_step, "updated_at": now_iso()}
     atomic_write(conversation_dir() / "plan.json", json.dumps(data, ensure_ascii=False))
     emit({"type": "plan_updated", **data, "duration_ms": round((time.monotonic() - started) * 1000)})
@@ -2869,10 +3028,15 @@ async def manage_model_context(ctx: RunContext, messages: list) -> list:
                 settings["openai_reasoning_effort"] = "none"
             elif efforts is None or "low" in efforts:
                 settings["openai_reasoning_effort"] = "low"
-        emit({"type": "status", "text": f"Compression de l’historique : résumé par modèle (délai {SUMMARY_TIMEOUT_SECONDS:g} s), puis secours local si nécessaire…"})
+        summary_timeout = SUMMARY_TIMEOUT_SECONDS
+        if AI_PROVIDER == 'deepseek':
+            settings = generation_settings(model_id, '')
+            summary_timeout = None
+        deadline_text = f" (délai {summary_timeout:g} s)" if summary_timeout is not None else ""
+        emit({"type": "status", "text": f"Compression de l’historique : résumé par modèle{deadline_text}, puis secours local si nécessaire…"})
         summary_started = time.monotonic()
         try:
-            result = await asyncio.wait_for(summarizer.run(source, model_settings=settings), timeout=SUMMARY_TIMEOUT_SECONDS)
+            result = await asyncio.wait_for(summarizer.run(source, model_settings=settings), timeout=summary_timeout)
         except Exception as error:
             # Preserve cancellation semantics (CancelledError is a BaseException).
             # The compactor archives the full protocol before using local excerpts.
@@ -2886,7 +3050,7 @@ async def manage_model_context(ctx: RunContext, messages: list) -> list:
         cost = record_model_usage(model_id, usage.input_tokens, usage.output_tokens)
         emit({"type": "usage", "purpose": "compaction", "model": model_id,
               "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
-              "requests": usage.requests, "cost_eur": cost, "currency": "EUR", "duration_ms": summary_duration_ms})
+              "requests": usage.requests, USAGE_COST_FIELD: cost, "currency": PROVIDER_CURRENCY, "duration_ms": summary_duration_ms})
         if result.response.finish_reason == "length":
             raise ValueError("Résumé tronqué")
         return str(result.output)
@@ -2907,7 +3071,6 @@ async def manage_model_context(ctx: RunContext, messages: list) -> list:
 
 def history_with_memory(history: list, query: str = "", *, include_excerpts: bool = True, context_card=None) -> list:
     # Previous compaction may have merged several system parts into one request.
-    from dataclasses import replace
     from ovh_context import SUMMARY_PREFIX, SUMMARY_VERSION
     cleaned = []
     for message in history:
@@ -2917,7 +3080,9 @@ def history_with_memory(history: list, query: str = "", *, include_excerpts: boo
                           and not p.content.startswith(SUMMARY_PREFIX + SUMMARY_VERSION))))]
         if parts:
             cleaned.append(replace(message, parts=parts))
-    if not include_excerpts:
+    if not include_excerpts and AI_PROVIDER != 'deepseek':
+        # DeepSeek thinking/tool conversations require the complete assistant
+        # messages (including reasoning_content) on subsequent turns.
         # Do not feed the previous model's unverified prose back as evidence for
         # an edit. Preserve user constraints and exact tool calls/results; archive
         # every removed byte so explicit historical inspection remains possible.
@@ -2961,6 +3126,8 @@ def history_with_memory(history: list, query: str = "", *, include_excerpts: boo
 
 
 def prepare_task_context(history: list, prompt: str, image_count: int = 0, *, context_card=None) -> tuple[list, dict]:
+    if AI_PROVIDER == 'deepseek' and not context_card:
+        context_card = next(item for item in fetch_model_catalog() if item['id'] == DEFAULT_MODEL)
     history = strip_prepared_context(history)
     cleaned = []
     for message in history:
@@ -3009,7 +3176,7 @@ def complete_memory_answer(history: list, prompt: str, answer: dict, selection: 
                ModelResponse(parts=[TextPart(content=output)])]
     save_history(history)
     emit({'type':'usage','model':'local-memory','input_tokens':0,'output_tokens':0,
-          'requests':0,'cost_eur':0,'currency':'EUR','local_answer':True,'duration_ms':answer.get('duration_ms')})
+          'requests':0,USAGE_COST_FIELD:0,'currency':PROVIDER_CURRENCY,'local_answer':True,'duration_ms':answer.get('duration_ms')})
     emit({'type':'response','text':output,'source':'project-memory'})
     save_task_state(status='completed',local_answer=True,source=answer['source'])
     return history
@@ -3065,8 +3232,11 @@ def delete_archive(conversation_id: str) -> bool:
     was_current = conversation_id == CONVERSATION_ID
     # Remove the legacy duplicate too, so it cannot be imported again.
     messages = target / "messages.json"
-    if SESSION_FILE.exists() and messages.exists() and SESSION_FILE.read_bytes() == messages.read_bytes():
-        SESSION_FILE.unlink()
+    try:
+        if SESSION_FILE.read_bytes() == messages.read_bytes():
+            SESSION_FILE.unlink(missing_ok=True)
+    except FileNotFoundError:
+        pass  # A concurrently removed legacy duplicate cannot be reimported.
     shutil.rmtree(target)
     project_memory=ProjectMemory.for_conversation(target)
     if project_memory: project_memory.invalidate()
@@ -3087,7 +3257,14 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
     revision_before = archive_revision(conversation_id)
     try:
         for line in events_file.read_text(encoding="utf-8").splitlines():
-            event = json.loads(line)
+            try:
+                event = json.loads(line)
+            except ValueError:
+                revision_before = ""
+                continue
+            if not isinstance(event, dict):
+                revision_before = ""
+                continue
             if timeline_only:
                 items.append({key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose",
                               "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering") if key in event})
@@ -3160,7 +3337,7 @@ def prepare_images(raw_images: object) -> tuple[list[BinaryContent], list[dict[s
             raise ValueError("Formats acceptés : JPEG, PNG, WebP et GIF.")
         try:
             data = base64.b64decode(match.group(2), validate=True)
-        except (ValueError, base64.binascii.Error) as error:
+        except (ValueError, binascii.Error) as error:
             raise ValueError(f"L’image {index + 1} est illisible.") from error
         if not data:
             raise ValueError(f"L’image {index + 1} est vide.")
@@ -3201,7 +3378,7 @@ def save_snapshot(html: str, full_access: bool, model: str, expected_revision: s
     if not expected_revision or expected_revision != archive_revision():
         return
     snapshot_file = conversation_dir() / "snapshot.json"
-    if len(html) > 8 * 1024 * 1024:
+    if len(html) > 8 * 1024 * 1024 or len(html.encode('utf-8')) > 16 * 1024 * 1024:
         return
     atomic_write(snapshot_file, json.dumps({
         "html": html,
@@ -3360,12 +3537,15 @@ def main_json_lines() -> None:
     initial_snapshot = None if read_task_state().get("status") in {"running", "interrupted"} else read_snapshot()
     snapshot_model = str((initial_snapshot or {}).get("model", AUTO_MODEL))
     selected_model = load_selected_model(snapshot_model)
+    if AI_PROVIDER == 'deepseek' and selected_model != AUTO_MODEL and not is_selectable_model(selected_model):
+        selected_model = AUTO_MODEL
     if not re.fullmatch(r"[0-9A-Za-z_.-]+", selected_model):
         selected_model = DEFAULT_MODEL
     requests: queue.Queue[dict] = queue.Queue()
     threading.Thread(target=stdin_reader, args=(requests,), daemon=True).start()
     emit({
         "type": "ready",
+        "provider": AI_PROVIDER,
         "model": selected_model,
         "workspace": str(WORKSPACE),
         "history": bool(history),
@@ -3582,8 +3762,10 @@ def main_json_lines() -> None:
             prompt = "Analyse cette image."
         requested_model = normalize_model_selection(request.get("model", selected_model))
         if requested_model != AUTO_MODEL and not is_selectable_model(requested_model):
-            emit({"type": "error", "text": f"Le modèle {requested_model} n’est pas compatible avec le chat agent."})
-            continue
+            # A model persisted under the other provider is not a user error on
+            # this one: route automatically and say so instead of blocking.
+            emit({"type": "status", "text": f"Modèle {requested_model} indisponible pour ce fournisseur · routage automatique."})
+            requested_model = AUTO_MODEL
         selected_model = requested_model
         save_selected_model(selected_model)
         FULL_ACCESS = bool(request.get("full_access", False))
@@ -3731,8 +3913,8 @@ def main_json_lines() -> None:
                     "type": "usage", "model": previous_model,
                     "input_tokens": primary_usage.input_tokens,
                     "output_tokens": primary_usage.output_tokens,
-                    "requests": primary_usage.requests, "cost_eur": primary_cost,
-                    "currency": "EUR", "fallback_attempt": True,
+                    "requests": primary_usage.requests, USAGE_COST_FIELD: primary_cost,
+                    "currency": PROVIDER_CURRENCY, "fallback_attempt": True,
                     "duration_ms": round((time.monotonic() - stream.started) * 1000),
                     "first_text_ms": stream.first_text_ms,
                     "reasoning_effort": settings.get("openai_reasoning_effort"),
@@ -3765,8 +3947,8 @@ def main_json_lines() -> None:
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
                 "requests": usage.requests,
-                "cost_eur": request_cost,
-                "currency": "EUR",
+                USAGE_COST_FIELD: request_cost,
+                "currency": PROVIDER_CURRENCY,
                 "duration_ms": round((time.monotonic() - stream.started) * 1000),
                 "first_text_ms": stream.first_text_ms,
                 "reasoning_effort": settings.get("openai_reasoning_effort"),

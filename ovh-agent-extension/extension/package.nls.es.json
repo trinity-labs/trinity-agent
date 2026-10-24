@@ -3,6 +3,7 @@
   "ovhAgent.configureKey.title": "TRINITY Agent: Configurar la clave OVH",
   "ovhAgent.configureBilling.title": "TRINITY Agent: Configurar saldo y facturación",
   "ovhAgent.selectProject.title": "Seleccionar o crear un proyecto",
+  "ovhAgent.selectProvider.title": "TRINITY Agent: Elegir el proveedor de inferencia",
   "ovhAgent.editProfile.title": "Editar el contexto de usuario compartido",
   "ovhAgent.performanceMode.description": "Rendimiento local. El selector del chat aplica cambios inmediatamente; los ajustes aquí se aplican al siguiente inicio del motor.",
   "ovhAgent.performanceMode.auto": "Dimensionamiento automático con límites moderados.",

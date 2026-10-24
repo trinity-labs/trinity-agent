@@ -493,6 +493,44 @@ class Verification(unittest.TestCase):
         self.assertEqual(self.file.read_bytes(), before)
         self.assertFalse(created.exists())
 
+    def test_recovered_checks_keep_frozen_protection_and_detect_new_glob_input(self):
+        parts = self.workspace/'parts'
+        parts.mkdir()
+        (parts/'one.json').write_text('1')
+        self.check.write_text("from pathlib import Path\nassert all(p.read_text()=='1' for p in Path('parts').glob('*.json'))\n")
+        document = json.loads(self.policy.read_text())
+        document['checks'][0]['paths'].append('parts/*.json')
+        self.policy.write_text(json.dumps(document))
+        self.edit(2)
+        self.guard.require_verified()
+        recovered = ChangeGuard.recover(self.workspace, self.guard.directory)
+        self.assertEqual(recovered.require_verified()['status'], 'passed')
+        (parts/'new.json').write_text('2')
+        with self.assertRaises(VerificationError):
+            recovered.require_verified()
+        self.check.write_text("print('weakened test')\n")
+        recovered = ChangeGuard.recover(self.workspace, self.guard.directory)
+        with self.assertRaises(VerificationError):
+            recovered.require_verified()
+        self.assertEqual(self.check.read_text(), "print('weakened test')\n", 'Do not overwrite external edits')
+
+    def test_test_mutating_its_reference_never_receives_success_or_allows_edit(self):
+        original = self.file.read_bytes()
+        def runner(*args):
+            self.check.write_text("print('changed during check')\n")
+            return {'passed':True,'exit_code':0,'output':'OK','duration_ms':1}
+        self.guard.runner = runner
+        with self.assertRaises(VerificationError):
+            self.edit(2)
+        self.assertEqual(self.file.read_bytes(), original)
+        self.assertFalse(self.guard.state['receipts'][-1]['passed'])
+        self.assertTrue(self.guard.state['receipts'][-1]['changed_during_check'])
+
+    def test_bash_mentioned_in_comment_does_not_switch_shell_validator(self):
+        with self.assertRaises(VerificationError):
+            check_syntax(Path('script.sh'), '# bash is not the interpreter\nitems=(one two)\n')
+        self.assertEqual(check_syntax(Path('script.sh'), '#!/bin/bash\nitems=(one two)\n'), 'bash')
+
     def test_original_permissions_and_user_changes_survive_multiple_edits(self):
         self.file.chmod(0o750)
         before = self.file.read_bytes()
@@ -603,7 +641,8 @@ class Verification(unittest.TestCase):
             self.assertIn('modifié', backend.edit_file('app.py', 'VALUE = 1', 'VALUE = 3'))
             with self.assertRaises(ModelRetry):
                 backend.validate_task_output('Everything is fixed.')
-            self.assertIn('écrit', backend.write_file('app.py', 'VALUE = 2\n'))
+            self.assertFalse(json.loads(backend.write_file('app.py', 'VALUE = 2\n'))['executed'])
+            self.assertIn('modifié', backend.edit_file('app.py', 'VALUE = 3', 'VALUE = 2'))
             summary = backend.validate_task_output('Checks passed.')
             self.assertTrue(summary.startswith('Checks passed.'))
             self.assertIn('Bilan des contrôles calculé par le backend', summary)

@@ -11,7 +11,7 @@ function setup(settings={},env={}) {
   const config={get:key=>settings[key],inspect:key=>({globalValue:settings[key]}),update:async(key,value)=>{updates.push({key,value});settings[key]=value;}};
   const vscode={commands:{executeCommand:name=>executed.push(name)},workspace:{workspaceFolders:[{uri:{fsPath:root}}],getConfiguration:()=>config},Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'},ConfigurationTarget:{Global:1}};
   const spawn=(command,args,options)=>{
-    spawned.push({command,args,mode:options.env.OVH_AGENT_PERFORMANCE_MODE});
+    spawned.push({command,args,mode:options.env.OVH_AGENT_PERFORMANCE_MODE,env:options.env});
     const process=new EventEmitter();
     for(const name of ['stdout','stderr']){process[name]=new EventEmitter();process[name].setEncoding=()=>{};}
     process.stdin={writable:true,write:line=>sent.push(JSON.parse(line))};
@@ -53,6 +53,16 @@ test('launch inherits performance setting over environment and invalid settings 
     assert.equal(spawned[0].mode,expected);
     assert.equal(spawned.length,1);
   }
+});
+
+test('DeepSeek launch selects its key and skips OVH billing credentials',async()=>{
+  const {provider,spawned}=setup({backendPath:path.join(root,'extension.js'),provider:'deepseek'});
+  provider.windowLock={};provider.billingCredentials=async()=>{throw Error('OVH billing must not be requested');};
+  assert.equal(await provider.startAgent(),true);
+  assert.equal(spawned[0].env.OVH_AGENT_PROVIDER,'deepseek');
+  assert.equal(spawned[0].env.DEEPSEEK_API_KEY,'test-only-key');
+  assert.equal(spawned[0].env.OVH_AI_API_KEY,undefined);
+  assert.equal(spawned[0].env.OVHCLOUD_API_KEY,undefined);
 });
 
 test('chat selector displays actual resource profile, waits for acknowledgement and recovers from errors',t=>{

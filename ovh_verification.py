@@ -5,7 +5,7 @@ Original dirty working files are preserved; rollback never resets a repository.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import fnmatch
 import glob
@@ -105,7 +105,8 @@ def check_syntax(path: Path, content: str) -> str:
                     return "JavaScript"
             raise VerificationError(result.stderr[-2000:])
         if path.suffix == ".sh":
-            shell = "bash" if "bash" in content.split("\n", 1)[0] else "sh"
+            first = content.split("\n", 1)[0]
+            shell = "bash" if re.match(r"#!\s*(?:/\S+/)?(?:env\s+(?:-S\s+)?)?bash\b", first) else "sh"
             result = subprocess.run([shell, "-n"], input=content, text=True,
                                     capture_output=True, timeout=15)
             if result.returncode:
@@ -206,6 +207,13 @@ class ChangeGuard:
 
     def _save(self):
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.state['verification_context'] = {
+            'checks': {key: {**asdict(check), 'root': str(check.root),
+                            'project': str(check.project) if check.project else None}
+                       for key, check in self.checks.items()},
+            **{name: sorted(map(str, getattr(self, name))) for name in
+               ('projects', 'explicit_policies', 'observed', 'inspected_directories')},
+            'require_checks': self.require_checks, 'task_intent': self.task_intent}
         atomic_write(self.directory / "journal.json", json.dumps(self.state, ensure_ascii=False, indent=2))
 
     def _path(self, path: Path) -> Path:
@@ -351,6 +359,8 @@ class ChangeGuard:
         if receipt.get("environment_changed"):
             return False
         check = self.checks.get(receipt.get("key"))
+        if check is None:
+            return False  # A receipt without its frozen check cannot be refreshed.
         # Newly observed inputs expand the evidence scope and invalidate old receipts.
         if check and self._evidence_files(check) != receipt.get("fingerprints"):
             return False
@@ -608,9 +618,13 @@ class ChangeGuard:
                       "output": "Contrôles de référence modifiés : " + ", ".join(altered), "duration_ms": 0}
         else:
             result = self.runner(check.argv, check.root, check.timeout)
+        changed = before != self._evidence_files(check)
+        if changed:
+            result = {**result, 'passed': False, 'output': result.get('output', '')
+                + '\nEntrées modifiées pendant le contrôle ; résultat non validé.'}
         receipt = {**result, **test_count(result), "id": uuid.uuid4().hex, "check": check.name, "key": key,
                    "phase": phase, "argv": check.argv, "cwd": str(check.root), "kind": check.kind,
-                   "fingerprints": before, "changed_during_check": before != self._evidence_files(check),
+                   "fingerprints": before, "changed_during_check": changed,
                    "change_versions": {p: c["written"] for p, c in self.state["changes"].items()},
                    "timestamp": datetime.now(timezone.utc).isoformat()}
         self.state["receipts"].append(receipt)
@@ -644,6 +658,9 @@ class ChangeGuard:
                 for check_key, check in applicable.items():
                     if check_key not in self.state["baseline"]:
                         self.state["baseline"][check_key] = self._execute(check_key, check, "before")
+                if any(digest(contents(Path(name))) != expected
+                       for check in applicable.values() for name, expected in check.protected.items()):
+                    raise VerificationError('Contrôles de référence modifiés pendant la vérification ; écriture refusée.')
                 # Tests may run arbitrary project code; check freshness again afterwards.
                 if contents(path) != original:
                     raise VerificationError("Le fichier a changé pendant les contrôles préalables.")
@@ -800,4 +817,24 @@ class ChangeGuard:
             if Path(item["backup"]).name != item["backup"]:
                 raise VerificationError("Chemin de sauvegarde invalide.")
         guard.state = data
+        frozen = data.get('verification_context')
+        if frozen is None:
+            # Old journals retain rollback data but cannot re-freeze modified
+            # test definitions as if they were the pre-interruption references.
+            guard.require_checks = bool(data.get('receipts'))
+            guard.state['report'] = None
+        else:
+            try:
+                for key, item in frozen['checks'].items():
+                    check = Check(**{**item, 'root': guard._path(Path(item['root'])),
+                        'project': guard._path(Path(item['project'])) if item.get('project') else None})
+                    for name in check.protected:
+                        guard._path(Path(name))
+                    guard.checks[key] = check
+                for name in ('projects', 'explicit_policies', 'observed', 'inspected_directories'):
+                    setattr(guard, name, {guard._path(Path(path)) for path in frozen[name]})
+                guard.require_checks = bool(frozen['require_checks'])
+                guard.task_intent = frozen['task_intent']
+            except (KeyError, TypeError, ValueError) as error:
+                raise VerificationError('Contexte de vérification sauvegardé invalide.') from error
         return guard

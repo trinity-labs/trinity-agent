@@ -2,7 +2,8 @@ TRINITY Agent
 =============
 
 Independent AI coding and system-administration assistant for VS Code and
-code-server, using OVHcloud AI Endpoints and a local Python tool runner.
+code-server, using OVHcloud AI Endpoints or the official DeepSeek API and a local
+Python tool runner.
 
 This is an independent implementation inspired by coding-assistant workflows.
 It is not an OpenAI product and is not affiliated with or endorsed by OpenAI.
@@ -66,6 +67,10 @@ reduce mounts/credentials for less-trusted work.
 Configuration
 -------------
 
+* ``ovhAgent.provider`` (VS Code User settings): ``ovhcloud`` or ``deepseek``.
+  CLI deployments select the same provider with ``OVH_AGENT_PROVIDER``.
+  The provider is selected when the backend starts; finish the active task
+  before restarting the extension to change providers.
 * ``OVH_AGENT_NAME``: public extension name.
 * ``OVH_AGENT_PRIMARY_COLOR``: primary color, ``#RRGGBB``.
 * ``OVH_AGENT_LANG``: ``auto``, ``fr``, ``en``, ``de`` or ``es``.
@@ -76,6 +81,25 @@ Configuration
 AI and billing credentials are read from ``/run/secrets`` or server secret
 files. Never commit tokens, passwords, auth.json, .env, SSH keys, conversation
 archives, model caches, IDE user profiles, or installed extensions.
+
+DeepSeek uses ``DEEPSEEK_API_KEY`` and ``https://api.deepseek.com`` independently
+of OVH credentials and endpoint settings. Configure the key through the extension
+after selecting DeepSeek, or supply it through the environment or the existing
+server-secret directory. The optional Docker secret can be mounted at
+``/run/secrets/DEEPSEEK_API_KEY``. Automatic routing starts with the economical
+compatible model; Flash and Pro can also be selected explicitly.
+
+For DeepSeek, local inference spending budgets, request-count ceilings, configured
+context/output token ceilings, repeated-tool-failure cutoffs and the model
+request timeout are disabled. Tool corrections are no longer cut off after two
+SDK retries. The
+API's advertised context/output capacities, account balance and rate limits still
+apply. Context compaction remains necessary when the provider window is full.
+File backups, permission checks, tool validation and command deadlines remain
+active. DeepSeek tool conversations preserve the reasoning returned by the API
+between turns. Costs are displayed in USD as conservative peak/cache-miss
+estimates; the displayed account balance comes directly from DeepSeek. Actual
+charges may be lower because of caching or off-peak pricing.
 
 Development checks
 ------------------

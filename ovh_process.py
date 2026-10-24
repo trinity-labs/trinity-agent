@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import selectors
+import shlex
 import shutil
 import signal
 import subprocess
@@ -29,6 +30,56 @@ _UNSAFE_ENV = {'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', '
                'BASH_ENV', 'ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'PYTHONSTARTUP', 'PYTHONPATH', 'PYTHONHOME',
                # Commands are new processes without code-server's parent IPC.
                'CODE_SERVER_PARENT_PID'}
+
+
+def command_is_destructive(command, _depth=0):
+    """Recognize obvious destructive commands, not arbitrary shell semantics.
+
+    This is a typo guard, not a security boundary: expansion, aliases, scripts
+    and indirect execution still require the executor's approval/sandbox policy.
+    Quoted prose containing command names must not be treated as execution.
+    """
+    if _depth > 8:
+        return True
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|()\n')
+        lexer.whitespace = ' \t\r'
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return True
+    words = []
+    for token in tokens + [';']:
+        if token and all(c in ';&|()\n' for c in token):
+            if words:
+                # Unwrap common literal launchers. This deliberately makes no
+                # claim to resolve arbitrary sudo/env option arguments.
+                while words and (words[0] in {'sudo', 'command', 'exec', 'nohup', 'then', 'do', 'env'}
+                        or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=.*', words[0])):
+                    words.pop(0)
+                if words:
+                    binary, args = Path(words[0]).name, words[1:]
+                    if binary in {'shutdown', 'reboot', 'halt', 'poweroff', 'mkfs'} or binary.startswith('mkfs.'):
+                        return True
+                    if binary == 'dd' and any(arg.startswith('if=') for arg in args):
+                        return True
+                    if binary == 'rm':
+                        options = args[:args.index('--')] if '--' in args else args
+                        recursive = any(arg == '--recursive' or arg.startswith('-') and not arg.startswith('--')
+                                        and ('r' in arg or 'R' in arg) for arg in options)
+                        if recursive and any(arg.startswith('/') and os.path.normpath('/' + arg.lstrip('/')) == '/' for arg in args):
+                            return True
+                    if binary in {'sh', 'bash', 'dash', 'ash', 'zsh'}:
+                        for index, arg in enumerate(args[:-1]):
+                            if arg.startswith('-') and not arg.startswith('--') and 'c' in arg:
+                                if command_is_destructive(args[index+1], _depth+1):
+                                    return True
+                    if binary == ':' and token == '()':
+                        return True
+            words = []
+        else:
+            words.append(token)
+    return False
 
 
 def sanitized_environment(environment=None):

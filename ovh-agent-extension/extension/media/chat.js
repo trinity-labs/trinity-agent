@@ -434,6 +434,7 @@ function priceLabel(model) {
 
 function modelAvailabilityLabel() {
   const models = modelCatalog.filter((item) => item.id !== "auto-balanced" && item.kind !== "auto");
+  if (models.some(item => item.provider === "deepseek")) return `DeepSeek · ${models.filter(item => item.selectable).length} / ${models.length}`;
   return t("{0} modèles disponibles dans l’agent · {1} au catalogue OVHcloud", models.filter((item) => item.selectable).length, models.length);
 }
 
@@ -1840,6 +1841,14 @@ function formatMoney(value, currency = "EUR") {
 
 function applyBillingStatus(data, announce = true) {
   if (Number.isFinite(data.refresh_seconds) && data.refresh_seconds > 0) scheduleBillingRefresh(data.refresh_seconds);
+  if (data.provider === "deepseek") {
+    liveBalance.textContent = data.available ? `DeepSeek · ${formatMoney(data.credit_available, data.currency)}` : "DeepSeek · —";
+    billing.title = liveBalance.title = data.available ? `DeepSeek · ${data.last_update}` : (data.error || "DeepSeek");
+    billing.classList.toggle("connected", Boolean(data.available));
+    billing.classList.toggle("failed", !data.available);
+    if (announce && data.error) setStatus(data.error, true);
+    return;
+  }
   if (data.pending) {
     billing.classList.remove("connected");
     billing.classList.add("failed");
@@ -2096,7 +2105,7 @@ function submit() {
   prompt.style.height = "auto";
   pendingImages = [];
   renderPendingImages();
-  setBusy(true, t("Connexion à OVHcloud…"));
+  setBusy(true, t("Connexion au fournisseur…"));
   vscode.postMessage({ type: "prompt", text: displayText, fullAccess, model: selectedModel, images });
 }
 
@@ -2168,7 +2177,7 @@ clear.addEventListener("click", () => {
 document.getElementById("project-picker")?.addEventListener("click", () => vscode.postMessage({type:"selectProject"}));
 configure.addEventListener("click", () => vscode.postMessage({ type: "configureKey" }));
 billing.addEventListener("click", () => {
-  setStatus(t("Actualisation du solde OVHcloud…"));
+  setStatus(t("Actualisation du solde…"));
   vscode.postMessage({ type: "billing" });
 });
 history.addEventListener("click", () => {
@@ -2192,7 +2201,7 @@ modelPicker.addEventListener("click", () => {
 });
 closeModels.addEventListener("click", () => { modelPanelActive = false; modelPanel.hidden = true; });
 refreshModels.addEventListener("click", () => {
-  setStatus(t("Actualisation du catalogue OVHcloud…"));
+  setStatus(t("Actualisation du catalogue…"));
   vscode.postMessage({ type: "listModels", refresh: true });
 });
 modelSearch.addEventListener("input", renderModels);
@@ -2395,6 +2404,13 @@ window.addEventListener("message", ({ data }) => {
     ensureRun();
     setBusy(true, data.text);
   }
+  if (data.type === "provider_switched") {
+    // The backend restarts with the new provider: its model and balance replace
+    // the previous provider's selection instead of being ignored as a manual pick.
+    if (!data.pending) modelSelectionChanged = false;
+    setStatus(data.pending ? t("Fournisseur {0} · appliqué à la fin de la tâche", data.provider)
+      : t("Fournisseur : {0}", data.provider));
+  }
   if (data.type === "session_busy") {
     stopping = false;
     pendingSubmission = null;
@@ -2521,7 +2537,7 @@ window.addEventListener("message", ({ data }) => {
     setBusy(false, "");
   }
   if (data.type === "cleared") { lastRoutedModel = ""; updateModelButton(); activeArchiveId = data.conversation || ""; setBusy(false, t("Nouvelle conversation")); }
-  if (data.type === "configured") setBusy(false, t("Clé OVH enregistrée de façon sécurisée"));
+  if (data.type === "configured") setBusy(false, t("Clé API enregistrée de façon sécurisée"));
   if (data.type === 'performance_status') {
     showPerformance(data.mode, data);
     setStatus(t('Performances locales : {0}', data.mode === 'max' ? 'Max' : 'Auto'));

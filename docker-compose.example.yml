@@ -18,6 +18,7 @@ services:
       OVH_AGENT_UPDATE_INTERVAL: "${OVH_AGENT_UPDATE_INTERVAL:-21600}"
       # OVH API url (or other provider)
       OVH_AI_BASE_URL: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
+      OVH_AGENT_PROVIDER: "${OVH_AGENT_PROVIDER:-ovhcloud}"
       # Budgets auto calculés depuis les capacités du modèle ; entier = plafond explicite
       OVH_AGENT_CONTEXT_TOKENS: "${OVH_AGENT_CONTEXT_TOKENS:-auto}"
       # Marge de sécurité pour l’estimation des tokens ; ce n’est pas une allocation

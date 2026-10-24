@@ -33,7 +33,7 @@ READ_ONLY_TOOLS = frozenset({'read_file', 'list_files', 'search_text', 'read_mem
     'search_project_memory', 'read_project_memory', 'inspect_repository', 'workflow_status',
     'inspect_task_execution', 'verify_task_acceptance', 'discover_tools', 'search_web', 'read_webpage',
     'inspect_styles', 'inspect_json', 'inspect_conversation_archives', 'inspect_environment', 'read_local_skill',
-    'verification_plan', 'ask_user_questions'})
+    'verification_plan', 'verify_extension_delivery', 'ask_user_questions'})
 
 
 def command_is_read_only(command):
@@ -547,6 +547,8 @@ class WorkflowController:
         failed_checks = [item['check'] for item in report['checks'] if item.get('status') == 'failed']
         self.incomplete = bool(unresolved or running or failed_files or failed_checks or report['criteria_status'] not in {'passed', 'not_configured'})
         result = {'incomplete': self.incomplete, 'unresolved': unresolved, 'running': running, 'failed_checks': failed_checks,
+                  'historical_unresolved': [identifier for identifier in unresolved
+                      if identifier in self.initial_action_ids | self.initial_transaction_ids],
                   'failed_files': failed_files, 'command_status': report['command_status'], 'test_status': report['test_status'],
                   'criteria_status': report['criteria_status'], 'contract_satisfied': report['contract_satisfied'],
                   'natural_language_goal_verified': False, 'satisfaction_scope': 'configured_contract_only'}

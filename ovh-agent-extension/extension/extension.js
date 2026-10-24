@@ -49,8 +49,12 @@ function persistServerSecret(name, value) {
   } finally { fs.closeSync(fd); }
   return secret;
 }
-function readPersistentKey() { return readServerSecret("OVH_AI_API_KEY"); }
-function persistKey(value) { return persistServerSecret("OVH_AI_API_KEY", value); }
+function inferenceProvider() {
+  return vscode.workspace.getConfiguration("ovhAgent").get("provider", process.env.OVH_AGENT_PROVIDER || "ovhcloud") === "deepseek" ? "deepseek" : "ovhcloud";
+}
+function inferenceSecretName() { return inferenceProvider() === "deepseek" ? "DEEPSEEK_API_KEY" : "OVH_AI_API_KEY"; }
+function readPersistentKey() { return readServerSecret(inferenceSecretName()); }
+function persistKey(value) { return persistServerSecret(inferenceSecretName(), value); }
 
 
 class OvhAgentViewProvider {
@@ -69,6 +73,7 @@ class OvhAgentViewProvider {
     this.billingChannel = new BillingChannel();
     this.startPromise = undefined;
     this.deleting = false;
+    this.providerRestartPending = false;
     this.store = new ArchiveStore(this.workspace);
     try {
       const remembered=state?.get("ovhAgent.projectRoot") ?? new ProjectStore(this.store.dataRoot).active(initial)?.root;
@@ -422,7 +427,7 @@ class OvhAgentViewProvider {
 
   async configureKey() {
     const apiKey = await vscode.window.showInputBox({
-      title: t("Clé OVHcloud AI Endpoints"),
+      title: inferenceProvider() === "deepseek" ? "DeepSeek API key" : t("Clé OVHcloud AI Endpoints"),
       prompt: t("La clé sera conservée sur le serveur dans un fichier privé, même après redémarrage."),
       password: true,
       ignoreFocusOut: true,
@@ -431,10 +436,10 @@ class OvhAgentViewProvider {
     try {
       persistKey(apiKey);
     } catch {
-      this.post({ type: "error", text: t("Impossible d’enregistrer la clé OVH sur le serveur. Vérifie les droits du dossier de secrets serveur.") });
+      this.post({ type: "error", text: t("Impossible d’enregistrer la clé API sur le serveur. Vérifie les droits du dossier de secrets serveur.") });
       return false;
     }
-    await this.secrets.delete("ovhAgent.apiKey");
+    await this.secrets.delete(inferenceProvider() === "deepseek" ? "ovhAgent.deepseekApiKey" : "ovhAgent.apiKey");
     this.stopAgent(false);
     this.post({ type: "configured" });
     return true;
@@ -448,6 +453,7 @@ class OvhAgentViewProvider {
   }
 
   async configureBilling() {
+    if (inferenceProvider() === "deepseek") return this.refreshBilling(false);
     const region = await vscode.window.showQuickPick([
       { label: "Europe (OVHcloud)", description: "eu.api.ovh.com", baseUrl: "https://eu.api.ovh.com/1.0" },
       { label: "Canada (OVHcloud)", description: "ca.api.ovh.com", baseUrl: "https://ca.api.ovh.com/1.0" },
@@ -659,23 +665,23 @@ class OvhAgentViewProvider {
     try {
       apiKey = readPersistentKey();
       if (!apiKey) {
-        try { apiKey = await this.secrets.get("ovhAgent.apiKey"); } catch {}
+        try { apiKey = await this.secrets.get(inferenceProvider() === "deepseek" ? "ovhAgent.deepseekApiKey" : "ovhAgent.apiKey"); } catch {}
         if (apiKey) persistKey(apiKey);
       }
     } catch {
-      this.post({ type: "error", text: t("Impossible de lire ou conserver la clé OVH sur le serveur.") });
+      this.post({ type: "error", text: t("Impossible de lire ou conserver la clé API sur le serveur.") });
       return false;
     }
     if (!apiKey) {
       const configured = await this.configureKey();
       if (!configured) {
-        this.post({ type: "error", text: t("Aucune clé OVH n’est configurée.") });
+        this.post({ type: "error", text: t("Aucune clé API n’est configurée pour ce fournisseur.") });
         return false;
       }
       apiKey = readPersistentKey();
     }
     const workspace = this.workspace;
-    const billing = await this.billingCredentials();
+    const billing = inferenceProvider() === "deepseek" ? null : await this.billingCredentials();
     if (!this.windowLock || this.windowClosing) return false;
     this.decoder.reset();
     const agent = spawn(agentPath(), ["--json-lines"], {
@@ -684,8 +690,10 @@ class OvhAgentViewProvider {
         ...process.env,
         OVH_AGENT_WORKSPACE: workspace,
         OVH_AGENT_PERFORMANCE_MODE: this.performanceMode(),
-        OVH_AI_API_KEY: apiKey,
-        OVHCLOUD_API_KEY: apiKey,
+        OVH_AGENT_PROVIDER: inferenceProvider(),
+        ...(inferenceProvider() === "deepseek" ? { DEEPSEEK_API_KEY: apiKey } : {
+          OVH_AI_API_KEY: apiKey, OVHCLOUD_API_KEY: apiKey,
+        }),
         ...(billing ? {
           OVH_APPLICATION_KEY: billing.applicationKey,
           OVH_APPLICATION_SECRET: billing.applicationSecret,
@@ -773,6 +781,11 @@ class OvhAgentViewProvider {
         if (message.type === "session_busy" && this.agent) this.agent.sessionBusy = true;
         if (message.type === "status") { this.responseText = ""; this.busy = true; }
         if (["response", "error", "idle"].includes(message.type)) this.busy = false;
+        if (message.type === "idle" && this.providerRestartPending) {
+          // A provider change requested during a task waits for this idle point.
+          this.providerRestartPending = false;
+          void this.stopAgent(false);
+        }
         if (["cleared", "error", "idle"].includes(message.type)) this.clearingConversation = false;
         if (message.type === "followup_ack" && message.already_started && message.running === false) this.busy = false;
         if (message.type === "delta") {
@@ -893,6 +906,30 @@ class OvhAgentViewProvider {
     }
   }
 
+  async providerChanged() {
+    const provider = inferenceProvider();
+    if (this.busy || this.clearingConversation) {
+      this.providerRestartPending = true;
+      this.post({ type: "provider_switched", provider, pending: true });
+      return;
+    }
+    this.providerRestartPending = false;
+    await this.stopAgent(false);
+    // The next message starts the backend with the newly selected provider.
+    this.post({ type: "provider_switched", provider });
+  }
+
+  async selectProvider() {
+    const picked = await vscode.window.showQuickPick([
+      { label: "OVHcloud AI Endpoints", description: "oai.endpoints.kepler.ai.cloud.ovh.net", value: "ovhcloud" },
+      { label: "DeepSeek", description: "api.deepseek.com", value: "deepseek" },
+    ], { title: t("Fournisseur d’inférence"), ignoreFocusOut: true });
+    if (!picked) return false;
+    await vscode.workspace.getConfiguration("ovhAgent").update("provider", picked.value, vscode.ConfigurationTarget.Global);
+    // The configuration listener applies the change; a same-value update is a no-op.
+    return true;
+  }
+
   stopAgent(notify = true) {
     if (this.stopPromise) return this.stopPromise;
     const starting = this.startPromise;
@@ -953,6 +990,11 @@ async function activate(context) {
     await vscode.commands.executeCommand("workbench.view.extension.ovhAgent");
     await provider.selectProject();
   });
+  const selectProvider = vscode.commands.registerCommand("ovhAgent.selectProvider", () => provider.selectProvider());
+  const providerChange = vscode.workspace.onDidChangeConfiguration((event) => {
+    if (!event.affectsConfiguration("ovhAgent.provider")) return;
+    void provider.providerChanged();
+  });
   const editProfile = vscode.commands.registerCommand("ovhAgent.editProfile", () => provider.editProfile());
   const configureBilling = vscode.commands.registerCommand("ovhAgent.configureBilling", () => provider.configureBilling());
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
@@ -961,7 +1003,7 @@ async function activate(context) {
   status.tooltip = `Ouvrir le chat ${BRAND_NAME}`;
   status.command = "ovhAgent.start";
   status.show();
-  context.subscriptions.push(registration, start, configure, configureBilling, selectProject, editProfile, status, provider);
+  context.subscriptions.push(registration, start, configure, configureBilling, selectProject, selectProvider, providerChange, editProfile, status, provider);
 }
 
 function deactivate() {}

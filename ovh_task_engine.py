@@ -386,9 +386,9 @@ class FailureTracker:
     failures; an unrelated successful read or paraphrased arguments do not erase
     a no-progress streak for that tool and failure category.
     """
-    def __init__(self, *, exact_limit: int = 2, equivalent_limit: int = 4, max_entries: int = 128):
-        self.exact_limit = max(1, exact_limit)
-        self.equivalent_limit = max(self.exact_limit, equivalent_limit)
+    def __init__(self, *, exact_limit: int | None = 2, equivalent_limit: int | None = 4, max_entries: int = 128):
+        self.exact_limit = None if exact_limit is None else max(1, exact_limit)
+        self.equivalent_limit = None if equivalent_limit is None else max(self.exact_limit or 1, equivalent_limit)
         self.max_entries = max(1, max_entries)
         self.entries = OrderedDict()
         self.lock = threading.Lock()
@@ -400,7 +400,8 @@ class FailureTracker:
             count = sum(entry["count"] for entry in same if entry["key"] == exact)
             categories = {entry["category"] for entry in same}
             equivalent = max((sum(entry["count"] for entry in same if entry["category"] == category) for category in categories), default=0)
-        return {"blocked": count >= self.exact_limit or equivalent >= self.equivalent_limit,
+        return {"blocked": ((self.exact_limit is not None and count >= self.exact_limit)
+                            or (self.equivalent_limit is not None and equivalent >= self.equivalent_limit)),
                 "identical_failures": count, "equivalent_failures": equivalent,
                 "retry_automatically": False}
 

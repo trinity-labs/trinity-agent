@@ -1,12 +1,27 @@
 # Changelog
 
+## 1.17.37 — 2026-10-24
+
+- Cache the DeepSeek account balance before the first conversation exists, so a refresh no longer reports a cache error next to a valid balance.
+- Never replay a model persisted under the other provider: an unavailable selection now routes automatically instead of blocking the next message.
+- Name the provider's own image reader and explain its limits instead of reporting a missing OVHcloud model.
+- Add a "Choose the inference provider" command and restart an idle backend when `ovhAgent.provider` changes; an active task finishes before the switch.
+
+## 1.17.36 — 2026-10-24
+
+- Add the official DeepSeek provider with separate credentials, catalogue, USD estimates and account balance. Preserve reasoning across tool calls and resumed conversations.
+- Disable local inference budgets, request-count/token ceilings, tool-failure cutoffs and model request timeouts for DeepSeek. Remove the SDK's two-retry cutoff; retain provider capacities and file verification.
+- Prevent whole-file replacement through `write_file`; existing files use exact edits, preserving unrelated user content. Allow explicit command deadlines for long builds.
+- Preserve frozen verification policies on recovery, reject changed reference inputs and keep read-only diagnostics available after historical uncertain operations.
+- Fix activity completion, archive recovery, malformed catalogue rows and stale verification state; add regression checks for these failures and the DeepSeek tool protocol.
+
 ## 1.17.35 — 2026-10-24
 
-- Fixed execution handling in ovh-agent.py.
-- Improved resume functionality in ovh_execution.py.
-- Updated request validation logic in ovh_request.py.
-- Added unit tests for execution and resume pathways.
-- Updated documentation for the backend changes.
+- Keep editing tools available when a request preserves only specific files; explicit global read-only requests still prevent edits.
+- Preserve unresolved operations across retries and keep workflow tools available while work is pending.
+- Accept recovery from a failed edit only when it had no side effects and the independent acceptance checks pass.
+- Avoid running project test suites for static audits and make incomplete-task validation idempotent.
+- Load explicitly requested text files as bounded source context and evaluate autonomy scenarios through the production context, tool and validation pipeline.
 
 ## 1.17.34 — 2026-10-23
 

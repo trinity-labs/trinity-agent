@@ -1,8 +1,8 @@
 {
   "name": "ovh-agent",
   "displayName": "TRINITY Agent",
-  "description": "Open-source coding assistant for OVHcloud AI Endpoints: archives, task resumption, steering and queued messages. Self-hosted backend required.",
-  "version": "1.17.35",
+  "description": "Open-source coding assistant for OVHcloud AI Endpoints and DeepSeek: archives, task resumption, steering and queued messages. Self-hosted backend required.",
+  "version": "1.17.37",
   "icon": "media/trinity-icon.png",
   "ovhAgentBranding": {
     "lightThemeIcon": "media/trinity-icon.png",
@@ -19,7 +19,8 @@
   "activationEvents": [
     "onStartupFinished",
     "onView:ovhAgent.launch",
-    "onCommand:ovhAgent.start"
+    "onCommand:ovhAgent.start",
+    "onCommand:ovhAgent.selectProvider"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -50,6 +51,11 @@
           "light": "media/bi-wallet-light.svg",
           "dark": "media/bi-wallet-dark.svg"
         }
+      },
+      {
+        "command": "ovhAgent.selectProvider",
+        "title": "%ovhAgent.selectProvider.title%",
+        "category": "TRINITY Agent"
       },
       {
         "command": "ovhAgent.selectProject",
@@ -83,6 +89,16 @@
     "configuration": {
       "title": "TRINITY Agent",
       "properties": {
+        "ovhAgent.provider": {
+          "type": "string",
+          "enum": [
+            "ovhcloud",
+            "deepseek"
+          ],
+          "default": "ovhcloud",
+          "scope": "machine",
+          "description": "Inference provider. DeepSeek uses a separate API key and USD cost estimates. Local inference budgets and request/token ceilings are disabled for DeepSeek; provider limits and file verification still apply. A change restarts an idle backend and applies to the next message; an active task finishes first."
+        },
         "ovhAgent.backendPath": {
           "type": "string",
           "default": "",

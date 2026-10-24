@@ -148,6 +148,8 @@
 !/scripts/test-execution.py
 !/scripts/test-operations.py
 !/scripts/test-autonomy.py
+!/scripts/test-autonomy-delivery.py
+!/scripts/test-deepseek.py
 !/scripts/evaluate-autonomy.py
 
 !/ovh_tools.py

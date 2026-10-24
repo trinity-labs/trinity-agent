@@ -1,6 +1,7 @@
 """Offline integration regressions for access, search and controller notices."""
 import asyncio
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -52,6 +53,52 @@ class CoherenceTests(unittest.TestCase):
         self.assertIn('webview.js:1', result)
         self.assertNotIn('vendor-sentinel', result)
         self.assertNotIn('secret-sentinel', result)
+
+    def test_invalid_catalog_row_does_not_replace_healthy_models_or_become_free(self):
+        valid = {'id':'healthy-model', 'context_length':8192,
+            'pricing':{'prompt':'0.000001','completion':'0.000002'}}
+        rows = [None, {'id':'bad-limit','context_length':[]}, valid]
+        for value in ('abc', 'NaN', 'Infinity', '-1', True, {}):
+            rows.append({'id':'bad-price-'+str(value), 'pricing':{'prompt':value,'completion':0}})
+        with patch.object(a, 'MODEL_CATALOG', None), patch.object(a, 'MODEL_CACHE_FILE', self.root/'catalog.json'), \
+             patch.object(a, 'AI_API_BASE_URL', 'https://fixture.invalid/v1'), patch.object(a, 'model_metadata', return_value={}), \
+             patch.dict(os.environ, {'OVH_AI_API_KEY':'fixture'}), \
+             patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps({'data':rows}).encode())):
+            cards = a.fetch_model_catalog(force=True)
+        self.assertEqual([card['id'] for card in cards], ['healthy-model'])
+        self.assertFalse(cards[0]['free'])
+        self.assertEqual(cards[0]['input_per_million'], 1)
+
+    def test_failed_operation_invalidates_previous_acceptance(self):
+        engine = SimpleNamespace(last_acceptance={'passed':True}, observe_event=lambda event: None,
+            operations=SimpleNamespace(execute=lambda name: (_ for _ in ()).throw(OSError('lost receipt'))))
+        with patch.object(a, 'TASK_ENGINE', engine):
+            self.assertIn('lost receipt', a.execute_operation('fixture'))
+        self.assertIsNone(engine.last_acceptance)
+
+    def test_command_guard_distinguishes_arguments_from_executables(self):
+        from ovh_process import command_is_destructive
+        blocked = ['rm -rf  /', '/bin/rm -f -r -- /', 'sudo rm -rf /',
+            'true; mkfs.ext4 /dev/example', 'shutdown -h now', 'dd if=/dev/zero of=/dev/example',
+            "sh -c 'reboot'", ':(){ :|:& };:']
+        allowed = ["echo 'do not reboot'", 'rm -rf /tmp/fixture',
+            'rg shutdown service.py', "printf '%s' 'mkfs.ext4'", 'cat reboot-notes.txt']
+        for command in blocked:
+            self.assertTrue(command_is_destructive(command), command)
+        for command in allowed:
+            self.assertFalse(command_is_destructive(command), command)
+
+    def test_web_trickle_is_bounded_between_reads_and_does_not_fill_a_large_read(self):
+        class Response(io.BytesIO):
+            headers = SimpleNamespace(get_content_charset=lambda:'utf-8')
+            def read(self, *args):
+                raise AssertionError('A filling read can wait indefinitely on a trickle')
+            def read1(self, size):
+                return b'x'
+        with patch.object(a.urllib.request, 'urlopen', return_value=Response()), \
+             patch.object(a.time, 'monotonic', side_effect=[0, 1, 16, 31, 46]):
+            with self.assertRaisesRegex(ValueError, 'délai'):
+                a.fetch_web_document('https://fixture.invalid/page')
 
     def test_search_falls_back_safely_without_ripgrep(self):
         source=self.workspace/'source.py';source.write_text('PORTABLE_SENTINEL = True\n')

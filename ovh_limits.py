@@ -54,9 +54,10 @@ class ContextLimits:
 def resolve_limits(card=None, *, overhead=0, complex_task=False, settings=None, context_budget=None):
     card = card or {}
     settings = settings or {}
+    provider_limits_only = card.get('provider') == 'deepseek'
     def ceiling(short, automatic):
         name = 'OVH_AGENT_' + short
-        value = settings[name] if name in settings else limit_setting(name)
+        value = None if provider_limits_only else settings[name] if name in settings else limit_setting(name)
         if value is not None and (type(value) is not int or value < 0):
             raise ValueError(f'{name} : plafond entier positif attendu.')
         return max(0, automatic if value is None else min(value, automatic))
@@ -71,11 +72,16 @@ def resolve_limits(card=None, *, overhead=0, complex_task=False, settings=None, 
         reserve = int(raw)
     available = max(0, window - max(0, reserve) - max(0, int(overhead)))
     maximum = _positive(card.get('max_completion_tokens'))
+    if provider_limits_only:
+        reserve = 0
+        available = max(0, window - max(0, int(overhead)))
     # Keep input room, including on small models; output is a ceiling, never a
     # target length. Unknown completion metadata does not grant a huge response.
     automatic_output = window // (8 if complex_task else 16)
     output_bound = min(automatic_output, maximum or (2048 if complex_task else 1024),
                        window // 3, max(0, available - 2048))
+    if provider_limits_only:
+        output_bound = min(maximum or automatic_output, max(0, available - 1))
     output = ceiling('COMPLEX_OUTPUT_TOKENS' if complex_task else 'OUTPUT_TOKENS', output_bound)
     context = ceiling('CONTEXT_TOKENS', max(0, available - output))
     if context_budget is not None:
