@@ -43,6 +43,8 @@ try {
   manifest.contributes.viewsContainers.activitybar[0].icon = 'media/trinity-activity.png';
   delete manifest.scripts;
   delete manifest.devDependencies;
+  // For Marketplace builds, remove repository to prevent vsce from converting relative image paths to GitHub URLs.
+  if (publisher !== 'trinity') delete manifest.repository;
   fs.writeFileSync(path.join(stage,'package.json'), JSON.stringify(manifest,null,2)+'\n');
   fs.writeFileSync(path.join(stage,'.vscodeignore'), 'package-lock.json\n.vscodeignore\nnode_modules/**/test/**\nnode_modules/**/tests/**\nnode_modules/**/benchmark/**\nnode_modules/**/benchmarks/**\nnode_modules/**/.github/**\n');
   execFileSync('npm', ['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'], {cwd:stage,stdio:'inherit'});
