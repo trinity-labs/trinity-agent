@@ -76,7 +76,9 @@ def read_only_policy(prompt, previous=False):
         r'\b(?:indique|reponds?(?: avec)?|affiche|dis|say|report|respond(?: with)?|output)\s*[:=]?\s*'
         r'["«“`\']?\s*(?:aucune modification(?: effectuee)?|no (?:edits|changes)(?: made)?)'
         r'(?=\s*(?:["»”`\']|[.!?,;:\n]|$))', '', text)
-    from ovh_request import execution_requested, SOURCE_ONLY_PROHIBITION
+    from ovh_request import execution_requested, SOURCE_ONLY_PROHIBITION, mask_read_only_naming
+    # Naming or refusing the read-only feature is not a read-only instruction.
+    text = mask_read_only_naming(text)
     execution = execution_requested(text)
     if execution:
         # Preserving source files does not prohibit an explicitly requested

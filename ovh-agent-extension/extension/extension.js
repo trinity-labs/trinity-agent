@@ -126,7 +126,6 @@ class OvhAgentViewProvider {
         type: "resume_archive", id: message.id, full_access: message.fullAccess, model: message.model,
       });
       if (message.type === "loadArchive") await this.sendControl({ type: "load_archive", id: message.id });
-      if (message.type === "previewArchive") this.previewArchive(message);
       if (message.type === "snapshot" && !this.deleting && this.agent && message.conversation && message.conversation === this.store.current()) await this.sendControl({
         type: "snapshot",
         conversation: message.conversation,
@@ -929,22 +928,6 @@ class OvhAgentViewProvider {
     await vscode.workspace.getConfiguration("ovhAgent").update("provider", picked.value, vscode.ConfigurationTarget.Global);
     // The configuration listener applies the change; a same-value update is a no-op.
     return true;
-  }
-
-  previewArchive(message) {
-    if (!this.windowLock || !validMessage(message)) return;
-    const id = String(message.id || "");
-    try {
-      const store = new ArchiveStore(this.workspace, this.store.dataRoot);
-      const title = store.list().find(item => item.id === id)?.title || t("Conversation");
-      const items = store.transcript(id).map(item => ({
-        ...item,
-        html: item.type === "response" || item.type === "error" ? this.renderMarkdown(item.text || "") : undefined,
-      }));
-      this.post({ type: "archive_preview", id, title, messages: items });
-    } catch (error) {
-      this.post({ type: "archive_preview_failed", id, text: t("Conversation illisible : {0}", error.message) });
-    }
   }
 
   stopAgent(notify = true) {

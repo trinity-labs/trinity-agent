@@ -1225,20 +1225,5 @@ body:is(.vscode-dark, .vscode-high-contrast) .markdown.streaming::after {
 /* Explicit destination for the next new conversation. */
 .archive-project.selected > summary { background: var(--ovh-primary-selected); }
 
-/* Read-only transcript: reopening a conversation while a task is running. */
-#archive-preview-dialog { width: min(720px, calc(100% - 32px)); max-height: 80vh; display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-sideBar-background); color: var(--vscode-foreground); }
-#archive-preview-dialog::backdrop { background: #0007; }
-#archive-preview-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-#archive-preview-note { margin: 0; color: var(--vscode-descriptionForeground); font-size: 12px; }
-#archive-preview-body { display: flex; flex-direction: column; gap: 10px; overflow: auto; padding: 8px 0; border-top: 1px solid var(--vscode-panel-border); border-bottom: 1px solid var(--vscode-panel-border); }
-.archive-preview-user { display: flex; flex-direction: column; gap: 6px; padding-left: 8px; border-left: 3px solid var(--ovh-primary); }
-.archive-preview-user p { margin: 0; white-space: pre-wrap; }
-.archive-preview-user img { max-width: 220px; max-height: 160px; border-radius: 4px; }
-.archive-preview-assistant { font-size: 13px; }
-.archive-preview-tool, .archive-preview-empty { margin: 0; color: var(--vscode-descriptionForeground); font-size: 12px; }
-.archive-preview-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.archive-preview-actions button { padding: 5px 10px; border: 0; border-radius: 3px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); cursor: pointer; }
-.archive-preview-actions button:disabled { opacity: .5; cursor: default; }
-
 /* Resume continuations are system-made prompts: a divider, not a user bubble. */
 .resume-divider { margin: 6px 0; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; border-top: 1px dashed var(--vscode-panel-border); padding-top: 6px; }

@@ -305,90 +305,7 @@ function endArchiveLoading(remember = false) {
   archivePreviewKey = '';
 }
 const resumableArchives = new Set();
-let previewedArchive = null;
 let deferredArchiveOpen = null;
-const archivePreviewDialog = document.getElementById("archive-preview-dialog");
-const archivePreviewBody = document.getElementById("archive-preview-body");
-const archivePreviewTitle = document.getElementById("archive-preview-title");
-const archivePreviewNote = document.getElementById("archive-preview-note");
-const archivePreviewOpenButton = document.getElementById("archive-preview-open");
-function previewArchive(id, title, source) {
-  if (!archivePreviewDialog || !archivePreviewBody) return;
-  previewedArchive = { id, title: title || id, source: source || "" };
-  archivePreviewTitle.textContent = previewedArchive.title;
-  archivePreviewNote.textContent = t("Aperçu en lecture seule : une tâche est en cours.");
-  archivePreviewBody.innerHTML = "";
-  const loading = document.createElement("p");
-  loading.className = "archive-preview-empty";
-  loading.textContent = t("Chargement…");
-  archivePreviewBody.appendChild(loading);
-  archivePreviewOpenButton.disabled = true;
-  if (!archivePreviewDialog.open) archivePreviewDialog.showModal();
-  vscode.postMessage({ type: "previewArchive", id });
-}
-function renderArchivePreview(data) {
-  if (!previewedArchive || data.id !== previewedArchive.id || !archivePreviewDialog?.open) return;
-  archivePreviewOpenButton.disabled = false;
-  archivePreviewBody.innerHTML = "";
-  const items = Array.isArray(data.messages) ? data.messages : [];
-  if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "archive-preview-empty";
-    empty.textContent = t("Conversation vide.");
-    archivePreviewBody.appendChild(empty);
-    return;
-  }
-  for (const item of items) {
-    if (item.type === "user") {
-      if (item.resume) {
-        // A resume continuation is system-made, not a new user message.
-        const divider = document.createElement("p");
-        divider.className = "archive-preview-tool";
-        divider.textContent = t("Reprise de la tâche après interruption");
-        archivePreviewBody.appendChild(divider);
-      } else {
-        const block = document.createElement("div");
-        block.className = "archive-preview-user";
-        const text = document.createElement("p");
-        text.textContent = item.text || "";
-        block.appendChild(text);
-        for (const image of item.images || []) {
-          if (!image || typeof image.data_url !== "string") continue;
-          const picture = document.createElement("img");
-          picture.src = image.data_url;
-          picture.alt = String(image.name || "");
-          block.appendChild(picture);
-        }
-        archivePreviewBody.appendChild(block);
-      }
-    } else if (item.type === "response" || item.type === "error") {
-      const block = document.createElement("div");
-      block.className = "archive-preview-assistant";
-      block.innerHTML = safeHtml(item.html || "");
-      archivePreviewBody.appendChild(block);
-    } else if (item.type === "tool_start" || item.type === "tool_end") {
-      const line = document.createElement("p");
-      line.className = "archive-preview-tool";
-      line.textContent = [item.title || item.tool, item.type === "tool_end" ? (item.success ? t("terminé") : t("échoué")) : ""]
-        .filter(Boolean).join(" · ");
-      archivePreviewBody.appendChild(line);
-    } else if (item.type === "model_changed") {
-      const line = document.createElement("p");
-      line.className = "archive-preview-tool";
-      line.textContent = `${item.from_model || ""} → ${item.to_model || ""}`;
-      archivePreviewBody.appendChild(line);
-    } else if (item.type === "file_change" || item.type === "verification_check") {
-      const line = document.createElement("p");
-      line.className = "archive-preview-tool";
-      line.textContent = item.text || item.check || "";
-      archivePreviewBody.appendChild(line);
-    }
-  }
-  archivePreviewBody.scrollTop = archivePreviewBody.scrollHeight;
-}
-function closeArchivePreview() {
-  if (archivePreviewDialog?.open) archivePreviewDialog.close();
-}
 function requestArchiveOpen(id, source) {
   if (!id) return;
   if (busy) {
@@ -1331,9 +1248,10 @@ function renderArchiveRows(items, container, project) {
     const openArchive = () => {
       if (loadingArchive) { setStatus(t("Chargement déjà en cours."), "warning"); return; }
       if (busy) {
-        // The backend handles one request at a time: a full switch would wait
-        // behind the running task. Show the transcript read-only right now.
-        previewArchive(item.id, displayTitle, source);
+        // The backend handles one request at a time: remember the click and
+        // open the chosen conversation as soon as the running task ends.
+        deferredArchiveOpen = { id: item.id, source };
+        setStatus(t("Ouverture de la conversation après la fin de la tâche en cours…"));
         return;
       }
       loadingArchive = item.id;
@@ -2650,11 +2568,6 @@ window.addEventListener("message", ({ data }) => {
     status.title = detail;
     setBusy(false, t("La requête a échoué : {0}", detail), true);
   }
-  if (data.type === "archive_preview") renderArchivePreview(data);
-  if (data.type === "archive_preview_failed") {
-    setStatus(data.text || t("Conversation illisible."), true);
-    closeArchivePreview();
-  }
   if (data.type === "idle") {
     stopping = false;
     pendingSubmission = null;
@@ -2902,13 +2815,6 @@ document.getElementById("delete-cancel").addEventListener("click", () => {
   document.getElementById("delete-dialog").close();
 });
 document.getElementById("delete-dialog").addEventListener("cancel", () => { selectedArchiveForDeletion = null; });
-document.getElementById("archive-preview-close")?.addEventListener("click", () => closeArchivePreview());
-archivePreviewDialog?.addEventListener("close", () => { previewedArchive = null; });
-archivePreviewOpenButton?.addEventListener("click", () => {
-  const target = previewedArchive;
-  closeArchivePreview();
-  if (target) requestArchiveOpen(target.id, target.source);
-});
 document.getElementById("delete-confirm").addEventListener("click", () => {
   const selection = selectedArchiveForDeletion;
   selectedArchiveForDeletion = null;

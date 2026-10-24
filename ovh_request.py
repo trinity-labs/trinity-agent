@@ -60,6 +60,30 @@ def normalized(text):
     return ''.join(c for c in unicodedata.normalize('NFKD', str(text).casefold()) if not unicodedata.combining(c))
 
 
+# "Lecture seule" names both a directive and the feature that enforces it.
+# A correction that names or refuses the mechanism must not arm the restriction.
+READ_ONLY_NAME = r'(?:lecture seule|read[ -]only)'
+READ_ONLY_NAMING = re.compile(
+    r'((?:mecanisme|fonctionnalite)\s+(?:de\s+|du\s+|d[\'’]\s*)?)' + READ_ONLY_NAME)
+READ_ONLY_REFUSAL = re.compile(
+    r'((?:ne\s+(?:veux|souhaite|desire|demande)\s+pas|pas\s+de|plus\s+de|sans|'
+    r'retire[rz]?|supprime[rz]?|enleve[rz]?|desactive[rz]?|remove|without|no)'
+    r'(?:\s+\S+){0,4}\s+)' + READ_ONLY_NAME)
+
+
+def mask_read_only_naming(text):
+    """Drop mentions that name or refuse the read-only feature itself.
+
+    "Je ne veux pas de mécanisme de lecture seule" or "retire le popup
+    d'aperçu en lecture seule" talks about the mechanism; it does not request
+    a read-only task. Only the feature name is removed, so real directives
+    ("lecture seule : audite le dépôt", "sans rien modifier", "aucune
+    modification") keep their meaning, the surrounding verb still counts as an
+    action, and the rest of the sentence still governs the request.
+    """
+    return READ_ONLY_REFUSAL.sub(r'\1', READ_ONLY_NAMING.sub(r'\1', text))
+
+
 def word_counts(text):
     # Split identifiers as well as ordinary prose; preserve exact excerpts later.
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', str(text))
@@ -138,7 +162,8 @@ def execution_requested(text):
 
 
 def analyze_request(prompt, recent_prompts=(), image_count=0):
-    current = normalized(prompt)
+    # Naming or refusing the read-only feature is not a read-only instruction.
+    current = mask_read_only_naming(normalized(prompt))
     paths = explicit_paths(prompt)
     question = bool(re.match(r'\s*(?:pourquoi|comment|qu[\s’\']|quel\w*|est.ce|what|why|how|expliqu\w*|explain)\b', current))
     # Negated edits must not turn a read-only request into an edit or inherit one.

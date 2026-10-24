@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.39 — 2026-10-24
+
+- Remove the read-only preview dialog: clicking a conversation while another task is generating now records the click and opens that conversation as soon as the task ends, with no popup.
+- Stop reading a correction that names or refuses the read-only mechanism ("je ne veux pas de mécanisme de lecture seule", "retire le popup d’aperçu en lecture seule") as a read-only instruction, while an explicit directive ("Lecture seule : audite le dépôt", "sans rien modifier") still blocks writes.
+
 ## 1.17.38 — 2026-10-24
 
 - Read a conversation in a read-only dialog while another task is generating; opening it for real waits for the next idle instead of being refused.

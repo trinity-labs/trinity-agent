@@ -69,8 +69,9 @@ Configuration
 
 * ``ovhAgent.provider`` (VS Code User settings): ``ovhcloud`` or ``deepseek``.
   CLI deployments select the same provider with ``OVH_AGENT_PROVIDER``.
-  The provider is selected when the backend starts; finish the active task
-  before restarting the extension to change providers.
+  The command **TRINITY Agent: Choose the inference provider** writes the same
+  setting. A change restarts an idle backend and applies to the next message;
+  an active task finishes first.
 * ``OVH_AGENT_NAME``: public extension name.
 * ``OVH_AGENT_PRIMARY_COLOR``: primary color, ``#RRGGBB``.
 * ``OVH_AGENT_LANG``: ``auto``, ``fr``, ``en``, ``de`` or ``es``.
