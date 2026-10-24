@@ -57,7 +57,9 @@ try {
       execFileSync('unzip', ['-q', output, '-d', unpacked]);
       const vsixManifest = path.join(unpacked, 'extension.vsixmanifest');
       const xml = fs.readFileSync(vsixManifest, 'utf8');
-      const asset = `    <Asset Type="${previewAssetType}" Path="extension/media/history-demo.png" Addressable="true" />\n`;
+      const asset = `    <Asset Type="${previewAssetType}" Path="extension/media/history-demo.png" Addressable="true" />
+    <Asset Type="Microsoft.VisualStudio.Services.Content.Images.Preview" Path="extension/media/trinity_agent_screenshot.png" Addressable="true" />
+`;
       if (!xml.includes(previewAssetType)) fs.writeFileSync(vsixManifest, xml.replace(/([\t ]*)<\/Assets>/, `${asset}$&`));
       fs.rmSync(output);
       execFileSync('zip', ['-qr', output, '.'], {cwd:unpacked});
