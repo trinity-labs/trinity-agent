@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.43 — 2026-10-24
+
+- Serve the requested preview screenshot as a versioned Marketplace asset and link the packaged README directly to it.
+- Keep the repository preview and export allowlist on the same bundled image; publish this correction as a new version.
+
 ## 1.17.42 — 2026-10-24
 
 - Replace the preview screenshot in the repository and extension README with the local image `img/trinity_agent_screenshot.png`.

@@ -14,7 +14,7 @@ the source-code license does not grant trademark rights.
 Preview
 -------
 
-.. image:: img/trinity_agent_screenshot.png
+.. image:: ovh-agent-extension/extension/media/trinity_agent_screenshot.png
    :alt: TRINITY Agent conversation history with AI workspace folders and demonstration titles
 
 The screenshot uses fictional conversation titles and a fictional mount path.

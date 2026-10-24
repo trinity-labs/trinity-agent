@@ -25,6 +25,14 @@ try {
     fs.mkdirSync(path.dirname(destination), {recursive:true});
     fs.copyFileSync(source, destination);
   }
+  if (publisher !== 'trinity') {
+    const readmePath = path.join(stage, 'README.md');
+    const readme = fs.readFileSync(readmePath, 'utf8');
+    const previewLink = '](media/trinity_agent_screenshot.png)';
+    if (!readme.includes(previewLink)) throw Error('README must reference the bundled preview screenshot');
+    const previewUrl = `https://${publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/${publisher}/extension/${manifest.name}/${manifest.version}/assetbyname/${previewAssetType}`;
+    fs.writeFileSync(readmePath, readme.replace(previewLink, `](${previewUrl})`));
+  }
   // Generate from readable sources in the isolated stage: never trust stale build output.
   execFileSync(process.execPath,[path.join(root,'scripts/build-frontend.cjs'),'--out',path.join(stage,'media')],{cwd:root,stdio:'inherit'});
   fs.copyFileSync(path.resolve(root, '../../LICENSE'), path.join(stage, 'LICENSE'));
@@ -43,37 +51,23 @@ try {
   manifest.contributes.viewsContainers.activitybar[0].icon = 'media/trinity-activity.png';
   delete manifest.scripts;
   delete manifest.devDependencies;
-  // Add screenshots for Marketplace preview (must be relative paths)
-  if (publisher !== 'trinity') {
-    manifest.screenshots = [{ path: 'media/trinity_agent_screenshot.png', caption: 'TRINITY Agent conversation history' }];
-  }
   fs.writeFileSync(path.join(stage,'package.json'), JSON.stringify(manifest,null,2)+'\n');
   fs.writeFileSync(path.join(stage,'.vscodeignore'), 'package-lock.json\n.vscodeignore\nnode_modules/**/test/**\nnode_modules/**/tests/**\nnode_modules/**/benchmark/**\nnode_modules/**/benchmarks/**\nnode_modules/**/.github/**\n');
   execFileSync('npm', ['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'], {cwd:stage,stdio:'inherit'});
   const output = path.join(root,'dist',`trinity-agent-${publisher === 'trinity' ? 'local-' : ''}${manifest.version}.vsix`);
   fs.mkdirSync(path.dirname(output), {recursive:true});
-  // For Marketplace builds, use relative paths in README; for local builds, use GitHub URLs.
-  const baseArgs = publisher === 'trinity'
-    ? ['--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',
-       '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension']
-    : [];
-  execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,...baseArgs], {cwd:stage,stdio:'inherit'});
+  execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
+    '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',
+    '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension'], {cwd:stage,stdio:'inherit'});
   if (publisher !== 'trinity') {
     const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-finalize-'));
     try {
       execFileSync('unzip', ['-q', output, '-d', unpacked]);
       const vsixManifest = path.join(unpacked, 'extension.vsixmanifest');
       const xml = fs.readFileSync(vsixManifest, 'utf8');
-      const asset = `    <Asset Type="${previewAssetType}" Path="extension/media/history-demo.png" Addressable="true" />
-    <Asset Type="Microsoft.VisualStudio.Services.Content.Images.Preview" Path="extension/media/trinity_agent_screenshot.png" Addressable="true" />
-`;
+      const asset = `    <Asset Type="${previewAssetType}" Path="extension/media/trinity_agent_screenshot.png" Addressable="true" />\n`;
       if (!xml.includes(previewAssetType)) fs.writeFileSync(vsixManifest, xml.replace(/([\t ]*)<\/Assets>/, `${asset}$&`));
-        // Fix readme.md: replace GitHub URLs with relative paths for Marketplace.
-        const readmePath = path.join(unpacked, 'extension', 'readme.md');
-        let readme = fs.readFileSync(readmePath, 'utf8');
-        readme = readme.replace(/https:\/\/(raw\.githubusercontent\.com\/trinity-labs\/trinity-agent\/main|github\.com\/trinity-labs\/trinity-agent\/raw\/HEAD)\/ovh-agent-extension\/extension\/media\//g, 'media/').replace(/https:\/\/github\.com\/trinity-labs\/trinity-agent\/raw\/HEAD\/media\//g, 'media/');
-        fs.writeFileSync(readmePath, readme);
-        fs.rmSync(output);
+      fs.rmSync(output);
       execFileSync('zip', ['-qr', output, '.'], {cwd:unpacked});
     } finally { fs.rmSync(unpacked,{recursive:true,force:true}); }
   }
