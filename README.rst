@@ -167,10 +167,10 @@ Configure a trusted project's checks in ``.ovh-agent-checks.json``::
 ``paths`` are project-relative glob patterns; ``argv`` is an argument array,
 without implicit shell expansion. ``{python}`` selects the backend interpreter.
 ``cwd`` defaults to the project root and must remain within it. Timeouts are
-between 1 and 300 seconds. Check configuration and protected reference files are
-frozen when the project is first observed during a task. Editing these references
-does not make an existing verification pass; add a separate regression test
-instead of weakening one. A package with a usable ``test`` script defaults to
+between 1 and 300 seconds. Check configuration and reference-file digests are
+recorded when the project is first observed during a task. Tracked reference edits
+keep a backup and refresh their digest; checks must then run again. Unexpected
+external changes are still detected. Add regression coverage instead of weakening tests. A package with a usable ``test`` script defaults to
 ``bun run test`` when it has a Bun lockfile, otherwise ``npm run test``. Other
 projects can use tracked backups and syntax/content verification to start work.
 Such receipts explicitly report missing functional coverage; they do not claim
@@ -824,7 +824,7 @@ Affichage et maîtrise des tours d'outils
 
 ``OVH_AGENT_EMOJI_MODE`` configure la prose et les messages intermédiaires :
 Les libellés du journal d’activité restent sans emojis et utilisent les icônes SVG.
-0 supprime les emojis décoratifs, 1 autorise uniquement ✅ et ➡️ (défaut),
+0 supprime les emojis décoratifs, 1 autorise uniquement ✅ (réussites vérifiées), ⭕ (erreurs) et ➡️ (suites et recommandations) par défaut,
 2 autorise tous les emojis avec parcimonie, 3 demande un usage expressif.
 Le code, les commandes et les citations littérales restent intacts. Les modes
 2 et 3 diffèrent par la consigne de génération ; leur fréquence n'est pas un quota.

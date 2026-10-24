@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.50
+
+- Allow tracked reference-file edits without an environment override, retaining backups and validation.
+- Collapse action journals using their bottom chevron, background or outside click, including restored history.
+- Allow ⭕ for errors alongside ✅ and ➡️ in default list formatting.
+
 ## 1.17.49 — 2026-10-24
 
 - Restore validation-retry assertions against the pinned Pydantic AI message contract so the release pipeline can publish the call-limit and diagnostic presentation changes.

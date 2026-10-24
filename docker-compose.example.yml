@@ -25,7 +25,7 @@ services:
       OVH_AGENT_CONTEXT_RESERVE_TOKENS: "${OVH_AGENT_CONTEXT_RESERVE_TOKENS:-4096}"
       OVH_AGENT_OUTPUT_TOKENS: "${OVH_AGENT_OUTPUT_TOKENS:-auto}"
       OVH_AGENT_COMPLEX_OUTPUT_TOKENS: "${OVH_AGENT_COMPLEX_OUTPUT_TOKENS:-auto}"
-      # Emojis: 0 aucun, 1 ✅➡️, 2 tous avec parcimonie, 3 expressif
+      # Emojis: 0 aucun, 1 ✅⭕➡️, 2 tous avec parcimonie, 3 expressif
       OVH_AGENT_EMOJI_MODE: "${OVH_AGENT_EMOJI_MODE:-1}"
       # Délais et nombre maximal d’étapes : protections explicites de l’exécution
       OVH_AGENT_TASK_CHECKPOINT_SECONDS: "${OVH_AGENT_TASK_CHECKPOINT_SECONDS:-300}"

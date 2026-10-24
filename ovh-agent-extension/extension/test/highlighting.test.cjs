@@ -182,10 +182,11 @@ test('emoji modes apply to generated prose and punctuation without corrupting co
   try {
     for (const mode of [0,1,2,3]) {
       emit({type:'ready',emoji_mode:mode});
-      emit({type:'response',html:render('✅ Bon ➡️ Suite 🔎 Recherche — suite\n\n`const value = "—🔎";`')});
+      emit({type:'response',html:render('✅ Bon ⭕ Erreur ➡️ Suite 🔎 Recherche — suite\n\n`const value = "—🔎";`')});
       const prose=w.document.querySelector('.message.assistant:last-child .markdown p');
       assert(prose.textContent.includes('- suite'));
       assert.equal(prose.textContent.includes('✅'),mode>0);
+      assert.equal(prose.textContent.includes('⭕'),mode>0);
       assert.equal(prose.textContent.includes('➡️'),mode>0);
       assert.equal(prose.textContent.includes('🔎'),mode>=2);
       assert.equal(w.document.querySelector('.message.assistant:last-child code').textContent,'const value = "—🔎";');

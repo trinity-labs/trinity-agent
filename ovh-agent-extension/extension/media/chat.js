@@ -1338,6 +1338,33 @@ function renderArchiveRows(items, container, project) {
   }
 }
 
+function ensureActivityCollapse(activity) {
+  if (activity.querySelector(":scope > .activity-bottom-chevron")) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "activity-bottom-chevron";
+  button.innerHTML = uiIcon("chevron");
+  button.title = t("Replier le bloc");
+  button.setAttribute("aria-label", t("Replier le bloc"));
+  activity.appendChild(button);
+}
+
+document.addEventListener("click", (event) => {
+  if (window.getSelection()?.toString()) return;
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  if (!target) return;
+  let changed = false;
+  for (const activity of document.querySelectorAll("details.activity[open]")) {
+    if (activity.contains(target)) {
+      if (target.closest(".activity-bottom-chevron")) event.preventDefault();
+      else if (target.closest("summary, a, button, input, textarea, select, [role=button]")) continue;
+    }
+    activity.open = false;
+    changed = true;
+  }
+  if (changed) persist();
+});
+
 function createAssistantRun() {
   removeWelcome();
   const article = document.createElement("article");
@@ -1364,19 +1391,8 @@ function createAssistantRun() {
   summary.insertAdjacentHTML("beforeend", uiIcon("chevron", "summary-chevron"));
   const list = document.createElement("div");
   list.className = "activity-list";
-  const bottomChevron = document.createElement("button");
-  bottomChevron.type = "button";
-  bottomChevron.className = "activity-bottom-chevron";
-  bottomChevron.innerHTML = uiIcon("chevron");
-  bottomChevron.title = t("Replier le bloc");
-  bottomChevron.setAttribute("aria-label", t("Replier le bloc"));
-  bottomChevron.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    activity.open = !activity.open;
-    persist();
-  });
-  activity.append(summary, list, bottomChevron);
+  activity.append(summary, list);
+  ensureActivityCollapse(activity);
 
   const content = document.createElement("div");
   content.className = "content markdown streaming";
@@ -1592,7 +1608,7 @@ function presentationText(text, mode = emojiMode) {
     if (!responseEmojiPattern.test(segment) || /^[©®™]$/.test(segment)) filtered += segment;
     else if (mode >= 2) filtered += segment;
     else if (mode === 1 && base === "➡") filtered += "➡️";
-    else if (mode === 1 && base === "✅") filtered += "✅";
+    else if (mode === 1 && (base === "✅" || base === "⭕")) filtered += base;
   }
   return filtered;
 }
@@ -1669,6 +1685,7 @@ function iconForTool(tool) {
 // Saved conversations retain their content while adopting the current layout/icons.
 function upgradeSnapshotPresentation(root) {
   cleanActivityLabels(root);
+  root.querySelectorAll("details.activity").forEach(ensureActivityCollapse);
   for (const element of root.querySelectorAll('.error-message, .warning-message, .message.failure > .content')) {
     const severity = diagnosticSeverity(element.textContent);
     decorateDiagnostic(element, severity);

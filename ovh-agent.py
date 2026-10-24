@@ -2180,7 +2180,7 @@ def record_model_usage(model_id: str, input_tokens: int, output_tokens: int) -> 
 def emoji_instructions(mode: int) -> str:
     policies = {
         0: "Aucun emoji dans les réponses, titres, recommandations et mises à jour d'activité.",
-        1: "Les seuls emojis autorisés sont ✅ et ➡️. Utilise ➡️ dans les recommandations et les mises à jour intermédiaires utiles ; ✅ uniquement pour les résultats vérifiés. Au plus un par point, sans décoration systématique.",
+        1: "Les seuls emojis autorisés sont ✅, ⭕ et ➡️. Dans les listes, utilise ✅ pour les réussites vérifiées, ⭕ pour les erreurs ou échecs constatés et ➡️ pour les prochaines étapes, recommandations et mises à jour intermédiaires utiles. Au plus un par point, sans décoration systématique.",
         2: "Tous les emojis sont autorisés avec parcimonie : au plus un par point utile, uniquement pour faciliter la lecture. Pas de séries décoratives.",
         3: "Utilise fréquemment des emojis pertinents dans les titres, étapes, mises à jour et recommandations, tout en gardant le texte lisible.",
     }

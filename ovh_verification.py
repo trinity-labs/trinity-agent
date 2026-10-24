@@ -201,10 +201,6 @@ class ChangeGuard:
         self.inspected_directories: set[Path] = set()
         self.require_checks = require_checks
         self.task_intent = "question"
-        # Reference files stay read-only by default: the private suite asserts
-        # that refusal. OVH_AGENT_ALLOW_PROTECTED_EDITS=1 allows an explicit
-        # edit with a refreshed digest and a backup.
-        self.allow_protected_edits = os.environ.get("OVH_AGENT_ALLOW_PROTECTED_EDITS", "").strip().lower() in {"1", "true", "yes", "on"}
         self.failures: dict[str, int] = {}
         self.state = {"version": 1, "workspace": str(self.workspace), "status": "pending",
                       "changes": {}, "baseline": {}, "receipts": [], "report": None}
@@ -654,10 +650,6 @@ class ChangeGuard:
             try:
                 syntax = check_syntax(path, after)
                 self.observe(path)
-                if (any(str(path) in check.protected for check in self.checks.values())
-                        and not self.allow_protected_edits):
-                    raise VerificationError("Contrôle de référence protégé : modification refusée avant écriture. "
-                                            "OVH_AGENT_ALLOW_PROTECTED_EDITS=1 l'autorise avec sauvegarde.")
                 applicable = self._applicable([path])
                 if not applicable and self._requires_functional_coverage(path) and before is None:
                     raise VerificationError(f"Aucun contrôle fonctionnel configuré pour {path}. Un nouveau fichier exige une suite déclarée ; utilise verification_plan pour consulter les contrôles existants.")

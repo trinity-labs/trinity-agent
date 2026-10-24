@@ -323,6 +323,7 @@ main {
 .model-change-icon .agent-icon { width: 18px; height: 18px; }
 .model-change-info { width: 13px; height: 13px; border: 1px solid currentColor; border-radius: 50%; font: 600 9px/1 var(--vscode-font-family); }
 .activity {
+  cursor: pointer;
   margin: 2px 0 12px;
   border: 1px solid var(--vscode-panel-border);
   border-radius: 8px;

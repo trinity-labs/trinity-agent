@@ -634,3 +634,30 @@ test('execution evidence stays internal and does not block opening another conve
   assert.equal(document.querySelectorAll('.execution-evidence').length,0);
  } finally {dom.window.close();}
 });
+
+test('action blocks collapse inside, outside and with the bottom control, preserving controls and selection', () => {
+  const {dom,document,emit} = browser();
+  try {
+    emit({type:'status',text:'Working'});
+    const activity=document.querySelector('details.activity');
+    const list=activity.querySelector('.activity-list');
+    activity.open=true;
+    list.click(); assert.equal(activity.open,false);
+    activity.open=true;
+    document.body.click(); assert.equal(activity.open,false);
+    activity.open=true;
+    activity.querySelector('.activity-bottom-chevron').click(); assert.equal(activity.open,false);
+    activity.open=true;
+    const button=document.createElement('button');list.append(button);
+    button.click();assert.equal(activity.open,true);
+    const text=document.createTextNode('selection');list.append(text);
+    const range=document.createRange();range.selectNodeContents(text);
+    dom.window.getSelection().removeAllRanges();
+    dom.window.getSelection().addRange(range);
+    assert.equal(dom.window.getSelection().toString(), "selection");
+    list.click();assert.equal(activity.open,true);
+    dom.window.getSelection().removeAllRanges();
+    activity.querySelector('summary').click();assert.equal(activity.open,false);
+    activity.querySelector('summary').click();assert.equal(activity.open,true);
+  } finally {dom.window.close();}
+});

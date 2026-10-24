@@ -461,6 +461,16 @@ class Verification(unittest.TestCase):
         self.assertEqual(report['conflicts'], [str(self.file)])
         self.assertIn('concurrent user edit', self.file.read_text())
 
+    def test_reference_edit_without_override_keeps_backup_and_refreshes_digest(self):
+        self.file.write_text('VALUE = 2\n')
+        self.guard.observe(self.file)
+        before = self.check.read_text()
+        self.guard.write(self.check, before, before + '# documented check\n')
+        self.assertIn(str(self.check), self.guard.state['changes'])
+        self.guard.require_verified()
+        self.guard.rollback()
+        self.assertEqual(self.check.read_text(), before)
+
     def test_weakened_reference_test_cannot_produce_success(self):
         self.edit(3)
         self.check.write_text("print('all good')\n")
