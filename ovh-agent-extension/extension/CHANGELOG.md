@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.42 — 2026-10-24
+
+- Replace the preview screenshot in the repository and extension README with the local image `img/trinity_agent_screenshot.png`.
+
 ## 1.17.41 — 2026-10-24
 
 - Correction : `normalise_model()` reçoit maintenant le fournisseur explicite dans `fetch_model_catalog()` pour un marquage cohérent.
