@@ -1582,7 +1582,7 @@ def fetch_model_catalog(force: bool = False) -> list[dict[str, object]]:
             if not isinstance(item, dict) or not item.get('id'):
                 continue
             try:
-                models.append(enrich_catalog_model(normalise_model(item)))
+                models.append(enrich_catalog_model(normalise_model(item, AI_PROVIDER)))
             except (KeyError, TypeError, ValueError, OverflowError):
                 # One malformed provider row must neither discard healthy rows
                 # nor be relabelled as a zero-cost model.
