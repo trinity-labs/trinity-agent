@@ -16,7 +16,7 @@ try {
     'package.nls.json','package.nls.fr.json','package.nls.en.json','package.nls.de.json','package.nls.es.json',
     'media/chat.js','media/chat.css','media/i18n.js','media/translations.json','media/safe-html.js','media/purify.min.js','media/icons.min.js',
     'media/highlight.min.js','media/monokai.min.css','media/HighlightJS.LICENSE',
-    'media/history-demo.png','media/trinity-icon.png','media/trinity-activity.png','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
+    'media/history-demo.png','media/trinity_agent_screenshot.png','media/trinity-icon.png','media/trinity-activity.png','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
   for (const name of ['key','robot','wallet']) for (const theme of ['light','dark']) files.push(`media/bi-${name}-${theme}.svg`);
   for (const relative of files) {
     const source = path.join(root, relative);
