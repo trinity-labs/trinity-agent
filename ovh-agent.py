@@ -1191,8 +1191,8 @@ def model_kind(model_id: str) -> str:
     return "chat"
 
 
-def model_supports_vision(model_id: str) -> bool:
-    if AI_PROVIDER == 'deepseek':
+def model_supports_vision(model_id: str, provider: str | None = None) -> bool:
+    if (provider or AI_PROVIDER) == 'deepseek':
         return model_id == 'deepseek-flash'
     documented = DISCOVERY_MODELS.get(model_id.casefold())
     if documented:
@@ -1387,9 +1387,10 @@ def install_catalog_capabilities(cards: list[dict]) -> None:
                 AGENTS.pop(card["id"], None)
 
 
-def normalise_model(raw: dict[str, object]) -> dict[str, object]:
+def normalise_model(raw: dict[str, object], provider: str | None = None) -> dict[str, object]:
+    provider = (provider or AI_PROVIDER).strip().lower()
     model_id = str(raw.get("id", ""))
-    if AI_PROVIDER == 'deepseek':
+    if provider == 'deepseek':
         # Published peak/cache-miss rates, checked 2026-10-24. Displayed costs
         # are conservative estimates, not the provider bill or a spend limit.
         prices = {'deepseek-flash': (0.30, 1.20), 'deepseek-v4-pro': (1.32, 3.96)}
@@ -1430,10 +1431,11 @@ def normalise_model(raw: dict[str, object]) -> dict[str, object]:
     return {
         **(model_metadata(model_id) if kind == "chat" else {}),
         "id": model_id,
+        "provider": provider,
         "owner": str(raw.get("owned_by", "")),
         "kind": kind,
         "selectable": kind == "chat" and model_id not in UNAVAILABLE_AGENT_MODELS,
-        "vision": kind == "chat" and model_supports_vision(model_id),
+        "vision": kind == "chat" and model_supports_vision(model_id, provider),
         **limits,
         "currency": str(pricing.get("currency_unit", "USD")),
         "input_per_million": round(prompt_price * 1_000_000, 6),
@@ -1441,6 +1443,101 @@ def normalise_model(raw: dict[str, object]) -> dict[str, object]:
         "hourly": hourly_price,
         "free": kind in {"chat", "moderation"} and bool(pricing) and prompt_price == 0 and completion_price == 0,
     }
+
+
+OTHER_PROVIDER = 'ovhcloud' if AI_PROVIDER == 'deepseek' else 'deepseek'
+PROVIDER_LABELS = {'ovhcloud': 'OVHcloud AI Endpoints', 'deepseek': 'DeepSeek'}
+DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
+OVHCLOUD_BASE_URL = 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1'
+SECONDARY_CATALOG: list[dict[str, object]] | None = None
+SECONDARY_CATALOG_EXPIRES = 0.0
+SECONDARY_CATALOG_NOTE = ''
+
+
+def provider_base_url(provider: str) -> str:
+    if provider == 'deepseek':
+        return DEEPSEEK_BASE_URL
+    if provider == AI_PROVIDER:
+        return AI_API_BASE_URL
+    value = os.environ.get("OVH_AI_BASE_URL", OVHCLOUD_BASE_URL).strip().rstrip("/")
+    parsed = urllib.parse.urlsplit(value)
+    if (parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username
+            or parsed.password or parsed.query or parsed.fragment):
+        raise ValueError("OVH_AI_BASE_URL doit être une URL HTTP(S) de base, sans identifiants, paramètres ni fragment.")
+    return value
+
+
+def provider_api_key(provider: str) -> str:
+    if provider == 'deepseek':
+        return os.environ.get('DEEPSEEK_API_KEY') or ''
+    return os.environ.get('OVH_AI_API_KEY') or os.environ.get('OVHCLOUD_API_KEY') or ''
+
+
+def provider_cache_file(provider: str) -> Path:
+    return DATA_ROOT / ('model-catalog-deepseek.json' if provider == 'deepseek' else 'model-catalog.json')
+
+
+def fetch_secondary_catalog(force: bool = False) -> tuple[list[dict[str, object]], str]:
+    """Catalogue of the other API so one panel lists every usable model.
+
+    The active provider keeps its own cache, routing and capability limits.
+    This list only feeds the model panel and is tagged with its provider, so a
+    selection can switch the API explicitly. It never feeds automatic routing,
+    and the other provider's cache file is only read, never rewritten here.
+    """
+    global SECONDARY_CATALOG, SECONDARY_CATALOG_EXPIRES, SECONDARY_CATALOG_NOTE
+    provider = OTHER_PROVIDER
+    if SECONDARY_CATALOG is not None and not force and time.time() < SECONDARY_CATALOG_EXPIRES:
+        return SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE
+
+    def cached(require_fresh: bool) -> list[dict[str, object]] | None:
+        try:
+            payload = json.loads(read_text_cached(provider_cache_file(provider)))
+            if payload.get('schema_version') != CATALOG_SCHEMA_VERSION or not payload.get('models'):
+                return None
+            if require_fresh:
+                age = time.time() - datetime.fromisoformat(payload['updated_at']).timestamp()
+                if not 0 <= age < MODEL_CACHE_SECONDS:
+                    return None
+            return [dict(item, provider=provider) for item in payload['models'] if isinstance(item, dict)]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    if not force:
+        fresh = cached(True)
+        if fresh:
+            SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE = fresh, ''
+            SECONDARY_CATALOG_EXPIRES = time.time() + MODEL_CACHE_SECONDS
+            return SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE
+    try:
+        key = provider_api_key(provider)
+        if not key:
+            raise ValueError(f"clé API {PROVIDER_LABELS[provider]} absente")
+        request = urllib.request.Request(
+            provider_base_url(provider) + "/models",
+            headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.load(response)
+        rows = []
+        for item in (payload.get('data', []) if isinstance(payload, dict) else []):
+            if not isinstance(item, dict) or not item.get('id'):
+                continue
+            try:
+                rows.append(dict(normalise_model(item, provider), provider=provider))
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
+        if not rows:
+            raise ValueError("catalogue vide")
+        rows.sort(key=lambda item: (not bool(item.get("selectable")), str(item.get("id")).lower()))
+        SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE = rows, ''
+    except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as error:
+        stale = cached(False)
+        SECONDARY_CATALOG = stale or []
+        SECONDARY_CATALOG_NOTE = (f"{PROVIDER_LABELS[provider]} : catalogue en cache ({error})"
+                                  if stale else f"{PROVIDER_LABELS[provider]} : catalogue indisponible ({error})")
+    SECONDARY_CATALOG_EXPIRES = time.time() + MODEL_CACHE_SECONDS
+    return SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE
 
 
 def fetch_model_catalog(force: bool = False) -> list[dict[str, object]]:
@@ -3634,11 +3731,18 @@ def main_json_lines() -> None:
             emit({"type": "archives", "items": list_archives()})
             continue
         if request_type == "list_models":
+            refresh = bool(request.get("refresh", False))
+            primary = [dict(item, provider=item.get("provider") or AI_PROVIDER)
+                       for item in fetch_model_catalog(refresh)]
+            secondary, other_note = fetch_secondary_catalog(refresh)
             emit({
                 "type": "models",
-                "items": [auto_model_card(), *fetch_model_catalog(bool(request.get("refresh", False)))],
+                "items": [dict(auto_model_card(), provider=AI_PROVIDER), *primary, *secondary],
                 "selected": selected_model,
                 "pricing_source": MODEL_API_URL,
+                "provider": AI_PROVIDER,
+                "other_provider": OTHER_PROVIDER,
+                "other_note": other_note,
             })
             continue
         if request_type == "billing_status":

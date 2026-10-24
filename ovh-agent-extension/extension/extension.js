@@ -74,6 +74,7 @@ class OvhAgentViewProvider {
     this.startPromise = undefined;
     this.deleting = false;
     this.providerRestartPending = false;
+    this.pendingModel = state?.get?.("ovhAgent.pendingModel") || undefined;
     this.store = new ArchiveStore(this.workspace);
     try {
       const remembered=state?.get("ovhAgent.projectRoot") ?? new ProjectStore(this.store.dataRoot).active(initial)?.root;
@@ -120,7 +121,7 @@ class OvhAgentViewProvider {
       if (message.type === "openLink") await this.openLink(message.href);
       if (message.type === "listArchives") this.requestArchivesRefresh();
       if (message.type === "listModels") await this.sendControl({ type: "list_models", refresh: Boolean(message.refresh) });
-      if (message.type === "selectModel") await this.sendControl({ type: "set_model", model: String(message.model || "") });
+      if (message.type === "selectModel") await this.selectModel(String(message.model || ""), String(message.provider || ""));
       if (message.type === "deleteArchiveConfirmed") await this.deleteArchive(message.id, message.source);
       if (message.type === "resumeArchive") await this.sendControl({
         type: "resume_archive", id: message.id, full_access: message.fullAccess, model: message.model,
@@ -705,6 +706,13 @@ class OvhAgentViewProvider {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.agent = agent;
+    const pendingModel = this.pendingModel;
+    if (pendingModel && pendingModel.provider === inferenceProvider() && pendingModel.model) {
+      // Applied before the first message so the switched API runs the chosen model.
+      this.pendingModel = undefined;
+      void this.state?.update?.("ovhAgent.pendingModel", undefined);
+      agent.stdin.write(`${JSON.stringify({ type: "set_model", model: pendingModel.model })}\n`);
+    }
     agent.stdin.on?.("error", error => {
       if(this.agent !== agent) return;
       this.billingChannel.cancel(error);
@@ -928,6 +936,27 @@ class OvhAgentViewProvider {
     await vscode.workspace.getConfiguration("ovhAgent").update("provider", picked.value, vscode.ConfigurationTarget.Global);
     // The configuration listener applies the change; a same-value update is a no-op.
     return true;
+  }
+
+  async selectModel(model, provider) {
+    const name = String(model || "").trim();
+    if (!name) return;
+    const target = provider === "deepseek" || provider === "ovhcloud" ? provider : "";
+    if (!target || target === inferenceProvider()) {
+      await this.sendControl({ type: "set_model", model: name });
+      return;
+    }
+    // The panel lists both APIs: switching the provider first makes the chosen
+    // model valid for the backend that will run it. A running task keeps its
+    // provider until idle, then the new backend applies the pending model.
+    this.pendingModel = name === "auto-balanced" ? undefined : { model: name, provider: target };
+    await this.state?.update?.("ovhAgent.pendingModel", this.pendingModel);
+    await vscode.workspace.getConfiguration("ovhAgent").update("provider", target, vscode.ConfigurationTarget.Global);
+    // A same-value update fires no configuration event: report the switch here.
+    if (this.providerRestartPending || this.busy || this.clearingConversation) {
+      this.providerRestartPending = true;
+      this.post({ type: "provider_switched", provider: target, pending: true });
+    }
   }
 
   stopAgent(notify = true) {

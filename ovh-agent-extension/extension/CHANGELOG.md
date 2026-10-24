@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.40 — 2026-10-24
+
+- List both API catalogues in the model panel: the active provider's models plus the other provider's, tagged per API and read from its last cache when its key is not loaded, so OVHcloud and DeepSeek models are selectable in one place.
+- Switch the inference provider automatically when a model from the other API is selected; a running task keeps its provider until idle, then the restarted backend applies the chosen model before the next message.
+
 ## 1.17.39 — 2026-10-24
 
 - Remove the read-only preview dialog: clicking a conversation while another task is generating now records the click and opens that conversation as soon as the task ends, with no popup.

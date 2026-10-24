@@ -348,6 +348,7 @@ const normalizeModelSelection = value => value === "auto" ? "auto-balanced" : (v
 let selectedModel = normalizeModelSelection(saved?.model);
 let lastRoutedModel = saved?.lastRoutedModel || "";
 let modelCatalog = [];
+let modelCatalogueNote = "";
 let modelPanelActive = false;
 let modelSelectionChanged = false;
 let modelSelectionRevision = 0;
@@ -450,8 +451,12 @@ function priceLabel(model) {
 
 function modelAvailabilityLabel() {
   const models = modelCatalog.filter((item) => item.id !== "auto-balanced" && item.kind !== "auto");
-  if (models.some(item => item.provider === "deepseek")) return `DeepSeek · ${models.filter(item => item.selectable).length} / ${models.length}`;
-  return t("{0} modèles disponibles dans l’agent · {1} au catalogue OVHcloud", models.filter((item) => item.selectable).length, models.length);
+  const count = (provider) => {
+    const rows = models.filter((item) => item.provider === provider);
+    return `${rows.filter((item) => item.selectable).length}/${rows.length}`;
+  };
+  const summary = `OVHcloud ${count("ovhcloud")} · DeepSeek ${count("deepseek")}`;
+  return modelCatalogueNote ? `${summary} · ${modelCatalogueNote}` : summary;
 }
 
 function renderModels() {
@@ -491,7 +496,8 @@ function renderModels() {
         ? t("Jusqu’à {0}k selon le modèle", Math.round(model.context_length / 1024))
         : t("Contexte selon le modèle choisi"))
       : compactTokens(model.context_length);
-    meta.textContent = [model.owner, size, active, model.quantization, contextLabel].filter(Boolean).join(" · ");
+    const providerName = model.provider === "deepseek" ? "DeepSeek" : model.provider === "ovhcloud" ? "OVHcloud" : "";
+    meta.textContent = [providerName, model.owner, size, active, model.quantization, contextLabel].filter(Boolean).join(" · ");
     if (model.parameters_b) meta.title = t("Taille documentée du modèle ; ne garantit ni sa vitesse ni sa qualité.");
     row.append(top, price, meta);
     if (model.cyber_eval) {
@@ -511,7 +517,7 @@ function renderModels() {
         updateModelButton();
         renderModels();
         setStatus(t("Modèle sélectionné : {0}", selectedModel));
-        vscode.postMessage({ type: "selectModel", model: selectedModel });
+        vscode.postMessage({ type: "selectModel", model: selectedModel, provider: model.provider || "" });
         persist();
       });
     }
@@ -2663,11 +2669,14 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "models") {
     modelCatalog = data.items || [];
-    const providerLabel = modelCatalog.some(item => item.provider === "deepseek") ? "DeepSeek" : "OVHcloud AI Endpoints";
+    modelCatalogueNote = data.other_note || "";
+    const providers = new Set(modelCatalog.map(item => item.provider).filter(Boolean));
+    const providerLabel = providers.has("ovhcloud") && providers.has("deepseek")
+      ? "OVHcloud + DeepSeek" : providers.has("deepseek") ? "DeepSeek" : "OVHcloud AI Endpoints";
     const panelTitle = document.getElementById("model-panel-title");
     if (panelTitle) panelTitle.textContent = t("Modèles {0}", providerLabel);
     const panelSource = document.getElementById("model-panel-source");
-    if (panelSource) panelSource.textContent = t("Catalogue et tarifs du fournisseur");
+    if (panelSource) panelSource.textContent = t("Catalogue et tarifs des deux fournisseurs");
     // A delayed catalogue reply describes global preference, not the opened archive.
     if (data.selected && !loadingArchive && !archiveModelRestored && !modelSelectionChanged) selectedModel = normalizeModelSelection(data.selected);
     updateModelButton();
