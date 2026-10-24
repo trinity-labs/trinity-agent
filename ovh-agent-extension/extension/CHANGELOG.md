@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.41 — 2026-10-24
+
+- Correction : `normalise_model()` reçoit maintenant le fournisseur explicite dans `fetch_model_catalog()` pour un marquage cohérent.
+- Optimisations diverses `.py` et `.sh` : syntaxe validée sur 162 fichiers Python et 11 scripts shell.
+
 ## 1.17.40 — 2026-10-24
 
 - List both API catalogues in the model panel: the active provider's models plus the other provider's, tagged per API and read from its last cache when its key is not loaded, so OVHcloud and DeepSeek models are selectable in one place.
