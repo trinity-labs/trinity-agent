@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.35 — 2026-10-24
+
+- Update backend scripts (ovh-agent.py, ovh_execution.py, ovh_request.py) and related test suites to improve execution handling, resume functionality, and validation.
+- Align extension version with backend changes and ensure compatibility.
+
 ## 1.17.34 — 2026-10-23
 
 - Add an optional official GEPA experiment using fixed TRINITY file checks, disjoint optimization and final scenarios, and a shared OVH request/cost budget.
