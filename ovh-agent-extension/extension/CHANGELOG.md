@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.38 — 2026-10-24
+
+- Read a conversation in a read-only dialog while another task is generating; opening it for real waits for the next idle instead of being refused.
+- Report the last output line and elapsed seconds every 10 s during a long command instead of only its start and end.
+- Render resume continuations as one divider; the full instruction stays in the model history but is no longer archived as a repeated user prompt.
+- Keep the documented fallback for files no suite covers (backup plus syntax/content validation) instead of refusing the edit; new files still require a declared suite, and reference check files stay read-only unless `OVH_AGENT_ALLOW_PROTECTED_EDITS=1`.
+- Name the real provider in the model catalogue panel and its price footer.
+
 ## 1.17.37 — 2026-10-24
 
 - Cache the DeepSeek account balance before the first conversation exists, so a refresh no longer reports a cache error next to a valid balance.

@@ -73,6 +73,55 @@ class ArchiveStore {
     return value;
   }
   current() { try { assertStoragePath(path.join(this.root,'current')); return readStorageFile(path.join(this.root,'current'),'utf8',4096).trim(); } catch { return ''; } }
+  transcript(id) {
+    // Read-only view of one conversation, usable while the backend is busy.
+    if (!/^[0-9A-Za-z_-]+$/.test(String(id || ''))) throw new Error(t("Identifiant de conversation invalide."));
+    const folder = path.join(this.root, id);
+    assertStoragePath(folder);
+    if (!fs.existsSync(folder) || fs.lstatSync(folder).isSymbolicLink()
+        || path.dirname(fs.realpathSync(folder)) !== fs.realpathSync(this.root)) {
+      throw new Error(t("Conversation introuvable."));
+    }
+    const base = fs.realpathSync(folder);
+    const events = this.readCached(path.join(folder, 'events.jsonl'), text => {
+      const items = [];
+      for (const line of String(text).split('\n')) {
+        let event;
+        try { event = JSON.parse(line); } catch { continue; }
+        if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+        if (!['user', 'response', 'error', 'file_change', 'tool_start', 'tool_end', 'model_changed', 'verification_check'].includes(event.type)) continue;
+        items.push(event);
+      }
+      return items;
+    });
+    return events.slice(-400).map(event => {
+      const item = {
+        type: event.type, timestamp: event.timestamp,
+        text: typeof event.text === 'string' ? event.text.slice(0, 200000) : '',
+        tool: event.tool, title: event.title,
+        detail: typeof event.detail === 'string' ? event.detail.slice(0, 4000) : '',
+        success: event.success === true, passed: event.passed === true,
+        resume: event.resume === true,
+        from_model: event.from_model, to_model: event.to_model, check: event.check,
+        duration_ms: Number.isFinite(event.duration_ms) ? event.duration_ms : undefined,
+      };
+      if (event.type === 'user' && Array.isArray(event.images)) {
+        item.images = event.images.slice(0, 5).flatMap(image => {
+          try {
+            const file = path.resolve(base, String(image.file || ''));
+            if (!file.startsWith(base + path.sep)) return [];
+            const media = String(image.media_type || '');
+            if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(media)) return [];
+            const stat = fs.statSync(file);
+            if (!stat.isFile() || stat.size > 10 * 1024 * 1024) return [];
+            return [{ name: String(image.name || path.basename(file)), media_type: media,
+                      data_url: `data:${media};base64,${fs.readFileSync(file).toString('base64')}` }];
+          } catch { return []; }
+        });
+      }
+      return item;
+    });
+  }
   list() {
     assertStoragePath(this.root);
     if (!fs.existsSync(this.root)) return [];

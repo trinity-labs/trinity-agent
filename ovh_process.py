@@ -133,7 +133,7 @@ def _kill_group(process):
         pass
 
 
-def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', output_limit=16000):
+def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', output_limit=16000, progress=None):
     """Return the real exit outcome with bounded combined stdout/stderr.
 
     Output is kept in memory as a bounded tail. A 16 MiB stream flood terminates
@@ -187,6 +187,7 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
     flood = False
     eof = False
     deadline = time.monotonic() + timeout
+    last_progress = started
     exited_at = None
     try:
         os.set_blocking(process.stdout.fileno(), False)
@@ -225,6 +226,15 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
                         break
                 if flood:
                     break
+                # A long build reports a bounded progress line; the callback can
+                # never turn silence into a success claim.
+                if progress is not None and now - last_progress >= 10:
+                    last_progress = now
+                    lines = tail.decode('utf-8', 'replace').strip().splitlines()
+                    try:
+                        progress(int(now - started), lines[-1] if lines else '')
+                    except Exception:
+                        progress = None
                 # A group stuck in uninterruptible kernel I/O must not keep this
                 # controller waiting forever after its timeout.
                 if result['timed_out'] and time.monotonic() > deadline + 2:

@@ -305,6 +305,105 @@ function endArchiveLoading(remember = false) {
   archivePreviewKey = '';
 }
 const resumableArchives = new Set();
+let previewedArchive = null;
+let deferredArchiveOpen = null;
+const archivePreviewDialog = document.getElementById("archive-preview-dialog");
+const archivePreviewBody = document.getElementById("archive-preview-body");
+const archivePreviewTitle = document.getElementById("archive-preview-title");
+const archivePreviewNote = document.getElementById("archive-preview-note");
+const archivePreviewOpenButton = document.getElementById("archive-preview-open");
+function previewArchive(id, title, source) {
+  if (!archivePreviewDialog || !archivePreviewBody) return;
+  previewedArchive = { id, title: title || id, source: source || "" };
+  archivePreviewTitle.textContent = previewedArchive.title;
+  archivePreviewNote.textContent = t("Aperçu en lecture seule : une tâche est en cours.");
+  archivePreviewBody.innerHTML = "";
+  const loading = document.createElement("p");
+  loading.className = "archive-preview-empty";
+  loading.textContent = t("Chargement…");
+  archivePreviewBody.appendChild(loading);
+  archivePreviewOpenButton.disabled = true;
+  if (!archivePreviewDialog.open) archivePreviewDialog.showModal();
+  vscode.postMessage({ type: "previewArchive", id });
+}
+function renderArchivePreview(data) {
+  if (!previewedArchive || data.id !== previewedArchive.id || !archivePreviewDialog?.open) return;
+  archivePreviewOpenButton.disabled = false;
+  archivePreviewBody.innerHTML = "";
+  const items = Array.isArray(data.messages) ? data.messages : [];
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "archive-preview-empty";
+    empty.textContent = t("Conversation vide.");
+    archivePreviewBody.appendChild(empty);
+    return;
+  }
+  for (const item of items) {
+    if (item.type === "user") {
+      if (item.resume) {
+        // A resume continuation is system-made, not a new user message.
+        const divider = document.createElement("p");
+        divider.className = "archive-preview-tool";
+        divider.textContent = t("Reprise de la tâche après interruption");
+        archivePreviewBody.appendChild(divider);
+      } else {
+        const block = document.createElement("div");
+        block.className = "archive-preview-user";
+        const text = document.createElement("p");
+        text.textContent = item.text || "";
+        block.appendChild(text);
+        for (const image of item.images || []) {
+          if (!image || typeof image.data_url !== "string") continue;
+          const picture = document.createElement("img");
+          picture.src = image.data_url;
+          picture.alt = String(image.name || "");
+          block.appendChild(picture);
+        }
+        archivePreviewBody.appendChild(block);
+      }
+    } else if (item.type === "response" || item.type === "error") {
+      const block = document.createElement("div");
+      block.className = "archive-preview-assistant";
+      block.innerHTML = safeHtml(item.html || "");
+      archivePreviewBody.appendChild(block);
+    } else if (item.type === "tool_start" || item.type === "tool_end") {
+      const line = document.createElement("p");
+      line.className = "archive-preview-tool";
+      line.textContent = [item.title || item.tool, item.type === "tool_end" ? (item.success ? t("terminé") : t("échoué")) : ""]
+        .filter(Boolean).join(" · ");
+      archivePreviewBody.appendChild(line);
+    } else if (item.type === "model_changed") {
+      const line = document.createElement("p");
+      line.className = "archive-preview-tool";
+      line.textContent = `${item.from_model || ""} → ${item.to_model || ""}`;
+      archivePreviewBody.appendChild(line);
+    } else if (item.type === "file_change" || item.type === "verification_check") {
+      const line = document.createElement("p");
+      line.className = "archive-preview-tool";
+      line.textContent = item.text || item.check || "";
+      archivePreviewBody.appendChild(line);
+    }
+  }
+  archivePreviewBody.scrollTop = archivePreviewBody.scrollHeight;
+}
+function closeArchivePreview() {
+  if (archivePreviewDialog?.open) archivePreviewDialog.close();
+}
+function requestArchiveOpen(id, source) {
+  if (!id) return;
+  if (busy) {
+    deferredArchiveOpen = { id, source };
+    setStatus(t("Ouverture de la conversation après la fin de la tâche en cours…"));
+    return;
+  }
+  loadingArchive = id;
+  activeArchiveId = id;
+  updateSendButton();
+  setArchiveVisible(false);
+  setStatus(t("Chargement de la conversation…"));
+  if (source) vscode.postMessage({ type: "openProject", project: source, conversation: id });
+  else vscode.postMessage({ type: "loadArchive", id });
+}
 const sendArrow = send.innerHTML;
 function updateSendButton() {
   const resumable = !busy && resumableArchives.has(activeArchiveId);
@@ -826,7 +925,13 @@ function renderArchiveMessages(items) {
       finishRun("stopped");
     }
     if (["response", "error"].includes(item.type) && currentRun) finishRun(item.type === "response" ? "done" : "error");
-    if (item.type === "user") addUserMessage(item.text || "", item.images || [], item.timestamp || null);
+    if (item.type === "user" && !item.resume) addUserMessage(item.text || "", item.images || [], item.timestamp || null);
+    if (item.type === "user" && item.resume) {
+      const divider = document.createElement("p");
+      divider.className = "resume-divider";
+      divider.textContent = t("Reprise de la tâche après interruption");
+      messages.appendChild(divider);
+    }
     if (item.type === "file_change") addArchivedFileChange(item);
     if (item.type === "response") {
       addArchivedAssistant(item.html || "", false, item.timestamp || null);
@@ -1224,7 +1329,13 @@ function renderArchiveRows(items, container, project) {
     meta.textContent = [dateText, item.model].filter(Boolean).join(" · ");
     button.append(title, meta);
     const openArchive = () => {
-      if(busy || loadingArchive) {setStatus(t("Termine ou arrête la tâche avant de changer de projet."), "warning");return;}
+      if (loadingArchive) { setStatus(t("Chargement déjà en cours."), "warning"); return; }
+      if (busy) {
+        // The backend handles one request at a time: a full switch would wait
+        // behind the running task. Show the transcript read-only right now.
+        previewArchive(item.id, displayTitle, source);
+        return;
+      }
       loadingArchive = item.id;
       beginArchiveLoading(item, source, displayTitle, button.closest(".archive-project")?.style.getPropertyValue("--project-color"));
       if(!active && source) {
@@ -2421,6 +2532,13 @@ window.addEventListener("message", ({ data }) => {
     setBusy(false, OvhI18n.message(data.text), true);
   }
   if (data.type === "tool_start") addActivity(data);
+  if (data.type === "tool_progress") {
+    // Elapsed time is already ticking; show what the command is doing now.
+    const item = activityRows.get(data.id);
+    if (item && typeof data.detail === "string" && data.detail.trim()) {
+      item.detail.textContent = `${Math.max(0, Math.round(Number(data.elapsed_seconds) || 0))} s · ${data.detail.trim().slice(0, 400)}`;
+    }
+  }
   if (data.type === "tool_end") finishActivity(data);
   if (data.type === "task_checkpoint") addCompletedActivity("context", t("Point d’avancement"), t("{0} s écoulées · {1} appels restants", data.elapsed_seconds, data.remaining_requests), data);
   if (data.type === "verification_status") showVerification(data);
@@ -2510,6 +2628,11 @@ window.addEventListener("message", ({ data }) => {
     if (data.verification) showVerification(data.verification);
     finishRun("done");
     setBusy(false, "");
+    if (deferredArchiveOpen) {
+      const target = deferredArchiveOpen;
+      deferredArchiveOpen = null;
+      requestArchiveOpen(target.id, target.source);
+    }
     if (pendingQuestionnaire) { const questionnaire = pendingQuestionnaire; pendingQuestionnaire = null; renderQuestionnaire(questionnaire); }
   }
   if (data.type === "error") {
@@ -2527,6 +2650,11 @@ window.addEventListener("message", ({ data }) => {
     status.title = detail;
     setBusy(false, t("La requête a échoué : {0}", detail), true);
   }
+  if (data.type === "archive_preview") renderArchivePreview(data);
+  if (data.type === "archive_preview_failed") {
+    setStatus(data.text || t("Conversation illisible."), true);
+    closeArchivePreview();
+  }
   if (data.type === "idle") {
     stopping = false;
     pendingSubmission = null;
@@ -2535,6 +2663,11 @@ window.addEventListener("message", ({ data }) => {
     vscode.postMessage({ type: "listArchives" });
     if (currentRun) finishRun("stopped");
     setBusy(false, "");
+    if (deferredArchiveOpen) {
+      const target = deferredArchiveOpen;
+      deferredArchiveOpen = null;
+      requestArchiveOpen(target.id, target.source);
+    }
   }
   if (data.type === "cleared") { lastRoutedModel = ""; updateModelButton(); activeArchiveId = data.conversation || ""; setBusy(false, t("Nouvelle conversation")); }
   if (data.type === "configured") setBusy(false, t("Clé API enregistrée de façon sécurisée"));
@@ -2617,6 +2750,11 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "models") {
     modelCatalog = data.items || [];
+    const providerLabel = modelCatalog.some(item => item.provider === "deepseek") ? "DeepSeek" : "OVHcloud AI Endpoints";
+    const panelTitle = document.getElementById("model-panel-title");
+    if (panelTitle) panelTitle.textContent = t("Modèles {0}", providerLabel);
+    const panelSource = document.getElementById("model-panel-source");
+    if (panelSource) panelSource.textContent = t("Catalogue et tarifs du fournisseur");
     // A delayed catalogue reply describes global preference, not the opened archive.
     if (data.selected && !loadingArchive && !archiveModelRestored && !modelSelectionChanged) selectedModel = normalizeModelSelection(data.selected);
     updateModelButton();
@@ -2764,6 +2902,13 @@ document.getElementById("delete-cancel").addEventListener("click", () => {
   document.getElementById("delete-dialog").close();
 });
 document.getElementById("delete-dialog").addEventListener("cancel", () => { selectedArchiveForDeletion = null; });
+document.getElementById("archive-preview-close")?.addEventListener("click", () => closeArchivePreview());
+archivePreviewDialog?.addEventListener("close", () => { previewedArchive = null; });
+archivePreviewOpenButton?.addEventListener("click", () => {
+  const target = previewedArchive;
+  closeArchivePreview();
+  if (target) requestArchiveOpen(target.id, target.source);
+});
 document.getElementById("delete-confirm").addEventListener("click", () => {
   const selection = selectedArchiveForDeletion;
   selectedArchiveForDeletion = null;

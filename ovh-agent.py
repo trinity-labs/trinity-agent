@@ -477,6 +477,15 @@ def activity_start(tool: str, title: str, detail: str) -> str:
     return activity_id
 
 
+def activity_progress(activity_id: str, elapsed_seconds: int, detail: str = "") -> None:
+    """Bounded progress for a long tool run; never a success claim."""
+    with ACTIVITY_LOCK:
+        if activity_id not in ACTIVITY_STARTED:
+            return
+    emit({"type": "tool_progress", "id": activity_id, "elapsed_seconds": int(elapsed_seconds),
+          "detail": (detail or "")[-600:]})
+
+
 def activity_end(activity_id: str, detail: str, success: bool = True) -> None:
     with ACTIVITY_LOCK:
         started = ACTIVITY_STARTED.pop(activity_id, None)
@@ -1107,7 +1116,8 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
             diagnostic_argv if diagnostic else
             ["sh", "-lc", "export PATH=" + shlex.quote(project_bins) + ':"$PATH"\n' + command],
             working_dir, timeout=timeout, workspace=WORKSPACE,
-            profile=os.environ.get("OVH_AGENT_COMMAND_PROFILE", "approved"))
+            profile=os.environ.get("OVH_AGENT_COMMAND_PROFILE", "approved"),
+            progress=lambda seconds, line: activity_progress(activity_id, seconds, line))
         if result['passed']:
             deleted = deleted_paths_from_command(command, result.get('output', ''))
             if deleted:
@@ -1154,7 +1164,8 @@ def run_host_command(host: str, command: str, cwd: str = "/", timeout: Annotated
              "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={REMOTE_KNOWN_HOSTS}",
              "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
              host, "cd " + shlex.quote(cwd) + " && sh -c " + shlex.quote(command)],
-            WORKSPACE, timeout=timeout)
+            WORKSPACE, timeout=timeout,
+            progress=lambda seconds, line: activity_progress(activity_id, seconds, line))
     except OSError as error:
         activity_end(activity_id, str(error), False)
         return local_tool_error(error)
@@ -3746,6 +3757,7 @@ def main_json_lines() -> None:
                        "model": request.get("model", task.get("model", selected_model)),
                        # Old clients must not silently restore elevated rights.
                        "full_access": request.get("full_access") is True,
+                       "resumed": True,
                        "images": restored_images}
             request_type = "prompt"
         if request_type != "prompt":
@@ -3811,6 +3823,9 @@ def main_json_lines() -> None:
             "model": active_model,
             "selection": selected_model,
             "images": archived_images,
+            # A resume continuation is a system-made prompt, not a new user
+            # message: the archive renders it as a compact divider.
+            "resume": bool(request.get("resumed")),
         })
         if followup_id:
             with FOLLOWUP_LOCK:
