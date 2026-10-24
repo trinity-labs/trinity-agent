@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from ovh_execution import WorkflowController, guarded_tool, command_is_read_only, read_only_policy
 from pydantic_ai import Agent, ModelRetry, Tool
-from pydantic_ai.messages import ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ModelResponse, UserPromptPart, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 
 
@@ -482,7 +482,7 @@ engine.invoke(write_file, 'app.txt', 'after')
             if len(rounds) == 1:
                 return ModelResponse(parts=[TextPart("Everything is fixed and verified.")])
             if len(rounds) == 2:
-                self.assertTrue(any(isinstance(part, RetryPromptPart) for message in messages for part in message.parts))
+                self.assertTrue(any(isinstance(part, UserPromptPart) and isinstance(part.content, str) and 'validation' in part.content.lower() for message in messages for part in message.parts))
                 return ModelResponse(parts=[ToolCallPart("write_file", {"path": "result.json", "content": '{"ready":true}'})])
             return ModelResponse(parts=[TextPart("The configured JSON postcondition now passes.")])
 

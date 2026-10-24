@@ -1,3 +1,4 @@
+#!/opt/ovh-agent/bin/python
 """Offline regression tests for OVH request settings, caching and streamed tool rounds."""
 import asyncio
 import importlib.util

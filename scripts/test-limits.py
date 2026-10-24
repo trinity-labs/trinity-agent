@@ -1,3 +1,4 @@
+#!/opt/ovh-agent/bin/python
 """Offline model-window, automatic allowance and explicit-cap regressions."""
 from dataclasses import asdict
 import importlib.util

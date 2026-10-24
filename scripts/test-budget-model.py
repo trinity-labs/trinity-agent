@@ -1,3 +1,4 @@
+#!/opt/ovh-agent/bin/python
 """Exercise real Pydantic model/tool/stream boundaries without calling a provider."""
 import asyncio
 from decimal import Decimal
