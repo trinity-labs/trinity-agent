@@ -48,9 +48,12 @@ try {
   execFileSync('npm', ['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'], {cwd:stage,stdio:'inherit'});
   const output = path.join(root,'dist',`trinity-agent-${publisher === 'trinity' ? 'local-' : ''}${manifest.version}.vsix`);
   fs.mkdirSync(path.dirname(output), {recursive:true});
-  execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
-    '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',
-    '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension'], {cwd:stage,stdio:'inherit'});
+  // For Marketplace builds, use relative paths in README; for local builds, use GitHub URLs.
+  const baseArgs = publisher === 'trinity'
+    ? ['--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/ovh-agent-extension/extension',
+       '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension']
+    : [];
+  execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,...baseArgs], {cwd:stage,stdio:'inherit'});
   if (publisher !== 'trinity') {
     const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-finalize-'));
     try {
