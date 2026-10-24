@@ -30,7 +30,7 @@ try {
     const readme = fs.readFileSync(readmePath, 'utf8');
     const previewLink = '](media/trinity_agent_screenshot.png)';
     if (!readme.includes(previewLink)) throw Error('README must reference the bundled preview screenshot');
-    const previewUrl = `https://${publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/${publisher}/extension/${manifest.name}/${manifest.version}/assetbyname/${previewAssetType}`;
+    const previewUrl = 'https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension/media/trinity_agent_screenshot.png';
     fs.writeFileSync(readmePath, readme.replace(previewLink, `](${previewUrl})`));
   }
   // Generate from readable sources in the isolated stage: never trust stale build output.
