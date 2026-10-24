@@ -92,12 +92,14 @@ def read_only_policy(prompt, previous=False):
         from ovh_request import explicit_paths
         for prohibition in prohibitions:
             target = re.split(r'[;!?\n]|\.(?=\s|$)', text[prohibition.end():], maxsplit=1)[0].strip()
-            scoped_tests = re.fullmatch(r'(?:(?:les?|ces?|the) )?tests?(?: (?:existants?|actuels?|unitaires|de reference))?', target)
             target_paths = explicit_paths(target)
-            scoped_paths = target_paths and not re.search(r'\b(?:fichiers|files|code|projet|project|anything|rien)\b', target)
             if set(target_paths) & set(explicit_paths(text[:prohibition.start()])):
                 return True
-            if not scoped_tests and not scoped_paths:
+            # Only an unqualified prohibition covers the entire task. Preserving
+            # a specific object must not hide every write tool for another target.
+            if re.fullmatch(r'(?:(?:les?|la|the|any|all(?: the)?|tous les|toutes les) )?'
+                            r'(?:fichiers?|files?|sources?|source code|code|projet|project|repository|depot|anything|rien)'
+                            r'(?: (?:existants?|actuels?|courant|existing|current))?',target) or not target:
                 return True
     if execution:
         return False
@@ -529,13 +531,19 @@ class WorkflowController:
                     continue  # A missing required proof remains unresolved above.
         failed_files = [row['id'] for row in latest_files.values()
                         if row.get('verification_outcome') != 'applied']
-        # A rejected write can be safely known not to have happened. That clears
-        # uncertainty, not the requested change. Only a later successful write to
-        # that same path resolves the failed attempt within this task.
+        # A rejected attempt is not itself a requested postcondition. If the
+        # independent frozen contract passes, an attempt proven to have had no
+        # effects must not poison completion (e.g. an obsolete path). Keep it in
+        # the journal. Without a satisfied contract, the conservative block stays.
         current_ids = set(self.current_file_attempts.values())
         failed_files = list(dict.fromkeys(failed_files + [
             row['id'] for row in actions['operations']
-            if row['id'] in current_ids and row.get('verification_outcome') != 'applied']))
+            if row['id'] in current_ids and row.get('verification_outcome') != 'applied'
+            and not (report['contract_satisfied'] is True
+                     and row.get('verification_status') == 'verified'
+                     and row.get('verification_outcome') == 'not_applied'
+                     and row.get('may_have_effects') is False
+                     and row.get('execution_status') != 'succeeded')]))
         failed_checks = [item['check'] for item in report['checks'] if item.get('status') == 'failed']
         self.incomplete = bool(unresolved or running or failed_files or failed_checks or report['criteria_status'] not in {'passed', 'not_configured'})
         result = {'incomplete': self.incomplete, 'unresolved': unresolved, 'running': running, 'failed_checks': failed_checks,

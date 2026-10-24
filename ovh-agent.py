@@ -699,10 +699,7 @@ def begin_verification(prompt: str = "", fact_check: bool | None = None) -> Chan
     identifier = uuid.uuid4().hex
     EXTERNAL_ACCESS_NOTICES.clear()
     VERIFICATION_GUARD = ChangeGuard(WORKSPACE, conversation_dir() / "verification" / identifier,
-                                    runner=run_verified_check, publish=emit, allow_external=FULL_ACCESS,
-                                    require_checks=bool(re.search(
-                                        r"\b(?:audite|auditer|audit)\b.{0,160}\b(?:code|repo|projet|project|agent|fichiers?|files?|implémentation|implementation)\b",
-                                        prompt, re.IGNORECASE | re.DOTALL)))
+                                    runner=run_verified_check, publish=emit, allow_external=FULL_ACCESS)
     analysis = analyze_request(prompt)
     VERIFICATION_GUARD.task_intent = analysis.intent
     VERIFICATION_GUARD.source_review = SourceReview(analysis.fact_check if fact_check is None else fact_check,
@@ -839,6 +836,9 @@ def verify_changes() -> str:
     """Exécute les contrôles du projet sur les fichiers actuels. Retourne leurs résultats réels, sans verdict inventé."""
     if VERIFICATION_GUARD is None:
         return "Aucune modification suivie dans cette tâche."
+    # Calling this tool explicitly requests checks, including a read-only audit
+    # or an already-correct project. Merely asking a question does not run suites.
+    VERIFICATION_GUARD.require_checks = True
     if TASK_ENGINE is not None:
         names = [item['check'] for item in TASK_ENGINE.acceptance.describe()['criteria']
                  if item['type'] == 'configured_check']
@@ -854,9 +854,6 @@ def validate_task_output(output: str) -> str:
             if review is not None:
                 output = review.validate(output)
             VERIFICATION_GUARD.require_verified()
-            validate_summary = getattr(VERIFICATION_GUARD, "validate_summary", None)
-            if validate_summary is not None:
-                output = validate_summary(output)
         except (VerificationError, ValueError) as error:
             raise ModelRetry(str(error)) from error
     if TASK_ENGINE is not None:
@@ -880,6 +877,15 @@ def validate_task_output(output: str) -> str:
             if status['criteria_status'] not in {'passed', 'not_configured'}:
                 reasons.append('Les critères attendus ne sont pas tous vérifiés.')
             return 'Tâche incomplète. ' + ' '.join(reasons)
+    # A controller-generated incomplete verdict remains valid when the JSON-lines
+    # loop validates it again. Validate success claims only after execution state.
+    if VERIFICATION_GUARD is not None:
+        try:
+            validate_summary = getattr(VERIFICATION_GUARD, "validate_summary", None)
+            if validate_summary is not None:
+                output = validate_summary(output)
+        except (VerificationError, ValueError) as error:
+            raise ModelRetry(str(error)) from error
     deletion_paths = read_task_state().get("deleted_paths", [])
     if isinstance(deletion_paths, list) and deletion_paths:
         paths = list(dict.fromkeys(str(path) for path in deletion_paths if str(path).strip()))[:500]
@@ -1723,8 +1729,14 @@ def no_mutation_started(controller=None, guard=None) -> bool:
     if controller is None:
         return True
     try:
-        actions = controller.journal.snapshot().get("operations", [])
-        transactions = controller.transactions.snapshot().get("operations", [])
+        action_state = controller.journal.snapshot()
+        transaction_state = controller.transactions.snapshot()
+        # Recovery can inherit effects from a previous process. They are not
+        # part of this request's IDs, but still make replay unsafe.
+        if action_state.get('unresolved_mutations') or transaction_state.get('unresolved_mutations'):
+            return False
+        actions = action_state.get("operations", [])
+        transactions = transaction_state.get("operations", [])
         initial_actions = set(getattr(controller, "initial_action_ids", ()))
         initial_transactions = set(getattr(controller, "initial_transaction_ids", ()))
         current = ([row for row in actions if row.get("id") not in initial_actions]
@@ -2552,6 +2564,16 @@ async def prepare_tool_for_request(ctx: RunContext, definition):
     """Task-local schema visibility; permission checks remain on every execution."""
     if ACTIVE_TOOLS is not None:
         ACTIVE_TOOLS.register(definition.name, definition.description, definition.parameters_json_schema)
+        if (TASK_ENGINE is not None and not ACTIVE_TOOLS.visible(definition.name)
+                and definition.name in {'workflow_status', 'verify_task_acceptance',
+                                        'execute_operation', 'reconcile_operation'}):
+            # Actual execution state, not wording in a short follow-up, makes
+            # recovery discoverable. Authorization is still checked below.
+            if TASK_ENGINE.operations.plans:
+                ACTIVE_TOOLS.hint('workflow_status verify_task_acceptance execute_operation reconcile_operation')
+            elif (TASK_ENGINE.journal.snapshot()['unresolved_mutations']
+                  or TASK_ENGINE.transactions.snapshot()['unresolved_mutations']):
+                ACTIVE_TOOLS.hint('workflow_status verify_task_acceptance reconcile_operation')
         if not ACTIVE_TOOLS.visible(definition.name):
             return None
     prompt = prompt_part_text(ctx.prompt)
@@ -2563,6 +2585,11 @@ async def prepare_tool_for_request(ctx: RunContext, definition):
         if latest and latest != prompt:
             readonly = read_only_policy(latest, readonly)
     if not readonly:
+        if definition.name == 'execute_operation' and TASK_ENGINE is not None and TASK_ENGINE.operations.plans:
+            schema = definition.parameters_json_schema
+            properties = schema.get('properties', {})
+            definition = replace(definition, parameters_json_schema={**schema, 'properties': {
+                **properties, 'name': {**properties.get('name', {}), 'enum': list(TASK_ENGINE.operations.plans)}}})
         return definition
     analysis = analyze_request(prompt)
     allowed = READ_ONLY_TOOLS if analysis.web_allowed else READ_ONLY_TOOLS - {'search_web', 'read_webpage'}

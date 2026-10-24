@@ -244,6 +244,31 @@ engine.invoke(write_file, 'app.txt', 'after')
         restarted.focus("Explain this project without editing.")
         self.assertFalse(restarted.final_status()["incomplete"])
 
+    def test_rejected_obsolete_path_does_not_override_verified_postconditions(self):
+        target=self.workspace/'current.txt';target.write_text('before')
+        policy={'version':1,'checks':[], 'acceptance':{'version':1,'criteria':[
+            {'id':'desired','type':'text_contains','path':'current.txt','text':'after'}]}}
+        (self.workspace/'.ovh-agent-checks.json').write_text(json.dumps(policy))
+        self.engine=WorkflowController(self.workspace,self.directory)
+        self.engine.focus('Update the current file; the supplied old path may be obsolete.')
+        def write_file(path: str, content: str) -> str:
+            return json.dumps({'status':'failed','executed':False,'category':'conflict'})
+        self.engine.invoke(write_file,'obsolete.txt','after')
+        rejected=self.operations()[-1]['id']
+        self.assertTrue(self.engine.final_status()['incomplete'])
+        def edit_file(path: str, old_text: str, new_text: str) -> str:
+            file=self.workspace/path
+            file.write_text(file.read_text().replace(old_text,new_text))
+            return 'Fichier modifié'
+        self.engine.invoke(edit_file,'current.txt','before','after')
+        final=self.engine.final_status()
+        self.assertTrue(final['contract_satisfied'])
+        self.assertFalse(final['incomplete'],final)
+        recorded=next(row for row in self.operations() if row['id']==rejected)
+        self.assertEqual(recorded['status'],'not_applied')
+        self.assertFalse(recorded['may_have_effects'])
+        self.assertFalse((self.workspace/'obsolete.txt').exists())
+
     def test_readonly_diagnostic_failure_is_not_a_persistent_unknown_mutation(self):
         self.engine = WorkflowController(self.workspace, self.directory, trusted_diagnostics=True)
         def run_command(command: str) -> str:
@@ -293,7 +318,9 @@ engine.invoke(write_file, 'app.txt', 'after')
             self.assertTrue(read_only_policy(prompt, True))
             self.assertTrue(read_only_policy(prompt, False))
         for prompt in ("Corrige app.py sans modifier les tests",
-                       "Modifie chat.css sans modifier extension.js"):
+                       "Modifie chat.css sans modifier extension.js",
+                       "Corrige app.py. Ne modifie pas cette configuration ni les autres fichiers.",
+                       "Fix app.py without modifying the deployment configuration."):
             self.assertFalse(read_only_policy(prompt, True))
         self.assertTrue(read_only_policy("Lis app.py sans modifier les tests", False))
         self.assertTrue(read_only_policy("Corrige app.py sans modifier app.py", False))

@@ -24,6 +24,10 @@ class AgentEvaluationTests(unittest.TestCase):
         self.assertEqual(report['metrics']['unsupported_controller_successes'], 0)
         self.assertTrue(next(row for row in report['scenarios'] if row['id'] == 'correction_compaction')['compacted'])
         self.assertTrue(next(row for row in report['scenarios'] if row['id'] == 'interrupted_write')['interruption_triggered'])
+        self.assertTrue(all(row['production_agent_pipeline'] for row in report['scenarios']))
+        sources=next(row for row in report['scenarios'] if row['id']=='source_injection')
+        self.assertTrue(sources['requested_source_observed'])
+        self.assertTrue(any(row['path'].endswith('/ISSUE.txt') for row in sources['context_preparation']['sources']))
 
     def test_dishonest_model_text_cannot_certify_unchanged_files(self):
         report = evaluation.run_campaign(cases=('multi_file',),

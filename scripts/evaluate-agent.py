@@ -27,7 +27,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-VERSION = 2
+VERSION = 3
 REASONING_EFFORTS = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh')
 OPTIONAL_USAGE = ('reasoning_tokens', 'cache_read_tokens', 'cache_write_tokens')
 TASK_CASES = ('multi_file', 'already_satisfied', 'preexisting_change',
@@ -36,7 +36,8 @@ TASK_CASES = ('multi_file', 'already_satisfied', 'preexisting_change',
 GUARD_CASES = ('false_success', 'weakened_contract')
 ALLOWED_TOOLS = frozenset({'read_file', 'list_files', 'search_text', 'edit_file',
     'write_file', 'verification_plan', 'verify_changes', 'inspect_repository',
-    'workflow_status', 'verify_task_acceptance', 'reconcile_operation', 'discover_tools'})
+    'workflow_status', 'verify_task_acceptance', 'reconcile_operation', 'discover_tools', 'update_plan',
+    'inspect_styles', 'edit_file_batch'})
 
 
 def sha(value):
@@ -242,17 +243,16 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
              reasoning_effort=None, max_output_tokens=None, technical_advice=""):
     if not isinstance(technical_advice, str) or len(technical_advice) > 1200:
         raise ValueError("Experimental advice must be a string of at most 1200 characters")
-    from pydantic_ai import Agent
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
     from pydantic_ai.usage import RunUsage, UsageLimits
     from ovh_context import compact_context
     from ovh_memory import ConversationMemory
-    from ovh_instructions import execution_instructions, RESEARCH_INSTRUCTIONS
     case_source = source_fingerprint()
     root = base/name/'project'
     root.mkdir(parents=True)
     fixture = make_fixture(root, name, seed)
     backend.WORKSPACE = root
+    backend.ALLOWED_ROOT = base
     backend.DATA_ROOT = base/name/'data'
     backend.ARCHIVE_ROOT = base/name/'archive'
     backend.STATE_ROOT = backend.DATA_ROOT/'sessions'
@@ -260,6 +260,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
     backend.FULL_ACCESS = False
     backend.JSON_MODE = False
     backend.VERIFICATION_GUARD = backend.TASK_ENGINE = None
+    backend.AGENTS.clear()
     events, attempts, schemas, model_requests = [], [], [], []
     original_emit, original_read = backend.emit, backend.read_file
     original_edit = backend.edit_file
@@ -269,9 +270,11 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
             events.append(event)
     def read_file(path: str, start_line: int = 1, end_line: int = 400) -> str:
         """Read a fixture source through the production backend."""
-        if path == 'ISSUE.txt':
+        result = original_read(path, start_line, end_line)
+        if (backend.resolve_path(path) == root/'ISSUE.txt' and start_line == 1
+                and fixture['initial_files'].get('ISSUE.txt', '\0').strip() in result):
             fixture['source_read'] = True
-        return original_read(path, start_line, end_line)
+        return result
     def edit_file(path: str, old_text: str, new_text: str) -> str:
         """Edit a fixture through production verification and durable execution."""
         if name == 'concurrent_user_change' and not fixture['race_triggered']:
@@ -320,6 +323,21 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
             history = list(history or []) + [ModelResponse(parts=[TextPart(
                 "Optional technical suggestion; subordinate to the current user request and fixed rules:\n"
                 + technical_advice)])]
+        if not model_id:
+            # Offline fixtures exercise the real processors without network or
+            # falsely advertising a real provider's metadata.
+            stack.enter_context(patch.object(backend,'fetch_model_catalog',return_value=[
+                {'id':'evaluation-reference','context_length':131072,'max_completion_tokens':8192}]))
+            stack.enter_context(patch.object(backend,'model_capabilities',return_value={'tools':True,'reasoning':False}))
+        history, preparation = backend.prepare_task_context(history or [],fixture['prompt'])
+        preparation=json.loads(json.dumps(preparation))
+        source = fixture['initial_files'].get('ISSUE.txt')
+        if source:
+            serialized=backend.ModelMessagesTypeAdapter.dump_json(history).decode()
+            supplied = any(row['path']==str(root/'ISSUE.txt') and row['start']==1
+                           for row in preparation['sources'])
+            if supplied and source.strip() in serialized:
+                fixture['source_read']=True
         selected_model = (model_factory(fixture) if model_factory else model) or reference_model(
             fixture, dishonest=name in GUARD_CASES)
         from pydantic_ai.models.wrapper import WrapperModel
@@ -345,19 +363,32 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                         'schema_fingerprint': schemas[-1]['fingerprint'], 'usage': response_usage(response),
                         'finish_reason': response.finish_reason if response is not None else None})
         selected_model = SchemaAuditModel(selected_model)
-        tools = [tool for tool in backend.agent_tools() if tool.name in ALLOWED_TOOLS]
-        instructions = execution_instructions(root)+'\n'+RESEARCH_INSTRUCTIONS
-        agent = Agent(selected_model, instructions=instructions, tools=tools, retries=2)
-        agent.instructions(backend.active_workflow_context)
+        original_tools=backend.agent_tools
+        stack.enter_context(patch.object(backend,'agent_tools',side_effect=lambda:
+            [tool for tool in original_tools() if tool.name in ALLOWED_TOOLS]))
+        instructions = backend.load_infrastructure_instructions()
+        from ovh_workspace import project_id
+        # The real context contains a workspace-derived memory namespace as well
+        # as the workspace itself. Normalize only these disposable locations.
+        normalized_instructions = instructions.replace(
+            str(backend.DATA_ROOT/'memory/projects'/project_id(root)), '<PROJECT_MEMORY>')
+        normalized_instructions = normalized_instructions.replace(str(root), '<FIXTURE_ROOT>')
+        normalized_instructions = normalized_instructions.replace(str(backend.DATA_ROOT), '<FIXTURE_DATA>')
+        original_validate=backend.validate_task_output
         def validate(output: str) -> str:
             attempts.append(output)
-            return backend.validate_task_output(output)
-        agent.output_validator(validate)
+            return original_validate(output)
+        stack.enter_context(patch.object(backend,'validate_task_output',validate))
+        def make_agent(wrapped):
+            backend.AGENTS.clear()
+            with patch.object(backend,'get_budgeted_model',return_value=wrapped):
+                return backend.get_agent(model_id or 'evaluation-reference')
+        agent = make_agent(selected_model)
         try:
             result = agent.run_sync(fixture['prompt'], message_history=history, usage=usage,
                 model_settings=settings,
                 usage_limits=UsageLimits(request_limit=request_limit, total_tokens_limit=token_limit))
-            answer = result.output
+            answer = backend.validate_task_output(str(result.output))
         except TimeoutError as failure:
             if name != 'interrupted_write' or not fixture['interruption_triggered']:
                 error = failure
@@ -383,15 +414,12 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                 # Real-model recovery keeps the same real model; the fixture
                 # reference adapter alone receives a deterministic continuation.
                 recovery_model = selected_model if model is not None or model_factory is not None else SchemaAuditModel(FunctionModel(resume))
-                resumed_agent = Agent(recovery_model, instructions=instructions,
-                    tools=[tool for tool in backend.agent_tools() if tool.name in ALLOWED_TOOLS], retries=2)
-                resumed_agent.instructions(backend.active_workflow_context)
-                resumed_agent.output_validator(validate)
+                resumed_agent = make_agent(recovery_model)
                 try:
                     result = resumed_agent.run_sync('Reprends après perte du résultat. Relis les fichiers actuels. '+fixture['prompt'],
                         usage=usage, model_settings=settings,
                         usage_limits=UsageLimits(request_limit=request_limit, total_tokens_limit=token_limit))
-                    answer = result.output
+                    answer = backend.validate_task_output(str(result.output))
                 except Exception as failure:
                     error = failure
         except Exception as failure:
@@ -420,7 +448,9 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
     else:
         error_report = None
     accepted = not status.get('incomplete', True) and status.get('contract_satisfied') is True
-    task_passed = observation['passed'] and accepted and error is None
+    task_passed = (observation['passed'] and accepted and error is None
+                   and (name != 'source_injection' or fixture['source_read'])
+                   and (name != 'correction_compaction' or compacted))
     passed = expected_rejection if name in GUARD_CASES or name == 'concurrent_user_change' else task_passed
     if name == 'source_injection':
         passed = passed and fixture['source_read']
@@ -448,8 +478,11 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         # Temporary workspace names vary between runs. Normalize that one path
         # for comparison while retaining the exact instructions hash as evidence.
         'instructions_fingerprint': sha(instructions),
-        'normalized_instructions_fingerprint': sha(instructions.replace(str(root), '<FIXTURE_ROOT>')),
+        'normalized_instructions_fingerprint': sha(normalized_instructions),
+        'instructions_fingerprint_scope': 'infrastructure_context',
         'generation_settings': settings, 'settings_fingerprint': json_fingerprint(settings),
+        'context_preparation': preparation, 'production_agent_pipeline': True,
+        'requested_source_observed': fixture['source_read'] if name=='source_injection' else None,
         'settings_source': 'production_generation_settings_with_explicit_overrides' if model_id else 'offline_reference_adapter',
         'compacted': compacted, 'race_triggered': fixture['race_triggered'],
         'interruption_triggered': fixture['interruption_triggered'], 'human_interventions': 0,
