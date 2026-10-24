@@ -1345,7 +1345,19 @@ function createAssistantRun() {
   summary.insertAdjacentHTML("beforeend", uiIcon("chevron", "summary-chevron"));
   const list = document.createElement("div");
   list.className = "activity-list";
-  activity.append(summary, list);
+  const bottomChevron = document.createElement("button");
+  bottomChevron.type = "button";
+  bottomChevron.className = "activity-bottom-chevron";
+  bottomChevron.innerHTML = uiIcon("chevron");
+  bottomChevron.title = t("Replier le bloc");
+  bottomChevron.setAttribute("aria-label", t("Replier le bloc"));
+  bottomChevron.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    activity.open = !activity.open;
+    persist();
+  });
+  activity.append(summary, list, bottomChevron);
 
   const content = document.createElement("div");
   content.className = "content markdown streaming";

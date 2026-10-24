@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.44 — 2026-10-24
+
+- Add a collapse chevron button at the bottom of the activity journal block to fold/unfold the action details.
+
 ## 1.17.43 — 2026-10-24
 
 - Serve the requested preview screenshot as a versioned Marketplace asset and link the packaged README directly to it.
