@@ -43,6 +43,10 @@ try {
   manifest.contributes.viewsContainers.activitybar[0].icon = 'media/trinity-activity.png';
   delete manifest.scripts;
   delete manifest.devDependencies;
+  // Add screenshots for Marketplace preview (must be relative paths)
+  if (publisher !== 'trinity') {
+    manifest.screenshots = [{ path: 'media/trinity_agent_screenshot.png', caption: 'TRINITY Agent conversation history' }];
+  }
   fs.writeFileSync(path.join(stage,'package.json'), JSON.stringify(manifest,null,2)+'\n');
   fs.writeFileSync(path.join(stage,'.vscodeignore'), 'package-lock.json\n.vscodeignore\nnode_modules/**/test/**\nnode_modules/**/tests/**\nnode_modules/**/benchmark/**\nnode_modules/**/benchmarks/**\nnode_modules/**/.github/**\n');
   execFileSync('npm', ['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'], {cwd:stage,stdio:'inherit'});
