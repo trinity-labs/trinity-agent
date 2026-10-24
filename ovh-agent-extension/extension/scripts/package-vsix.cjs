@@ -67,7 +67,7 @@ try {
         // Fix readme.md: replace GitHub URLs with relative paths for Marketplace.
         const readmePath = path.join(unpacked, 'extension', 'readme.md');
         let readme = fs.readFileSync(readmePath, 'utf8');
-        readme = readme.replace(/https:\/\/raw\.githubusercontent\.com\/trinity-labs\/trinity-agent\/main\/ovh-agent-extension\/extension\/media\//g, 'media/');
+        readme = readme.replace(/https:\/\/(raw\.githubusercontent\.com\/trinity-labs\/trinity-agent\/main|github\.com\/trinity-labs\/trinity-agent\/raw\/HEAD)\/ovh-agent-extension\/extension\/media\//g, 'media/');
         fs.writeFileSync(readmePath, readme);
         fs.rmSync(output);
       execFileSync('zip', ['-qr', output, '.'], {cwd:unpacked});
