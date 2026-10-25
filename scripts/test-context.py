@@ -190,9 +190,9 @@ with tempfile.TemporaryDirectory() as folder:
         agent = Agent(fm, tools=[lookup], capabilities=[ProcessHistory(a.manage_model_context)])
         result = agent.run_sync('Run synthetic checks.', model_settings={'max_tokens': 2048})
         assert result.output == 'All checks done.'
-        assert summaries and len(calls) == 7
-        assert any(e['type'] == 'context_compacted' and e.get('compacted') for e in events)
-        assert any(e['type'] == 'usage' and e.get('purpose') == 'compaction' for e in events)
+        assert len(calls) == 7
+        assert any(e['type'] == 'context_compacted' and e['before_tokens'] > e['estimated_tokens'] for e in events)
+        assert bool(summaries) == any(e['type'] == 'usage' and e.get('purpose') == 'compaction' for e in events)
         assert (location/'messages.json').exists()
         assert all(estimate_tokens(m) <= 5000 for m in calls)
         # Plan is persistent, and invalid state does not overwrite it.
@@ -354,3 +354,25 @@ with tempfile.TemporaryDirectory() as folder:
     assert stats['summary_mode'] == 'extractive'
     assert any(p.content.startswith(SUMMARY_PREFIX + SUMMARY_VERSION) for m in managed for p in m.parts if isinstance(p, SystemPromptPart))
 print('PASS: contaminated cross-model history removed, exact protocol archived, fabricated summary rejected')
+
+
+# Economical working history preserves corrections and exact archived evidence.
+from ovh_context import mask_old_observations
+with tempfile.TemporaryDirectory() as folder:
+    memory = ConversationMemory(Path(folder))
+    history = [ModelRequest(parts=[UserPromptPart('font-weight:500, never font-size:500px')])]
+    for i in range(40):
+        history += [ModelResponse(parts=[ToolCallPart('read_file', {'path':f'file{i}'}, tool_call_id=f'r{i}')]),
+                    ModelRequest(parts=[ToolReturnPart('read_file', f'output-{i}\n' + 'data ' * 3000, tool_call_id=f'r{i}')])]
+    history += [ModelRequest(parts=[UserPromptPart('Keep the white dark-theme logo')])]
+    masked = mask_old_observations(history, memory)
+    assert estimate_tokens(masked) < estimate_tokens(history) / 3
+    validate_protocol(masked)
+    assert '[Observation archivée :' in transcript(masked)
+    assert any('output-0\n' + 'data ' * 3000 == p.read_text() for p in memory.docs.glob('*.md'))
+    compacted, stats = asyncio.run(compact_context(masked, memory, 32768))
+    users = lambda rows:[p.content for m in rows for p in m.parts if isinstance(p, UserPromptPart)]
+    assert users(history) == users(compacted)
+    assert estimate_tokens(compacted) <= 32768
+    validate_protocol(compacted)
+print('PASS: inexpensive history preserves user corrections, protocol IDs and full observations on disk')

@@ -193,3 +193,82 @@ with tempfile.TemporaryDirectory() as directory:
     assert callback_ledger.status()['pending_requests']==0
     assert callback_ledger.status()['periods']['daily']['spent']==0
 print('Delayed provider accounting, uncertain local charges and pre-send reservation cleanup: OK')
+
+# Billing evidence survives run failure, instead of depending on a final answer.
+from pydantic_ai.usage import UsageLimits
+from pydantic_ai.exceptions import UsageLimitExceeded
+with tempfile.TemporaryDirectory() as directory:
+    ledger = BudgetLedger(Path(directory)/'receipts.json', {'daily': 1})
+    receipts, responses = [], []
+    def record(receipt, response):
+        receipts.append(receipt)
+        responses.append(response)
+    def looping(messages, info):
+        return ModelResponse(parts=[ToolCallPart('lookup', {}, tool_call_id=str(len(receipts)))],
+                             usage=RequestUsage(input_tokens=100, output_tokens=20))
+    metered = BudgetedModel(FunctionModel(looping), lambda:ledger, lambda _:card, lambda _:None, record=record)
+    try:
+        Agent(metered, tools=[lookup]).run_sync('Fixture loop', model_settings=settings,
+                                              usage_limits=UsageLimits(request_limit=2))
+        raise AssertionError('Expected SDK request exhaustion')
+    except UsageLimitExceeded:
+        pass
+    assert len(receipts) == 2 and len({r['request_id'] for r in receipts}) == 2
+    assert all(r['usage_known'] and r['completed'] for r in receipts)
+    assert sum(r['cost_eur'] for r in receipts) == .00028
+    assert all(r is not None for r in responses)
+    receipts.clear()
+    def final(messages, info):
+        return ModelResponse(parts=[TextPart('Done')], usage=RequestUsage(input_tokens=100, output_tokens=20))
+    agent = Agent(BudgetedModel(FunctionModel(final), lambda:ledger, lambda _:card, lambda _:None, record=record))
+    @agent.output_validator
+    def failed_validation(output):
+        raise RuntimeError('Verification failed after paid generation')
+    try:
+        agent.run_sync('Fixture validation', model_settings=settings)
+        raise AssertionError('Expected validation failure')
+    except RuntimeError:
+        pass
+    assert len(receipts) == 1 and receipts[0]['cost_eur'] == .00014
+    receipts.clear()
+    interrupted = BudgetedModel(FunctionModel(stream_function=failed_stream), lambda:ledger, lambda _:card,
+                                lambda _:None, record=record)
+    try:
+        asyncio.run(consume(interrupted))
+        raise AssertionError('Expected interrupted stream')
+    except OSError:
+        pass
+    assert len(receipts) == 1 and receipts[0]['cost_eur'] is None
+    assert receipts[0]['completed'] is False and receipts[0]['usage_known'] is False
+    assert receipts[0]['reserved_upper_bound_eur'] == .00105
+print('PASS: durable request receipts on request exhaustion, failed validation and interrupted stream')
+
+
+# Failed-attempt summaries include only costs not already shown by vision,
+# compaction or a successful primary model before fallback.
+import importlib.util
+with patch.object(sys, 'argv', ['request-receipt-test', '--billing-status']):
+    spec = importlib.util.spec_from_file_location('request_receipt_backend', Path(__file__).resolve().parents[1]/'ovh-agent.py')
+    backend = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(backend)
+with tempfile.TemporaryDirectory() as directory:
+    folder = Path(directory)
+    backend.MODEL_REQUEST_RECEIPTS.clear(); backend.MODEL_USAGE_REPORTED.clear()
+    events = []
+    original_emit = backend.emit
+    def capture(event):
+        events.append(dict(event)); original_emit(event)
+    with patch.object(backend, 'JSON_MODE', False), patch.object(backend, 'emit', side_effect=capture), \
+         patch.object(backend, 'conversation_dir', return_value=folder), patch.object(backend, 'ensure_conversation'), \
+         patch.object(backend, 'record_model_usage', side_effect=lambda model,i,o:(i+o*2)/1e6):
+        for i in range(2):
+            backend.record_provider_request({'request_id':str(i),'model':'fixture','input_tokens':100,
+                'output_tokens':20,'cost_eur':.00014,'usage_known':True,'reserved_upper_bound_eur':.00105}, None)
+        backend.emit({'type':'usage','model':'fixture','input_tokens':100,'output_tokens':20,'requests':1,'cost_eur':.00014})
+        backend.report_unreported_usage()
+        backend.report_unreported_usage()
+    reports=[e for e in events if e.get('purpose')=='interrupted_attempt']
+    assert len(reports)==1 and reports[0]['requests']==1 and reports[0]['cost_eur']==.00014
+    saved=[json.loads(line) for line in (folder/'model-requests.jsonl').read_text().splitlines()]
+    assert len(saved)==2 and saved[1]['request_id']=='1'
+print('PASS: request journal persists independently; interrupted costs are reported once without duplicate totals')

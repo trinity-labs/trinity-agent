@@ -4,7 +4,7 @@ from ovh_instructions import execution_instructions, RESEARCH_INSTRUCTIONS
 
 import argparse
 import asyncio
-from ovh_context import compact_context, bound_tool_outputs, estimate_tokens, text_tokens, text_only_history, budget_setting
+from ovh_context import compact_context, bound_tool_outputs, estimate_tokens, text_tokens, text_only_history, budget_setting, mask_old_observations, split_units
 from ovh_memory import ConversationMemory, atomic_write
 from ovh_workspace import WorkspaceContext, inventory, install_plan
 from ovh_project_memory import ProjectMemory, aggregate, schedule_export
@@ -332,7 +332,7 @@ def update_metadata(*, first_message: str = "", **changes: object) -> bool:
 def archive_event(payload: dict[str, object]) -> None:
     if payload.get("type") not in {
         "user", "response", "error", "tool_start", "tool_end", "approval", "approval_result", "file_change",
-        "model_active", "model_routed", "model_changed", "vision_reading", "context_compacted", "request_prepared", "usage", "verification_status", "verification_check", "task_checkpoint", "plan_updated", "steer_applied", "workflow_action", "execution_evidence", "questionnaire",
+        "model_active", "model_routed", "model_changed", "vision_reading", "context_compacted", "request_prepared", "usage", "model_request_usage", "verification_status", "verification_check", "task_checkpoint", "plan_updated", "steer_applied", "workflow_action", "execution_evidence", "questionnaire",
     }:
         return
     if not CONVERSATION_ID and payload.get("type") != "user":
@@ -361,6 +361,11 @@ if "--billing-status" not in sys.argv:
 
 
 def emit(payload: dict[str, object]) -> None:
+    if payload.get('type') == 'usage' and 'MODEL_USAGE_REPORTED' in globals():
+        total = MODEL_USAGE_REPORTED.setdefault(str(payload.get('model', '')), {})
+        for key in ('requests', 'input_tokens', 'output_tokens'):
+            total[key] = total.get(key, 0) + int(payload.get(key, 0) or 0)
+        total['cost_eur'] = total.get('cost_eur', 0) + float(payload.get('cost_eur', 0) or 0)
     if TASK_ENGINE is not None:
         TASK_ENGINE.observe_event(payload)
     if not JSON_MODE:
@@ -2758,6 +2763,45 @@ def budget_ledger():
                                          DATA_ROOT / "budgets" / "policy.json", fetch_billing_status)
 
 
+# Request-level evidence is independent from successful run finalization.
+MODEL_REQUEST_RECEIPTS = []
+MODEL_USAGE_REPORTED = {}
+
+
+def record_provider_request(receipt, response):
+    ensure_conversation()
+    data = dict(receipt)
+    if response is not None:
+        data['response'] = json.loads(ModelMessagesTypeAdapter.dump_json([response]))[0]
+    target = conversation_dir() / 'model-requests.jsonl'
+    with OUTPUT_LOCK:
+        with target.open('a', encoding='utf-8') as stream:
+            os.chmod(target, 0o600)
+            stream.write(json.dumps(data, ensure_ascii=False) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        MODEL_REQUEST_RECEIPTS.append(receipt)
+    emit({'type': 'model_request_usage', **receipt})
+
+
+def report_unreported_usage():
+    for model in dict.fromkeys(row['model'] for row in MODEL_REQUEST_RECEIPTS):
+        rows = [row for row in MODEL_REQUEST_RECEIPTS if row['model'] == model]
+        previous = MODEL_USAGE_REPORTED.get(model, {})
+        requests = max(0, len(rows) - previous.get('requests', 0))
+        if not requests:
+            continue
+        incoming = max(0, sum(row['input_tokens'] or 0 for row in rows) - previous.get('input_tokens', 0))
+        outgoing = max(0, sum(row['output_tokens'] or 0 for row in rows) - previous.get('output_tokens', 0))
+        unknown = sum(not row['usage_known'] for row in rows)
+        record_model_usage(model, incoming, outgoing)
+        cost = max(0, sum(row['cost_eur'] or 0 for row in rows) - previous.get('cost_eur', 0))
+        emit({'type': 'usage', 'purpose': 'interrupted_attempt', 'model': model,
+              'requests': requests, 'input_tokens': incoming, 'output_tokens': outgoing,
+              'cost_eur': cost, 'currency': 'EUR', 'unknown_requests': unknown,
+              'unknown_cost_upper_bound_eur': sum(row['reserved_upper_bound_eur'] for row in rows if not row['usage_known'])})
+
+
 def publish_budget(status):
     emit({"type": "budget_status", **status})
 
@@ -2881,7 +2925,7 @@ def get_budgeted_model(model_id):
                          "supports_json_object_output": "json_object" in model_capabilities(model_id).get("response_formats", [])},
             ), ledger=budget_ledger,
                 catalog_card=lambda name: next((c for c in fetch_model_catalog() if c["id"] == name), {}),
-                publish=publish_budget)
+                publish=publish_budget, record=record_provider_request)
 
 
 def vision_reader_model() -> str:
@@ -3088,6 +3132,8 @@ def active_plan_context() -> str:
 
 
 async def manage_model_context(ctx: RunContext, messages: list) -> list:
+    if TASK_ENGINE is not None:
+        TASK_ENGINE.check_progress()
     started = time.monotonic()
     model_id = ctx.model.model_name
     card = next((item for item in fetch_model_catalog() if item["id"] == model_id), {})
@@ -3163,7 +3209,20 @@ async def manage_model_context(ctx: RunContext, messages: list) -> list:
             raise ValueError("Résumé tronqué")
         return str(result.output)
 
-    managed, stats = await compact_context(messages, memory, budget, summarize, limits=limits)
+    # A large provider window is capacity, not a target to resend on every call.
+    # Current user inputs and the latest indivisible round may exceed the working
+    # history target; preserve them rather than imposing a new prompt limit.
+    unmasked_tokens = estimate_tokens(messages)
+    messages = mask_old_observations(messages, memory)
+    pinned = [replace(m, parts=[p for p in m.parts if isinstance(p, (UserPromptPart, SystemPromptPart))])
+              for m in messages if any(isinstance(p, (UserPromptPart, SystemPromptPart)) for p in m.parts)]
+    units = split_units(messages)
+    necessary = estimate_tokens(pinned) + estimate_tokens(units[-1] if units else [])
+    history_budget = min(budget, max(32768, math.ceil((necessary + 2048) / .65)))
+    managed, stats = await compact_context(messages, memory, history_budget, summarize, limits=limits)
+    stats['before_tokens'] = unmasked_tokens
+    stats['provider_budget_tokens'] = budget
+    stats['saved_percent'] = max(0, round((1 - stats['estimated_tokens'] / max(1, unmasked_tokens)) * 100))
     if ctx.run_step <= 1 or stats["compacted"] or stats["before_tokens"] != stats["estimated_tokens"]:
         emit({"type": "context_compacted", "model": model_id, "context_window": window,
               "output_reserved": output, "provider_window_known": limits.provider_window_known,
@@ -3542,6 +3601,8 @@ def main_terminal() -> None:
             start_new_conversation()
             print("Nouvelle conversation.")
             continue
+        MODEL_REQUEST_RECEIPTS.clear()
+        MODEL_USAGE_REPORTED.clear()
         try:
             ensure_conversation()
             archive_event({"type": "user", "text": prompt, "model": selected_model})
@@ -3559,6 +3620,7 @@ def main_terminal() -> None:
             save_history(history)
             archive_event({"type": "response", "text": output})
         except Exception as error:
+            report_unreported_usage()
             if VERIFICATION_GUARD is not None and VERIFICATION_GUARD.state["status"] != "passed":
                 try:
                     VERIFICATION_GUARD.rollback()
@@ -3870,6 +3932,8 @@ def main_json_lines() -> None:
             if not followup_id:
                 FOLLOWUP_GENERATION += 1
             FOLLOWUP_RUNNING = True
+        MODEL_REQUEST_RECEIPTS.clear()
+        MODEL_USAGE_REPORTED.clear()
         prompt = str(request.get("text", "")).strip()
         raw_images = request.get("images", [])
         if not prompt and not raw_images:
@@ -4054,8 +4118,6 @@ def main_json_lines() -> None:
                     usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
                 )
-            verification = VERIFICATION_GUARD.require_verified()
-            output = validate_task_output(str(result.output))
             usage = result.usage
             request_cost = record_model_usage(active_model, usage.input_tokens, usage.output_tokens)
             history, _ = compact_history(result.all_messages())
@@ -4072,6 +4134,11 @@ def main_json_lines() -> None:
                 "first_text_ms": stream.first_text_ms,
                 "reasoning_effort": settings.get("openai_reasoning_effort"),
             })
+            # A failed primary model or image reader may precede a successful
+            # fallback. Include those requests even when the task finally succeeds.
+            report_unreported_usage()
+            verification = VERIFICATION_GUARD.require_verified()
+            output = validate_task_output(str(result.output))
             if result.response.finish_reason == "length":
                 raise RuntimeError("Réponse tronquée par la limite de tokens ; la tâche reste à reprendre.")
             emit({"type": "response", "text": output, "verification": verification})
@@ -4084,6 +4151,7 @@ def main_json_lines() -> None:
                 if not incomplete:
                     schedule_next_followup(requests)
         except Exception as error:
+            report_unreported_usage()
             detail = task_error_message(error)
             if VERIFICATION_GUARD is not None and VERIFICATION_GUARD.state["status"] != "passed":
                 try:

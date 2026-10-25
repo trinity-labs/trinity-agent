@@ -391,6 +391,41 @@ engine.invoke(write_file, 'app.txt', 'after')
         self.assertEqual(calls, ["a", "b", "a", "b"])
         self.assertEqual(json.loads(outputs[-1])["category"], "no_progress")
 
+    def test_repeated_observations_stop_before_next_paid_model_round(self):
+        from pydantic_ai.capabilities import ProcessHistory
+        calls = []
+        def lookup() -> str:
+            """Inspect an unchanged fixture."""
+            return 'unchanged fixture'
+        def model(messages, info):
+            calls.append(messages)
+            return ModelResponse(parts=[ToolCallPart('lookup', {}, tool_call_id=str(len(calls)))])
+        def before_request(messages):
+            self.engine.check_progress()
+            return messages
+        agent = Agent(FunctionModel(model), tools=[guarded_tool(lookup, lambda:self.engine)],
+                      capabilities=[ProcessHistory(before_request)])
+        with self.assertRaisesRegex(RuntimeError, 'même séquence'):
+            agent.run_sync('Inspect fixture')
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(self.engine.incomplete)
+        # A user correction or new observed evidence permits progress again.
+        self.engine.focus('Inspect a different fixture')
+        self.engine.check_progress()
+        for i in range(12):
+            self.engine.note_observation('lookup', {}, str(i))
+            self.engine.check_progress()
+
+    def test_repeated_two_tool_cycle_is_detected_without_an_action_count_cap(self):
+        for _ in range(3):
+            self.engine.note_observation('lookup', {'path':'a'}, 'same A')
+            self.engine.note_observation('lookup', {'path':'b'}, 'same B')
+        with self.assertRaisesRegex(RuntimeError, 'même séquence'):
+            self.engine.check_progress()
+        self.engine.progress += 1
+        self.engine.note_observation('write_file', {'path':'a'}, 'changed')
+        self.engine.check_progress()
+
     def test_steering_invalidates_cached_evidence_and_retains_user_correction(self):
         self.engine.evaluate()
         self.assertIsNotNone(self.engine.last_acceptance)

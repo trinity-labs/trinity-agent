@@ -148,6 +148,7 @@ class WorkflowController:
         self.lock = threading.RLock()
         self.failures = FailureTracker()
         self.progress = 0
+        self.recent_observations = []
         self.focus_file = self.directory / 'focus.json'
         try:
             previous = json.loads(self.focus_file.read_text())
@@ -182,6 +183,7 @@ class WorkflowController:
         with self.lock:
             self.read_only = read_only_policy(prompt, self.read_only)
             self.goal_revision += 1
+            self.recent_observations.clear()
             self.goal = str(prompt)[-4000:]
             self.corrections = (self.corrections + [self.goal])[-4:]
             self.last_acceptance = None
@@ -193,6 +195,24 @@ class WorkflowController:
                 'corrections': self.corrections, 'previous_conclusions_valid': False,
                 'read_only': self.read_only,
                 'updated_at': time.time()}, ensure_ascii=False))
+
+    def note_observation(self, name, arguments, result):
+        # Compare observed results, not model claims of progress. Keep only hashes
+        # so repeated large command outputs do not grow the controller itself.
+        signature = hashlib.sha256(json.dumps([name, arguments, str(result), self.progress,
+            self.goal_revision], sort_keys=True, default=str).encode()).hexdigest()
+        with self.lock:
+            self.recent_observations = (self.recent_observations + [signature])[-9:]
+
+    def check_progress(self):
+        with self.lock:
+            recent = list(self.recent_observations)
+        for width in (1, 2, 3):
+            if len(recent) >= width * 3 and recent[-width:] * 3 == recent[-width * 3:]:
+                self.incomplete = True
+                raise RuntimeError('Tâche suspendue : la même séquence d’outils produit trois fois '
+                    'les mêmes résultats sans progrès. Aucun nouvel appel modèle lancé ; '
+                    'les résultats et coûts sont conservés pour une reprise explicite.')
 
     def observe_event(self, event):
         rows = getattr(self.local, 'events', None)
@@ -433,11 +453,15 @@ class WorkflowController:
         if name in CONTROL:
             if name == 'execute_operation':
                 self.last_acceptance = None
-            return function(*args, **kwargs)
+            result = function(*args, **kwargs)
+            self.note_observation(name, arguments, result)
+            return result
         revision = self._observation_revision(name, arguments)
         if self.failures.before_call(name, arguments, revision=revision)['blocked']:
-            return json.dumps({'status': 'blocked', 'category': 'no_progress', 'executed': False,
+            result = json.dumps({'status': 'blocked', 'category': 'no_progress', 'executed': False,
                 'tool': name, 'message': 'Échecs répétés sans progrès vérifié. Inspecte la cause ou répare avant de répéter.'}, ensure_ascii=False)
+            self.note_observation(name, arguments, result)
+            return result
         mutation = name in MUTATIONS and not diagnostic
         if mutation:
             # Failed commands can still change files; cached evidence is stale
@@ -489,6 +513,7 @@ class WorkflowController:
                 self.last_acceptance = None
                 if proof and proof['expected'] != proof['before'] and self._verify_file({'id': operation}, {})['outcome'] == 'applied':
                     self.progress += 1
+            self.note_observation(name, arguments, result)
             self.publish({'type': 'workflow_action', 'operation': operation, 'tool': name,
                           'status': status, 'category': category})
             return result

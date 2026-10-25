@@ -742,7 +742,9 @@ class Verification(unittest.TestCase):
             queue.put({'type':'shutdown'})
         def fake_run(*_args, **_kwargs):
             backend.edit_file('app.py', 'VALUE = 1', 'VALUE = 3')
-            return SimpleNamespace(output='Everything fixed and tested!')
+            return SimpleNamespace(output='Everything fixed and tested!',
+                usage=SimpleNamespace(input_tokens=100, output_tokens=10, requests=1),
+                all_messages=lambda:[], response=SimpleNamespace(finish_reason='stop'))
         with ExitStack() as stack:
             values = {'WORKSPACE':self.workspace, 'DATA_ROOT':self.root, 'ARCHIVE_ROOT':archive.parent,
                       'CONVERSATION_ID':archive.name,'JSON_MODE':False,'FULL_ACCESS':False,
@@ -758,6 +760,7 @@ class Verification(unittest.TestCase):
                      'prepare_task_context':{'return_value':([],{})},
                      'generation_settings':{'return_value':{}},
                      'model_capabilities':{'return_value':{'stream':False}},
+                     'record_model_usage':{'return_value':.001},
                      'get_agent':{'return_value':SimpleNamespace(run_sync=fake_run)}}
             for name, settings in mocks.items():
                 stack.enter_context(patch.object(backend,name,**settings))
@@ -768,6 +771,10 @@ class Verification(unittest.TestCase):
         self.assertFalse(any(event['type']=='response' for event in events))
         self.assertTrue(any(event.get('status')=='rolled_back' for event in events))
         self.assertTrue(any(event['type']=='error' and 'Tâche non validée' in event['text'] for event in events))
+        usage_index=next(i for i,event in enumerate(events) if event['type']=='usage')
+        error_index=next(i for i,event in enumerate(events) if event['type']=='error')
+        self.assertLess(usage_index,error_index)
+        self.assertEqual(events[usage_index]['cost_eur'], .001)
 
 
 class TestEvidence(unittest.TestCase):

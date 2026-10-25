@@ -2592,7 +2592,9 @@ window.addEventListener("message", ({ data }) => {
     }
     const timing = Number.isFinite(data.first_text_ms)
       ? t(" · premier texte : {0} s", (data.first_text_ms / 1000).toFixed(2)) : "";
-    addCompletedActivity("cost", data.local_answer ? t("Mémoire locale · aucun appel API") : data.purpose === "compaction" ? t("Coût de la compaction") : t("Utilisation du modèle"), t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens, formatModelCost(data.cost_eur ?? data.cost_usd, data.cost_eur != null ? "EUR" : "USD")) + timing, data);
+    const uncertain = data.unknown_requests
+      ? t(" · coût partiel : {0} appel(s) sans consommation confirmée", data.unknown_requests) : "";
+    addCompletedActivity("cost", data.local_answer ? t("Mémoire locale · aucun appel API") : data.purpose === "compaction" ? t("Coût de la compaction") : t("Utilisation du modèle"), t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens, formatModelCost(data.cost_eur ?? data.cost_usd, data.cost_eur != null ? "EUR" : "USD")) + timing + uncertain, data);
   }
   if (data.type === "approval") addApproval(data);
   if (data.type === "approval_result") resolveApproval(data);

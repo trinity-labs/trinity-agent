@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.51
+
+- Reduce repeated history input while retaining user corrections and archived observations.
+- Pause repeated tool cycles with unchanged results before another model request.
+- Persist OVH request usage before task validation and report failed-attempt costs without double counting.
+
 ## 1.17.50
 
 - Allow tracked reference-file edits without an environment override, retaining backups and validation.

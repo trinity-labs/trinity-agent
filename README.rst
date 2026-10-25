@@ -665,6 +665,26 @@ completion limits bounded by the runtime catalog, and first-visible-text/total
 latency measurements. A truncated response is marked interrupted, not completed.
 Catalog data is cached for five minutes; billing refresh is outside routing.
 
+Working history is compacted toward 32,768 estimated tokens instead of filling
+large provider windows. Current user inputs and indivisible tool rounds can
+raise this target within the provider window. User turns are retained verbatim;
+older verbose observations are stored locally with references, while the latest
+four protocol units remain intact. This reduces repeated input; it is not a
+model-call count or monetary cap.
+
+Before another model request, the executor detects three identical repetitions
+of a one-, two- or three-action cycle with unchanged results and no verified file
+progress. It pauses the task with an explicit reason. Changed observations,
+verified edits or a user correction allow progress; ordinary long tasks have no
+fixed action-count ceiling.
+
+For OVH, ``model-requests.jsonl`` records each returned response and its usage
+before final task validation, including failed attempts. Missing usage is marked
+unknown with the reservation upper bound, never counted as free. Failed-attempt
+summaries show previously unreported costs without duplicating completed runs,
+vision or compaction summaries. A process killed during a request can still leave
+an unresolved reservation; only provider accounting can settle that uncertainty.
+
 Discovery metadata comes from the public, unauthenticated Catalog API:
 https://catalog.endpoints.ai.ovh.net/rest/v1/models_v2
 

@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, timezone
 import re
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.messages import PartDeltaEvent, PartEndEvent, PartStartEvent, ToolCallPart, ToolCallPartDelta
@@ -85,11 +86,12 @@ class NormalizedStream:
 
 
 class BudgetedModel(WrapperModel):
-    def __init__(self, model, ledger, catalog_card, publish):
+    def __init__(self, model, ledger, catalog_card, publish, record=None):
         super().__init__(model)
         self.ledger_factory = ledger
         self.catalog_card = catalog_card
         self.publish = publish
+        self.record = record
 
     def begin(self, settings):
         card = self.catalog_card(self.model_name)
@@ -129,15 +131,32 @@ class BudgetedModel(WrapperModel):
             raise
         return ledger, reservation, incoming, outgoing, maximum
 
-    def finish(self, reservation, response=None):
+    def finish(self, reservation, response=None, *, completed=True):
         ledger, identifier, incoming, outgoing, maximum = reservation
         amount = None
-        if response is not None:
+        if response is not None and completed:
             usage = response.usage
             # Missing usage is not evidence that a paid request was free.
             if maximum == 0 or usage.input_tokens > 0 or usage.output_tokens > 0:
                 amount = Decimal(usage.input_tokens) * incoming + Decimal(usage.output_tokens) * outgoing
-        self.publish(ledger.settle(identifier, amount))
+        try:
+            status = ledger.settle(identifier, amount)
+        finally:
+            # Persist per provider request, even when the run, output validator,
+            # UI publisher or a later tool fails. Unknown usage is never zero.
+            if self.record is not None:
+                self.record({
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'request_id': identifier, 'model': self.model_name,
+                    'provider_response_id': getattr(response, 'provider_response_id', None),
+                    'input_tokens': response.usage.input_tokens if amount is not None else None,
+                    'output_tokens': response.usage.output_tokens if amount is not None else None,
+                    'cost_eur': float(amount) if amount is not None else None,
+                    'reserved_upper_bound_eur': float(maximum),
+                    'usage_known': amount is not None, 'completed': completed,
+                    'currency': 'EUR',
+                }, response)
+        self.publish(status)
 
     async def request(self, messages, model_settings, model_request_parameters):
         reservation = self.begin(model_settings)
@@ -147,16 +166,19 @@ class BudgetedModel(WrapperModel):
             response = normalize_tool_call_names(response, model_request_parameters)
             return response
         finally:
-            self.finish(reservation, response)
+            self.finish(reservation, response, completed=response is not None)
 
     @asynccontextmanager
     async def request_stream(self, messages, model_settings, model_request_parameters, run_context=None):
         reservation = self.begin(model_settings)
-        response = None
+        response, completed = None, False
         try:
             async with self.wrapped.request_stream(messages, model_settings, model_request_parameters, run_context) as stream:
                 normalized = NormalizedStream(stream, model_request_parameters)
-                yield normalized
-                response = normalized.get()
+                try:
+                    yield normalized
+                    completed = True
+                finally:
+                    response = normalized.get()
         finally:
-            self.finish(reservation, response)
+            self.finish(reservation, response, completed=completed)

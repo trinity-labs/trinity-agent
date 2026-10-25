@@ -104,6 +104,36 @@ def bound_tool_outputs(messages, memory, limit=None):
     return bounded
 
 
+def mask_old_observations(messages, memory):
+    """Keep recent evidence verbatim; archive older verbose observations locally.
+
+    This runs even below the model window. User/system instructions, tool IDs,
+    arguments, retries and the newest four protocol units remain untouched.
+    """
+    units = split_units(messages)
+    if len(units) <= 4:
+        return messages
+    result = []
+    for index, unit in enumerate(units):
+        if index >= len(units) - 4:
+            result.extend(unit)
+            continue
+        for message in unit:
+            parts = []
+            for part in message.parts:
+                if isinstance(part, (ToolReturnPart, TextPart)):
+                    content = part.content
+                    text = content if isinstance(content, str) else json.dumps(content, default=str, ensure_ascii=False)
+                    if len(text) > 1024:
+                        reference = memory.put(text)
+                        part = replace(part, content=(text[:160] +
+                            f'\n[Observation archivée : read_memory("{reference}"). '
+                            'Extraits historiques, pas une nouvelle vérification.]\n' + text[-160:]))
+                parts.append(part)
+            result.append(replace(message, parts=parts))
+    return result
+
+
 def text_only_history(messages):
     """Replay tool evidence as labelled text for models without tool support."""
     result = []
@@ -185,10 +215,8 @@ async def compact_context(messages, memory, budget, summarize=None, *, limits=No
         return messages, stats
     if budget < 2048:
         raise ValueError('Contexte insuffisant après réservation de la réponse et des outils. Réduis la demande ou choisis un modèle plus grand.')
-    # Preserve current user request verbatim, including images, even if its tool
-    # rounds are summarized. Steering requests are likewise kept when recent.
-    latest_user = next((m for m in reversed(body) if any(isinstance(p, UserPromptPart) for p in m.parts)), None)
-    user_only = replace(latest_user, parts=[p for p in latest_user.parts if isinstance(p, UserPromptPart)]) if latest_user else None
+    # Keep user requests and corrections verbatim, including images, even when
+    # the corresponding tool rounds move out of the active history.
     prefix = [ModelRequest(parts=system)] if system else []
     summary_allowance = min(limits.summary_tokens, budget // 5)
     target = int(budget * .70)
@@ -198,10 +226,11 @@ async def compact_context(messages, memory, budget, summarize=None, *, limits=No
     costs = [estimate_tokens(unit) for unit in units]
     remaining = sum(costs)
     prefix_cost = estimate_tokens(prefix)
-    pinned_cost = estimate_tokens([user_only]) if user_only else 0
-    latest_unit = next((i for i,unit in enumerate(units) if any(m is latest_user for m in unit)), -1)
+    user_units = [[replace(m, parts=[p for p in m.parts if isinstance(p, UserPromptPart)])
+                   for m in unit if any(isinstance(p, UserPromptPart) for p in m.parts)] for unit in units]
+    pinned_cost = 0
     def tail_cost():
-        return prefix_cost + remaining + (pinned_cost if count > latest_unit else 0)
+        return prefix_cost + remaining + pinned_cost
     while count < len(units) and tail_cost() + summary_allowance > target:
         if count == len(units)-1:
             pending = set()
@@ -214,8 +243,9 @@ async def compact_context(messages, memory, budget, summarize=None, *, limits=No
             if pending:
                 break  # Never summarize an unfinished call.
         remaining -= costs[count]
+        pinned_cost += estimate_tokens(user_units[count])
         count += 1
-    tail = prefix + ([user_only] if user_only and count > latest_unit else []) + [m for unit in units[count:] for m in unit]
+    tail = prefix + [m for unit in user_units[:count] for m in unit] + [m for unit in units[count:] for m in unit]
     if count == 0 or estimate_tokens(tail) + summary_allowance > budget:
         raise ValueError('La demande courante ou un appel d’outil indivisible dépasse le budget de contexte. Utilise des plages plus petites ou un modèle avec davantage de contexte.')
     # Retain the exact pre-compaction protocol before any lossy transformation.
