@@ -140,27 +140,36 @@ class Limits(unittest.TestCase):
                 backend.generation_settings('offline-model','Bonjour')
 
     def test_memory_tool_uses_selected_model_without_journaling_sdk_context(self):
+        from pydantic_ai import Agent
+        from pydantic_ai.models.function import FunctionModel
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+        from ovh_execution import WorkflowController, ExecutionCapability
         backend=self.backend()
         cards=[{'id':str(window),**self.card(window)} for window in (32768,262144)]
-        invocations=[]
-        def invoke(function,*args,**kwargs):
-            invocations.append((function.__name__,args,kwargs))
-            return function(*args,**kwargs)
-        with patch.object(backend,'fetch_model_catalog',return_value=cards), \
-             patch.object(backend,'TASK_ENGINE',SimpleNamespace(invoke=invoke)), \
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(backend,'fetch_model_catalog',return_value=cards), \
              patch.object(backend,'ConversationMemory') as local, \
              patch.object(backend,'WorkspaceContext') as shared:
             local.return_value.search.return_value='local'
             shared.return_value.search.return_value='shared'
             for card in cards:
-                ctx=SimpleNamespace(model=SimpleNamespace(model_name=card['id']))
-                self.assertEqual(backend.search_memory_for_context(ctx,'logo'),'local\nshared')
+                deps=backend.RunDependencies(engine=WorkflowController(Path(folder),Path(folder)/card['id']))
+                tool=next(tool for tool in backend.agent_tools() if tool.name=='search_memory')
+                self.assertEqual(set(tool.function_schema.json_schema['properties']),{'query'})
+                def model(messages,info):
+                    if len(messages)==1:
+                        return ModelResponse(parts=[ToolCallPart('search_memory',{'query':'logo'})])
+                    return ModelResponse(parts=[TextPart(str(messages[-1].parts[0].content))])
+                agent=Agent(FunctionModel(model,model_name=card['id']),deps_type=backend.RunDependencies,
+                    tools=[tool],capabilities=[ExecutionCapability(backend.RUN_CONTEXT)])
+                result=agent.run_sync('Search memory',deps=deps)
+                self.assertEqual(result.output,'local\nshared')
                 limits=resolve_limits(card)
                 self.assertEqual(local.return_value.search.call_args.args,('logo',limits.memory_chars//2))
                 self.assertEqual(shared.return_value.search.call_args.args[-1],limits.shared_memory_chars)
-                self.assertEqual(invocations[-1],('search_memory',('logo',),{}))
-            tool=next(tool for tool in backend.agent_tools() if tool.name=='search_memory')
-            self.assertEqual(set(tool.function_schema.json_schema['properties']),{'query'})
+                operation,=deps.engine.journal.snapshot()['operations']
+                from ovh_task_engine import _hash
+                self.assertEqual(operation['arguments_hash'],_hash({'query':'logo'}))
 
     def test_catalogue_failure_does_not_invent_provider_capacity(self):
         backend=self.backend()

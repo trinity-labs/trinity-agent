@@ -54,9 +54,9 @@ class Verification(unittest.TestCase):
         outside.write_text('outside')
         link = self.workspace / 'external-link'
         link.symlink_to(outside)
-        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'VERIFICATION_GUARD', None):
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend.run_dependencies(), 'verification', None):
             for full in (False, True, False):
-                with patch.object(backend, 'FULL_ACCESS', full):
+                with patch.object(backend.run_dependencies(), 'full_access', full):
                     for path in (outside, link):
                         if full:
                             self.assertEqual(backend.resolve_path(str(path)), outside)
@@ -70,7 +70,7 @@ class Verification(unittest.TestCase):
     def test_external_access_notice_once_and_absolute_change_path(self):
         outside = self.root / 'outside.txt'
         events = []
-        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'FULL_ACCESS', True), patch.object(backend, 'VERIFICATION_GUARD', None), patch.object(backend, 'EXTERNAL_ACCESS_NOTICES', set()), patch.object(backend, 'emit', side_effect=events.append), patch.object(backend, 'read_task_state', return_value={}):
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend.run_dependencies(), 'full_access', True), patch.object(backend.run_dependencies(), 'verification', None), patch.object(backend.run_dependencies(), 'external_access_notices', set()), patch.object(backend, 'emit', side_effect=events.append), patch.object(backend, 'read_task_state', return_value={}):
             backend.resolve_path(str(outside))
             backend.resolve_path(str(outside))
             backend.resolve_path(str(self.file))
@@ -87,7 +87,7 @@ class Verification(unittest.TestCase):
         other = self.root / 'other'
         other.mkdir()
         guard = ChangeGuard(other, self.root / 'external-receipts', allow_external=True)
-        with patch.object(backend, 'WORKSPACE', other), patch.object(backend, 'FULL_ACCESS', True), patch.object(backend, 'VERIFICATION_GUARD', guard):
+        with patch.object(backend, 'WORKSPACE', other), patch.object(backend.run_dependencies(), 'full_access', True), patch.object(backend.run_dependencies(), 'verification', guard):
             self.assertEqual(backend.resolve_path(str(self.file)), self.file)
         original = self.file.read_text()
         guard.write(self.file, original, 'VALUE = 2\n# existing user change\n')
@@ -640,7 +640,8 @@ class Verification(unittest.TestCase):
     def test_backend_file_tools_and_actual_validator_share_the_guard(self):
         from pydantic_ai import ModelRetry
         with ExitStack() as stack:
-            for name, value in {'WORKSPACE':self.workspace,'VERIFICATION_GUARD':self.guard,
+            stack.enter_context(patch.object(backend.run_dependencies(), 'verification', self.guard))
+            for name, value in {'WORKSPACE':self.workspace,
                                 'JSON_MODE':False}.items():
                 stack.enter_context(patch.object(backend, name, value))
             stack.enter_context(patch.object(backend, 'activity_start', return_value='edit'))
@@ -663,7 +664,7 @@ class Verification(unittest.TestCase):
         original = 'Introduction\nHeading\n  keep indentation\nvalue\n' + ('untouched\n' * 200)
         target = self.workspace / 'notes.txt'
         target.write_text(original)
-        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'VERIFICATION_GUARD', self.guard):
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend.run_dependencies(), 'verification', self.guard):
             with patch.object(backend, 'request_approval') as approve:
                 result = backend.edit_file('notes.txt', 'Heading\n keep indentation\nvalue', 'replacement')
                 receipt = json.loads(result)
@@ -684,7 +685,7 @@ class Verification(unittest.TestCase):
 
     def test_invalid_edit_arguments_never_fall_back_to_inexact_or_multiple_replacement(self):
         original = self.file.read_text()
-        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend, 'VERIFICATION_GUARD', self.guard):
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(backend.run_dependencies(), 'verification', self.guard):
             for old, new in [('', 'replacement'), ('VALUE = 1', None), ('NOT IN FILE', 'replacement')]:
                 with self.subTest(old=old, new=new):
                     receipt = json.loads(backend.edit_file('app.py', old, new))
@@ -718,7 +719,8 @@ class Verification(unittest.TestCase):
                     'path': 'app.py', 'old_text': 'VALUE = 1', 'new_text': 'VALUE = 2'}, tool_call_id='exact-edit')])
             return ModelResponse(parts=[TextPart('Corrected and verified.')])
         with ExitStack() as stack:
-            for name, value in {'WORKSPACE': self.workspace, 'VERIFICATION_GUARD': self.guard,
+            stack.enter_context(patch.object(backend.run_dependencies(), 'verification', self.guard))
+            for name, value in {'WORKSPACE': self.workspace,
                                 'JSON_MODE': False}.items():
                 stack.enter_context(patch.object(backend, name, value))
             for name in ('activity_start', 'activity_end', 'emit'):
@@ -747,8 +749,7 @@ class Verification(unittest.TestCase):
                 all_messages=lambda:[], response=SimpleNamespace(finish_reason='stop'))
         with ExitStack() as stack:
             values = {'WORKSPACE':self.workspace, 'DATA_ROOT':self.root, 'ARCHIVE_ROOT':archive.parent,
-                      'CONVERSATION_ID':archive.name,'JSON_MODE':False,'FULL_ACCESS':False,
-                      'VERIFICATION_GUARD':None}
+                      'CONVERSATION_ID':archive.name,'JSON_MODE':False}
             for name, value in values.items():
                 stack.enter_context(patch.object(backend,name,value))
             mocks = {'stdin_reader':{'side_effect':inputs},'emit':{'side_effect':events.append},
@@ -765,7 +766,7 @@ class Verification(unittest.TestCase):
             for name, settings in mocks.items():
                 stack.enter_context(patch.object(backend,name,**settings))
             backend.main_json_lines()
-            self.assertIsNone(backend.VERIFICATION_GUARD)
+            self.assertIsNone(backend.run_dependencies().verification)
             self.assertEqual(backend.read_task_state()['status'],'interrupted')
         self.assertIn('VALUE = 1', self.file.read_text())
         self.assertFalse(any(event['type']=='response' for event in events))
@@ -876,7 +877,7 @@ class TestEvidence(unittest.TestCase):
             if len(calls)==2:
                 return ModelResponse(parts=[TextPart('107 tests réussis. Aucune modification requise.')])
             return ModelResponse(parts=[TextPart('Le contrôle exécuté a réussi.')])
-        with patch.object(backend,'WORKSPACE',work), patch.object(backend,'VERIFICATION_GUARD',guard):
+        with patch.object(backend,'WORKSPACE',work), patch.object(backend.run_dependencies(), 'verification',guard):
             agent=Agent(FunctionModel(model),tools=[backend.run_command],retries=2)
             agent.output_validator(backend.validate_task_output)
             result=agent.run_sync('Exécute le contrôle configuré et résume son résultat.')

@@ -147,13 +147,13 @@ class RecoveryDiscovery(unittest.TestCase):
         self.workspace.mkdir()
         self.a = self.backend
         self.a.WORKSPACE = self.workspace
-        self.a.TASK_ENGINE = WorkflowController(self.workspace, self.root/'execution')
-        self.a.ACTIVE_TOOLS = ToolSelection('ok installe')
+        self.a.run_dependencies().engine = WorkflowController(self.workspace, self.root/'execution')
+        self.a.run_dependencies().tools = ToolSelection('ok installe')
 
     def visible(self, name):
         definition = ToolDefinition(name=name, description='Test', parameters_json_schema={})
         return asyncio.run(self.a.prepare_tool_for_request(
-            SimpleNamespace(prompt='ok installe', messages=[]), definition)) is not None
+            SimpleNamespace(prompt='ok installe', messages=[], deps=self.a.run_dependencies()), definition)) is not None
 
     def configure_install(self):
         plan = dict(name='install', kind='service', scope='local',
@@ -168,7 +168,7 @@ class RecoveryDiscovery(unittest.TestCase):
                 raise TimeoutError('Installation committed, result lost')
             return {'exit_code': 1 if argv == ['baseline'] else 0}
         self.runner = runner
-        self.a.TASK_ENGINE = WorkflowController(self.workspace, self.root/'execution', operation_runner=runner)
+        self.a.run_dependencies().engine = WorkflowController(self.workspace, self.root/'execution', operation_runner=runner)
 
     def test_configured_install_is_callable_and_recovery_does_not_install_twice(self):
         self.configure_install()
@@ -183,60 +183,64 @@ class RecoveryDiscovery(unittest.TestCase):
             if len(rounds) == 1:
                 return ModelResponse(parts=[ToolCallPart('execute_operation', {'name': 'install'})])
             if len(rounds) == 2:
-                self.assertTrue(a.TASK_ENGINE.transactions.snapshot()['unresolved_mutations'])
+                self.assertTrue(a.run_dependencies().engine.transactions.snapshot()['unresolved_mutations'])
                 return ModelResponse(parts=[ToolCallPart('execute_operation', {'name': 'install'})])
             if len(rounds) == 3:
-                unresolved = a.TASK_ENGINE.transactions.snapshot()['unresolved_mutations']
+                unresolved = a.run_dependencies().engine.transactions.snapshot()['unresolved_mutations']
                 self.assertTrue(unresolved)
                 self.assertEqual(self.calls.count('apply'), 1)
                 return ModelResponse(parts=[ToolCallPart('reconcile_operation', {'operation_id': unresolved[0]})])
             if len(rounds) == 4:
-                self.assertFalse(a.TASK_ENGINE.transactions.snapshot()['unresolved_mutations'])
+                self.assertFalse(a.run_dependencies().engine.transactions.snapshot()['unresolved_mutations'])
                 return ModelResponse(parts=[ToolCallPart('execute_operation', {'name': 'install'})])
             return ModelResponse(parts=[TextPart('Verified')])
         tools = [tool for tool in a.agent_tools() if tool.name in
                  {'workflow_status', 'execute_operation', 'reconcile_operation'}]
-        self.assertEqual(Agent(FunctionModel(model), tools=tools).run_sync('ok installe').output, 'Verified')
+        from pydantic_ai.toolsets import FunctionToolset
+        agent = Agent(FunctionModel(model), deps_type=a.RunDependencies,
+            toolsets=[FunctionToolset(tools).prepared(a.prepare_tools_for_request)],
+            capabilities=[a.ExecutionCapability(a.RUN_CONTEXT)])
+        self.assertEqual(agent.run_sync('ok installe', deps=a.run_dependencies()).output, 'Verified')
         self.assertEqual(self.calls.count('apply'), 1)
         self.assertIn('idle', self.calls)
-        self.assertFalse(a.TASK_ENGINE.transactions.snapshot()['unresolved_mutations'])
+        self.assertFalse(a.run_dependencies().engine.transactions.snapshot()['unresolved_mutations'])
 
     def test_pending_effects_remain_visible_after_restart_and_block_fallback(self):
         self.configure_install()
-        self.a.TASK_ENGINE.operations.execute('install')
-        self.a.TASK_ENGINE = WorkflowController(self.workspace, self.root/'execution', operation_runner=self.runner)
-        self.a.ACTIVE_TOOLS = ToolSelection('continue')
+        self.a.run_dependencies().engine.operations.execute('install')
+        self.a.run_dependencies().engine = WorkflowController(self.workspace, self.root/'execution', operation_runner=self.runner)
+        self.a.run_dependencies().tools = ToolSelection('continue')
         self.assertTrue(self.visible('reconcile_operation'))
         failure = RuntimeError("Tool 'edit_file' exceeded max retries count of 2")
-        self.assertFalse(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.TASK_ENGINE))
-        identifier = self.a.TASK_ENGINE.transactions.snapshot()['unresolved_mutations'][0]
-        self.a.TASK_ENGINE.reconcile(identifier)
-        self.assertTrue(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.TASK_ENGINE))
+        self.assertFalse(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.run_dependencies().engine))
+        identifier = self.a.run_dependencies().engine.transactions.snapshot()['unresolved_mutations'][0]
+        self.a.run_dependencies().engine.reconcile(identifier)
+        self.assertTrue(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.run_dependencies().engine))
 
     def test_unresolved_command_without_plan_does_not_advertise_execution(self):
-        identifier = self.a.TASK_ENGINE.journal.start('run_command', {}, mutation=True)
-        self.a.TASK_ENGINE.journal.finish(identifier, status='unknown')
+        identifier = self.a.run_dependencies().engine.journal.start('run_command', {}, mutation=True)
+        self.a.run_dependencies().engine.journal.finish(identifier, status='unknown')
         self.assertTrue(self.visible('reconcile_operation'))
         self.assertFalse(self.visible('execute_operation'))
 
     def test_visibility_does_not_override_read_only_or_enable_unrelated_tools(self):
         self.configure_install()
-        self.a.TASK_ENGINE.focus('Lecture seule. Aucune modification.')
+        self.a.run_dependencies().engine.focus('Lecture seule. Aucune modification.')
         self.assertFalse(self.visible('execute_operation'))
         self.assertFalse(self.visible('reconcile_operation'))
         self.assertTrue(self.visible('workflow_status'))
         self.assertFalse(self.visible('run_host_command'))
-        result = json.loads(self.a.TASK_ENGINE.invoke(self.a.execute_operation, 'install'))
+        result = json.loads(self.a.run_dependencies().engine.invoke(self.a.execute_operation, 'install'))
         self.assertEqual(result['category'], 'read_only')
         self.assertEqual(self.calls, [])
 
     def test_scoped_preservation_keeps_real_write_schema_available(self):
-        self.a.TASK_ENGINE.focus('Lecture seule : explique le projet.')
-        self.a.TASK_ENGINE.focus('Corrige app.py. Ne modifie pas cette configuration ni les autres fichiers.')
-        self.a.ACTIVE_TOOLS=ToolSelection('Corrige app.py.')
-        self.assertFalse(self.a.TASK_ENGINE.read_only)
+        self.a.run_dependencies().engine.focus('Lecture seule : explique le projet.')
+        self.a.run_dependencies().engine.focus('Corrige app.py. Ne modifie pas cette configuration ni les autres fichiers.')
+        self.a.run_dependencies().tools=ToolSelection('Corrige app.py.')
+        self.assertFalse(self.a.run_dependencies().engine.read_only)
         self.assertTrue(self.visible('edit_file'))
-        self.a.TASK_ENGINE.focus('Corrige ton analyse. Ne modifie pas les fichiers.')
+        self.a.run_dependencies().engine.focus('Corrige ton analyse. Ne modifie pas les fichiers.')
         self.assertFalse(self.visible('edit_file'))
 
 
@@ -257,8 +261,8 @@ class VerificationIntent(unittest.TestCase):
             {'name':'Fixture','paths':['value.py'],'argv':['{python}','check.py'],'protect':['check.py']}]}))
         self.a=self.backend;self.a.WORKSPACE=workspace;self.a.DATA_ROOT=root/'data'
         self.a.ARCHIVE_ROOT=root/'archive';self.a.STATE_ROOT=root/'state'
-        self.a.CONVERSATION_ID='verification-intent';self.a.FULL_ACCESS=False
-        self.a.TASK_ENGINE=self.a.VERIFICATION_GUARD=None
+        self.a.CONVERSATION_ID='verification-intent';self.a.run_dependencies().full_access=False
+        self.a.run_dependencies().engine=self.a.run_dependencies().verification=None
         self.calls=[];self.passed=True
         def runner(argv,cwd,timeout):
             self.calls.append(argv)
@@ -294,13 +298,13 @@ class VerificationIntent(unittest.TestCase):
         self.passed=False
         with self.assertRaises(self.a.ModelRetry):self.a.validate_task_output('Terminé.')
         self.assertGreater(len(self.calls),1)
-        self.assertEqual(self.a.VERIFICATION_GUARD.state['report']['status'],'failed')
+        self.assertEqual(self.a.run_dependencies().verification.state['report']['status'],'failed')
 
     def test_controller_incomplete_verdict_survives_final_validation(self):
         self.a.begin_verification('Corrige value.py.')
         status={'incomplete':True,'unresolved':[],'running':[],'failed_checks':[],
                 'failed_files':['operation'],'criteria_status':'failed'}
-        with patch.object(self.a.TASK_ENGINE,'final_status',return_value=status):
+        with patch.object(self.a.run_dependencies().engine,'final_status',return_value=status):
             with self.assertRaises(self.a.ModelRetry):self.a.validate_task_output('Terminé.')
             verdict=self.a.validate_task_output('Terminé.')
             self.assertTrue(verdict.startswith('Tâche incomplète.'))

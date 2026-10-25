@@ -18,9 +18,10 @@ root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 from ovh_memory import atomic_write
 from ovh_request import analyze_request, SourceReview, REVIEW_INSTRUCTIONS
-VERIFICATION_GUARD = None
-TASK_ENGINE = None
-ACTIVE_TOOLS = None
+from ovh_execution import RunDependencies
+deps = RunDependencies()
+def run_dependencies():
+    return deps
 
 names = {'consumed_followup_ids', 'consume_followup', 'schedule_next_followup', 'read_followups', 'write_followups',
          'publish_followups', 'handle_followup', 'apply_steering'}
@@ -53,7 +54,7 @@ with tempfile.TemporaryDirectory() as temporary:
     scope['FOLLOWUP_RUNNING'] = True
     command('add', id='steer', text='Use the new requirement', mode='steer')
     steering_engine = Mock()
-    scope['TASK_ENGINE'] = steering_engine
+    deps.engine = steering_engine
     calls = []
     def work() -> str:
         """A fake tool that accepts steering while running."""

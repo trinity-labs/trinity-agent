@@ -62,7 +62,7 @@ def main():
     report={'adapter':str(args.adapter) if args.adapter else None,'local_settings':{key:os.environ.get(key) for key in local_keys},'scope':'Actual agent instructions and preparation, read-only fixture tools; first request vs reused client/agent, provider cold state unknown; three repetitions, no Codex baseline.','results':[]}
     with asyncio.Runner() as runner:
       for index in range(3):
-          started=time.monotonic();a.VERIFICATION_GUARD=None
+          started=time.monotonic();a.run_dependencies().verification=None
           a.emit({'type':'user','text':f'Test de fluidité {index+1}/3 — '+prompt})
           history,preparation=a.prepare_task_context([],prompt)
           model,routing=a.choose_cost_effective_model(prompt,a.estimate_tokens(history)*3,0,analysis=preparation['analysis'])
@@ -72,7 +72,7 @@ def main():
           a.begin_verification(prompt)
           row={'run':index+1,'model':model,'preparation':preparation,'routing':{k:v for k,v in routing.items() if k!='billing'}}
           try:
-              async def run():return await asyncio.wait_for(agent.run(prompt,message_history=history,model_settings=settings,usage=usage,usage_limits=UsageLimits(request_limit=4),event_stream_handler=stream.handle),timeout=60)
+              async def run():return await asyncio.wait_for(agent.run(prompt,deps=a.run_dependencies(),message_history=history,model_settings=settings,usage=usage,usage_limits=UsageLimits(request_limit=4),event_stream_handler=stream.handle),timeout=60)
               result=runner.run(run());text=str(result.output)
               import re
               payload=re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip())

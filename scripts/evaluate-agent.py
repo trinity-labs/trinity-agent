@@ -257,9 +257,9 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
     backend.ARCHIVE_ROOT = base/name/'archive'
     backend.STATE_ROOT = backend.DATA_ROOT/'sessions'
     backend.CONVERSATION_ID = name
-    backend.FULL_ACCESS = False
+    backend.run_dependencies().full_access = False
     backend.JSON_MODE = False
-    backend.VERIFICATION_GUARD = backend.TASK_ENGINE = None
+    backend.run_dependencies().verification = backend.run_dependencies().engine = None
     backend.AGENTS.clear()
     events, attempts, schemas, model_requests = [], [], [], []
     original_emit, original_read = backend.emit, backend.read_file
@@ -302,16 +302,16 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         stack.enter_context(patch.object(backend, 'edit_file', edit_file))
         stack.enter_context(patch.object(backend, 'read_file', read_file))
         backend.begin_verification(fixture['prompt'], fact_check=False)
-        if eager_tools and hasattr(backend, 'ACTIVE_TOOLS'):
-            stack.enter_context(patch.object(backend, 'ACTIVE_TOOLS', None))
+        if eager_tools:
+            stack.enter_context(patch.object(backend.run_dependencies(), 'tools', None))
         analysis = asdict(backend.analyze_request(fixture['prompt']))
         analysis['paths'] = list(analysis['paths'])
         settings = case_settings(backend, model_id, fixture['prompt'], analysis,
             reasoning_effort=reasoning_effort, max_output_tokens=max_output_tokens)
         history = None
         if name == 'correction_compaction':
-            backend.TASK_ENGINE.focus('Ancien objectif invalide : port 999.')
-            backend.TASK_ENGINE.focus(fixture['prompt'])
+            backend.run_dependencies().engine.focus('Ancien objectif invalide : port 999.')
+            backend.run_dependencies().engine.focus(fixture['prompt'])
             old = [ModelRequest(parts=[UserPromptPart('Ancien objectif : port 999.')]),
                    ModelResponse(parts=[TextPart('Ancienne conclusion non vérifiée. '*6000)]),
                    ModelRequest(parts=[UserPromptPart(fixture['prompt'])])]
@@ -385,7 +385,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                 return backend.get_agent(model_id or 'evaluation-reference')
         agent = make_agent(selected_model)
         try:
-            result = agent.run_sync(fixture['prompt'], message_history=history, usage=usage,
+            result = agent.run_sync(fixture['prompt'],deps=backend.run_dependencies(), message_history=history, usage=usage,
                 model_settings=settings,
                 usage_limits=UsageLimits(request_limit=request_limit, total_tokens_limit=token_limit))
             answer = backend.validate_task_output(str(result.output))
@@ -416,7 +416,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                 recovery_model = selected_model if model is not None or model_factory is not None else SchemaAuditModel(FunctionModel(resume))
                 resumed_agent = make_agent(recovery_model)
                 try:
-                    result = resumed_agent.run_sync('Reprends après perte du résultat. Relis les fichiers actuels. '+fixture['prompt'],
+                    result = resumed_agent.run_sync('Reprends après perte du résultat. Relis les fichiers actuels. '+fixture['prompt'],deps=backend.run_dependencies(),
                         usage=usage, model_settings=settings,
                         usage_limits=UsageLimits(request_limit=request_limit, total_tokens_limit=token_limit))
                     answer = backend.validate_task_output(str(result.output))
@@ -424,7 +424,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                     error = failure
         except Exception as failure:
             error = failure
-        status = backend.TASK_ENGINE.final_status()
+        status = backend.run_dependencies().engine.final_status()
     observation = oracle(fixture, root)
     if name == 'concurrent_user_change':
         # The frozen contract intentionally still protects the old keep value.
@@ -488,7 +488,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         'interruption_triggered': fixture['interruption_triggered'], 'human_interventions': 0,
         'schemas': schemas, 'model_requests': model_requests,
         'optional_usage': optional_usage_summary(model_requests), 'events': events}
-    backend.TASK_ENGINE = backend.VERIFICATION_GUARD = None
+    backend.run_dependencies().engine = backend.run_dependencies().verification = None
     return row
 
 

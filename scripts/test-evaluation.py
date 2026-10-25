@@ -179,7 +179,7 @@ class Evaluation(unittest.TestCase):
         with patch.object(sys,'argv',['test','--billing-status']):
             spec=importlib.util.spec_from_file_location('path_agent',ROOT/'ovh-agent.py')
             a=importlib.util.module_from_spec(spec);spec.loader.exec_module(a)
-        with tempfile.TemporaryDirectory() as temp, patch.object(a,'WORKSPACE',Path(temp)), patch.object(a,'emit'), patch.object(a,'VERIFICATION_GUARD',None):
+        with tempfile.TemporaryDirectory() as temp, patch.object(a,'WORKSPACE',Path(temp)), patch.object(a,'emit'), patch.object(a.run_dependencies(), 'verification',None):
             file=Path(temp)/'settings.json';file.write_text('{"port":8457}')
             missing_slash=str(file).lstrip('/')
             answer=a.read_file(missing_slash)

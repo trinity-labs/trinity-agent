@@ -172,3 +172,4 @@
 !/scripts/test-gepa.py
 !/scripts/test-rlm.py
 !/scripts/requirements-research.txt
+!/scripts/test-pydantic-runtime.py

@@ -55,8 +55,8 @@ class Sessions(unittest.TestCase):
 
     def test_activity_finishes_once_and_does_not_replace_another_active_tool(self):
         with patch.object(a, 'emit') as emit, patch.object(a, 'read_task_state', return_value={'status':'running','last_tool':{'id':'another'}}), patch.object(a, 'save_task_state') as save:
-            with a.ACTIVITY_LOCK:
-                a.ACTIVITY_STARTED['fixture'] = 0.0
+            with a.run_dependencies().activity_lock:
+                a.run_dependencies().activity_started['fixture'] = 0.0
             a.activity_end('fixture', 'finished')
             a.activity_end('fixture', 'duplicate')
             a.activity_end('', 'invalid')
@@ -85,7 +85,7 @@ class Sessions(unittest.TestCase):
                 # ignored; otherwise a second task runs before the test exits.
                 channels['requests'].put({'type': 'shutdown'})
         def verification(*_):
-            a.VERIFICATION_GUARD = SimpleNamespace(state={'status': 'passed'})
+            a.run_dependencies().verification = SimpleNamespace(state={'status': 'passed'})
         def run_model(prompt, **kwargs):
             calls.append(prompt)
             raise RuntimeError('fixture model failure')
@@ -114,8 +114,7 @@ class Sessions(unittest.TestCase):
             for name, settings in mocks.items():
                 stack.enter_context(patch.object(a, name, **settings))
             for name, value in {'FOLLOWUP_RUNNING': False, 'FOLLOWUP_CLAIMED': None,
-                                'FOLLOWUP_GENERATION': 0, 'TASK_ENGINE': None,
-                                'VERIFICATION_GUARD': None, 'JSON_MODE': False}.items():
+                                'FOLLOWUP_GENERATION': 0, 'JSON_MODE': False}.items():
                 stack.enter_context(patch.object(a, name, value))
             stack.enter_context(patch.object(a.WorkspaceContext, 'answer', return_value=None))
             a.main_json_lines()
@@ -243,8 +242,8 @@ class Sessions(unittest.TestCase):
         self.assertFalse(outputs[2]['success'])
         self.assertEqual(outputs[3]['duration_ms'], 1250)
         self.assertEqual(len(outputs), 4, 'An unknown activity must not emit an unpaired completion')
-        self.assertNotIn(first, a.ACTIVITY_STARTED)
-        self.assertNotIn(second, a.ACTIVITY_STARTED)
+        self.assertNotIn(first, a.run_dependencies().activity_started)
+        self.assertNotIn(second, a.run_dependencies().activity_started)
 
     def test_archive_timeline_preserves_timing_and_pairing_without_tool_payloads(self):
         records = [
@@ -384,7 +383,7 @@ class Sessions(unittest.TestCase):
             for name, settings in mocks.items():
                 stack.enter_context(patch.object(a, name, **settings))
             stack.enter_context(patch.object(a, 'JSON_MODE', False))
-            stack.enter_context(patch.object(a, 'FULL_ACCESS', False))
+            stack.enter_context(patch.object(a.run_dependencies(), 'full_access', False))
             a.main_json_lines()
         self.assertTrue(any(item.get('text') == 'Context temporarily unavailable' for item in outputs))
         self.assertEqual(json.loads(self.meta.read_text())['title'], 'Vérifie la configuration DNS')
@@ -411,7 +410,7 @@ class Sessions(unittest.TestCase):
             }
             for name,settings in mocks.items():stack.enter_context(patch.object(a,name,**settings))
             stack.enter_context(patch.object(a,'JSON_MODE',False))
-            stack.enter_context(patch.object(a,'VERIFICATION_GUARD',None))
+            stack.enter_context(patch.object(a.run_dependencies(), 'verification',None))
             a.main_json_lines()
         error=next(e for e in outputs if e['type']=='error')
         self.assertIn('aucun outil de génération',error['text'])
@@ -430,7 +429,7 @@ class Sessions(unittest.TestCase):
                     requests.put({'type': 'resume_archive', 'id': 'conversation', **preferences})
                     requests.put({'type': 'shutdown'})
                 def prepare(*args, **kwargs):
-                    observed.append(a.FULL_ACCESS)
+                    observed.append(a.run_dependencies().full_access)
                     raise ValueError('fixture stops before model')
                 with ExitStack() as stack:
                     mocks = {
@@ -448,7 +447,7 @@ class Sessions(unittest.TestCase):
                     patched = {name: stack.enter_context(patch.object(a, name, **settings))
                                for name, settings in mocks.items()}
                     stack.enter_context(patch.object(a, 'JSON_MODE', False))
-                    stack.enter_context(patch.object(a, 'FULL_ACCESS', False))
+                    stack.enter_context(patch.object(a.run_dependencies(), 'full_access', False))
                     a.main_json_lines()
                     self.assertEqual(observed, [expected_access])
                     patched['save_selected_model'].assert_called_once_with(expected_model)

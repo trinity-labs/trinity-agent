@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.58
+
+- Pass task services, permissions, usage and execution receipts through typed Pydantic AI run dependencies instead of shared task globals.
+- Use native capability hooks and prepared toolsets for execution, tool visibility, retries, streaming and cancellation while retaining recovery journals.
+- Isolate concurrent tool events and private delivery state by run; preserve existing model-visible tool schemas.
+- Remove duplicate final output validation and cover shared-agent isolation, cancellation, retries and streaming with offline native-runtime tests.
+
 ## 1.17.57
 
 - Open conversations in the active project without restarting the backend or scanning its entire archive catalogue.

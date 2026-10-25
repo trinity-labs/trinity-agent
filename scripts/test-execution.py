@@ -1,6 +1,6 @@
 """Offline integration of tool schemas, persistent recovery and final evidence."""
 import importlib.util
-import inspect
+from contextvars import ContextVar
 import json
 from pathlib import Path
 import subprocess
@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_execution import WorkflowController, guarded_tool, command_is_read_only, read_only_policy
+from ovh_execution import WorkflowController, RunDependencies, ExecutionCapability, command_is_read_only, read_only_policy
 from pydantic_ai import Agent, ModelRetry, Tool
 from pydantic_ai.messages import ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
@@ -41,8 +41,6 @@ class ExecutionTests(unittest.TestCase):
             calls.append((path, start))
             return "timeout is a literal in this source file"
 
-        wrapped = guarded_tool(read_file, lambda: self.engine)
-        self.assertEqual(inspect.signature(wrapped), inspect.signature(read_file))
 
         def model(messages, info):
             rounds.append(1)
@@ -56,7 +54,9 @@ class ExecutionTests(unittest.TestCase):
             self.assertIn("literal", returned[-1].content)
             return ModelResponse(parts=[TextPart("The fixture was read.")])
 
-        result = Agent(FunctionModel(model), tools=[Tool(wrapped)]).run_sync("Read the fixture")
+        result = Agent(FunctionModel(model), deps_type=RunDependencies, tools=[Tool(read_file)],
+                       capabilities=[ExecutionCapability(ContextVar("test_run", default=None))]).run_sync(
+                           "Read the fixture", deps=RunDependencies(engine=self.engine))
         self.assertEqual(result.output, "The fixture was read.")
         self.assertEqual(calls, [("app.py", 3)])
         self.assertEqual(self.operations()[-1]["status"], "succeeded")
@@ -403,10 +403,10 @@ engine.invoke(write_file, 'app.txt', 'after')
         def before_request(messages):
             self.engine.check_progress()
             return messages
-        agent = Agent(FunctionModel(model), tools=[guarded_tool(lookup, lambda:self.engine)],
-                      capabilities=[ProcessHistory(before_request)])
+        agent = Agent(FunctionModel(model), deps_type=RunDependencies, tools=[lookup],
+                      capabilities=[ExecutionCapability(ContextVar("test_run", default=None)), ProcessHistory(before_request)])
         with self.assertRaisesRegex(RuntimeError, 'même séquence'):
-            agent.run_sync('Inspect fixture')
+            agent.run_sync('Inspect fixture', deps=RunDependencies(engine=self.engine))
         self.assertEqual(len(calls), 3)
         self.assertTrue(self.engine.incomplete)
         # A user correction or new observed evidence permits progress again.
@@ -521,10 +521,11 @@ engine.invoke(write_file, 'app.txt', 'after')
                 return ModelResponse(parts=[ToolCallPart("write_file", {"path": "result.json", "content": '{"ready":true}'})])
             return ModelResponse(parts=[TextPart("The configured JSON postcondition now passes.")])
 
-        agent = Agent(FunctionModel(model), tools=[Tool(guarded_tool(write_file, lambda: self.engine))], retries=2)
+        agent = Agent(FunctionModel(model), deps_type=RunDependencies, tools=[Tool(write_file)], retries=2,
+                      capabilities=[ExecutionCapability(backend.RUN_CONTEXT)])
         agent.output_validator(backend.validate_task_output)
-        with patch.object(backend, "VERIFICATION_GUARD", None), patch.object(backend, "TASK_ENGINE", self.engine):
-            result = agent.run_sync("Set the fixture ready to true")
+        with patch.object(backend.run_dependencies(), 'verification', None), patch.object(backend.run_dependencies(), 'engine', self.engine):
+            result = agent.run_sync("Set the fixture ready to true", deps=backend.run_dependencies())
         self.assertEqual(len(rounds), 3)
         self.assertEqual(result.output, "The configured JSON postcondition now passes.")
         self.assertTrue(self.engine.evaluate()["contract_satisfied"])

@@ -100,9 +100,9 @@ class DeepSeekIntegration(unittest.TestCase):
             client = AsyncOpenAI(api_key='deepseek-fixture', base_url='https://api.deepseek.com',
                 http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport)))
             provider = DeepSeekProvider(openai_client=client)
+            a.RUN_CONTEXT.set(a.RunDependencies())
             values = {'WORKSPACE':workspace,'DATA_ROOT':root/'data','ARCHIVE_ROOT':root/'archive',
-                'STATE_ROOT':root/'state','CONVERSATION_ID':'fixture','FULL_ACCESS':False,
-                'TASK_ENGINE':None,'VERIFICATION_GUARD':None,'AGENTS':{}, 'emit':lambda event:None}
+                'STATE_ROOT':root/'state','CONVERSATION_ID':'fixture','AGENTS':{}, 'emit':lambda event:None}
             from contextlib import ExitStack
             with ExitStack() as stack:
                 for key, value in values.items():stack.enter_context(patch.object(a,key,value))
@@ -111,14 +111,14 @@ class DeepSeekIntegration(unittest.TestCase):
                 stack.enter_context(patch.object(a,'fetch_model_catalog',return_value=[a.normalise_model(RAW)]))
                 stack.enter_context(patch.object(a,'request_approval',return_value=True))
                 a.begin_verification('Change VALUE to 2 in app.py and preserve my comment.')
-                result = a.get_agent('deepseek-flash').run_sync('Change VALUE to 2 in app.py and preserve my comment.',
+                result = a.get_agent('deepseek-flash').run_sync('Change VALUE to 2 in app.py and preserve my comment.', deps=a.run_dependencies(),
                     usage_limits=UsageLimits(request_limit=None), model_settings={'max_tokens':393216})
                 self.assertIn('2', result.output)
-                self.assertFalse(a.TASK_ENGINE.final_status()['incomplete'])
+                self.assertFalse(a.run_dependencies().engine.final_status()['incomplete'])
                 history = a.history_with_memory(result.all_messages(), 'Read app.py', include_excerpts=False,
                     context_card=a.normalise_model(RAW))
                 a.begin_verification('Read app.py to confirm its value.')
-                a.get_agent('deepseek-flash').run_sync('Read app.py to confirm its value.',
+                a.get_agent('deepseek-flash').run_sync('Read app.py to confirm its value.', deps=a.run_dependencies(),
                     message_history=history, usage_limits=UsageLimits(request_limit=None))
             self.assertEqual(target.read_text(), 'VALUE = 2\n# user change\n')
             self.assertEqual(len(requests), 8)
@@ -126,12 +126,12 @@ class DeepSeekIntegration(unittest.TestCase):
     def test_failed_commands_do_not_exhaust_deepseek_but_readonly_is_enforced(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)
+            a.RUN_CONTEXT.set(a.RunDependencies())
             with patch.multiple(a,WORKSPACE=root,DATA_ROOT=root/'data',ARCHIVE_ROOT=root/'archive',
-                    STATE_ROOT=root/'state',CONVERSATION_ID='failure-test',FULL_ACCESS=False,
-                    TASK_ENGINE=None,VERIFICATION_GUARD=None,emit=lambda event:None), \
+                    STATE_ROOT=root/'state',CONVERSATION_ID='failure-test',emit=lambda event:None), \
                  patch.object(a,'request_approval',return_value=True):
                 a.begin_verification('Exécute une commande locale.')
-                engine=a.TASK_ENGINE
+                engine=a.run_dependencies().engine
                 arguments={'command':'false','cwd':'.','timeout':120}
                 revision=engine._observation_revision('run_command',arguments)
                 for _ in range(6):

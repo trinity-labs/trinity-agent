@@ -31,7 +31,7 @@ events = []
 a.emit = events.append
 manifest=a.deleted_paths_from_command("find /tmp/archive -type d -print | xargs -r rm -rf", "/tmp/archive/a\n/tmp/archive/b\n/tmp/archive/a\n")
 assert manifest == ['/tmp/archive/a','/tmp/archive/b']
-with patch.object(a,'VERIFICATION_GUARD',None),patch.object(a,'TASK_ENGINE',None),patch.object(a,'read_task_state',return_value={'deleted_paths':manifest}):
+with patch.object(a.run_dependencies(), 'verification',None),patch.object(a.run_dependencies(), 'engine',None),patch.object(a,'read_task_state',return_value={'deleted_paths':manifest}):
     deletion_summary=a.validate_task_output('Suppression terminée.')
 assert '**Résultat de la suppression : 2 éléments supprimés**' in deletion_summary
 assert '\n- `/tmp/archive/a`\n- `/tmp/archive/b`' in deletion_summary
@@ -264,7 +264,7 @@ from types import SimpleNamespace
 from pydantic_ai.exceptions import UsageLimitExceeded
 baseline = [a.ModelRequest(parts=[a.UserPromptPart(content='Audit du projet')])]
 guard = SimpleNamespace(started_at=time.monotonic()-301, checkpoints=set())
-with patch.object(a, 'VERIFICATION_GUARD', guard), patch.object(a, 'TASK_CHECKPOINT_SECONDS', 300), patch.object(a, 'REQUEST_LIMIT', 80):
+with patch.object(a.run_dependencies(), 'verification', guard), patch.object(a, 'TASK_CHECKPOINT_SECONDS', 300), patch.object(a, 'REQUEST_LIMIT', 80):
     checkpoint = a.task_checkpoint(SimpleNamespace(usage=SimpleNamespace(requests=10)), baseline)
     assert len(checkpoint) == 2 and checkpoint[0] is baseline[0]
     assert 'verify_changes' in checkpoint[-1].parts[0].content
@@ -334,7 +334,7 @@ from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.messages import ModelRequest, UserPromptPart
 async def check_prepared_tools():
     prompt='Lis uniquement settings.json. Aucune modification ni recherche Internet.'
-    ctx=SimpleNamespace(prompt=prompt,messages=[ModelRequest(parts=[UserPromptPart(prompt)])])
+    ctx=SimpleNamespace(deps=a.run_dependencies(), prompt=prompt,messages=[ModelRequest(parts=[UserPromptPart(prompt)])])
     assert await a.prepare_tool_for_request(ctx,ToolDefinition(name='read_file')) is not None
     for name in ['run_command','write_file','install_tools','search_web']:
         assert await a.prepare_tool_for_request(ctx,ToolDefinition(name=name)) is None
@@ -345,12 +345,12 @@ print('PASS: read-only tool schemas and steering restoration')
 
 # A read-only task is an execution permission, including in full filesystem access.
 # Neutral steering, tool discovery and a stale advertised schema cannot grant it.
-from ovh_execution import WorkflowController, guarded_tool, read_only_policy
+from ovh_execution import WorkflowController, read_only_policy
 from pydantic_ai.messages import ToolReturnPart
 for readonly_prompt in ('Lecture seule : audite ce dépôt.', 'Read only: inspect the repository.', 'Inspecte le projet sans le modifier.'):
     async def check_unscoped_readonly():
-        ctx = SimpleNamespace(prompt=readonly_prompt, messages=[ModelRequest(parts=[UserPromptPart(readonly_prompt)])])
-        with patch.object(a, 'TASK_ENGINE', None), patch.object(a, 'ACTIVE_TOOLS', a.ToolSelection(readonly_prompt)):
+        ctx = SimpleNamespace(deps=a.run_dependencies(), prompt=readonly_prompt, messages=[ModelRequest(parts=[UserPromptPart(readonly_prompt)])])
+        with patch.object(a.run_dependencies(), 'engine', None), patch.object(a.run_dependencies(), 'tools', a.ToolSelection(readonly_prompt)):
             assert await a.prepare_tool_for_request(ctx, ToolDefinition(name='edit_file')) is None
             ctx.messages.append(ModelRequest(parts=[UserPromptPart('Continue.')]))
             assert await a.prepare_tool_for_request(ctx, ToolDefinition(name='edit_file')) is None
@@ -377,8 +377,8 @@ for restriction in ('Aucune modification.', 'Aucune modification autorisée.',
                     'Read only. Report "No changes made".'):
     assert read_only_policy(restriction)
 async def check_no_op_tools():
-    ctx = SimpleNamespace(prompt=no_op_prompt, messages=[ModelRequest(parts=[UserPromptPart(no_op_prompt)])])
-    with patch.object(a, 'TASK_ENGINE', None), patch.object(a, 'ACTIVE_TOOLS', a.ToolSelection(no_op_prompt)):
+    ctx = SimpleNamespace(deps=a.run_dependencies(), prompt=no_op_prompt, messages=[ModelRequest(parts=[UserPromptPart(no_op_prompt)])])
+    with patch.object(a.run_dependencies(), 'engine', None), patch.object(a.run_dependencies(), 'tools', a.ToolSelection(no_op_prompt)):
         assert await a.prepare_tool_for_request(ctx, ToolDefinition(name='verify_changes')) is not None
 asyncio.run(check_no_op_tools())
 
@@ -398,8 +398,7 @@ with tempfile.TemporaryDirectory() as readonly_folder:
         called.append(path)
         (workspace / path).write_text(content)
         return 'Fichier écrit.'
-    wrapped = guarded_tool(write_file, lambda: engine)
-    assert json.loads(wrapped('blocked.txt', 'forbidden'))['category'] == 'read_only'
+    assert json.loads(engine.invoke(write_file, 'blocked.txt', 'forbidden'))['category'] == 'read_only'
     assert not called and not (workspace / 'blocked.txt').exists()
     for tool_name in ('edit_file_batch', 'execute_operation', 'run_host_command', 'install_tools', 'verify_changes'):
         def forbidden_mutator():
@@ -418,13 +417,13 @@ with tempfile.TemporaryDirectory() as readonly_folder:
                 returned = [part for message in messages for part in message.parts if isinstance(part, ToolReturnPart)]
                 assert json.loads(returned[-1].content)['category'] == 'read_only'
             return ModelResponse(parts=[TextPart('No changes made.')])
-        tool = a.Tool(wrapped, prepare=a.prepare_tool_for_request if use_prepare else None)
-        with patch.object(a, 'TASK_ENGINE', engine), patch.object(a, 'ACTIVE_TOOLS', a.ToolSelection('Lecture seule')):
-            result = Agent(FunctionModel(readonly_model), tools=[tool], retries=1).run_sync('Lecture seule : audite ce dépôt.')
+        tool = a.Tool(write_file, prepare=a.prepare_tool_for_request if use_prepare else None)
+        with patch.object(a.run_dependencies(), 'engine', engine), patch.object(a.run_dependencies(), 'tools', a.ToolSelection('Lecture seule')):
+            result = Agent(FunctionModel(readonly_model), deps_type=a.RunDependencies, tools=[tool], retries=1, capabilities=[a.ExecutionCapability(a.RUN_CONTEXT)]).run_sync('Lecture seule : audite ce dépôt.', deps=a.run_dependencies())
         assert result.output == 'No changes made.' and not called and not (workspace / 'blocked.txt').exists()
     engine.focus('Oui, modifie maintenant authorized.txt')
     assert not engine.read_only
-    assert wrapped('authorized.txt', 'explicitly allowed') == 'Fichier écrit.'
+    assert engine.invoke(write_file, 'authorized.txt', 'explicitly allowed') == 'Fichier écrit.'
     assert (workspace / 'authorized.txt').read_text() == 'explicitly allowed'
     engine.focus('Ne modifie pas les fichiers.')
     assert engine.read_only

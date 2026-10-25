@@ -31,11 +31,12 @@ class DeliveryRecovery(unittest.TestCase):
         self.workspace = self.root/'project'
         self.workspace.mkdir()
         self.a = self.backend
+        token = self.a.RUN_CONTEXT.set(self.a.RunDependencies(full_access=True))
+        self.addCleanup(self.a.RUN_CONTEXT.reset, token)
         for key, value in {
             'WORKSPACE': self.workspace, 'DATA_ROOT': self.root/'data',
             'ARCHIVE_ROOT': self.root/'archive', 'STATE_ROOT': self.root/'state',
-            'CONVERSATION_ID': 'delivery-test', 'FULL_ACCESS': True,
-            'TASK_ENGINE': None, 'VERIFICATION_GUARD': None,
+            'CONVERSATION_ID': 'delivery-test',
             'emit': lambda event: None,
         }.items():
             mock = patch.object(self.a, key, value)
@@ -43,7 +44,10 @@ class DeliveryRecovery(unittest.TestCase):
             self.addCleanup(mock.stop)
 
     def tool(self, name):
-        return next(tool.function for tool in self.a.agent_tools() if tool.name == name)
+        function = next(tool.function for tool in self.a.agent_tools() if tool.name == name)
+        def call(*args, **kwargs):
+            return self.a.run_dependencies().engine.invoke(function, *args, **kwargs)
+        return call
 
     def test_existing_document_cannot_be_truncated_by_creation_tool(self):
         target = self.workspace/'CHANGELOG.md'
@@ -57,7 +61,7 @@ class DeliveryRecovery(unittest.TestCase):
         self.tool('edit_file')('CHANGELOG.md', '# Changelog\n\n', '# Changelog\n\nNew\n\n')
         self.assertEqual(target.read_text(), '# Changelog\n\nNew\n\n' + original[len('# Changelog\n\n'):])
         self.assertEqual(json.loads(self.a.verify_changes())['status'], 'passed')
-        self.assertFalse(self.a.TASK_ENGINE.final_status()['incomplete'])
+        self.assertFalse(self.a.run_dependencies().engine.final_status()['incomplete'])
 
     def test_new_file_and_identical_retry_remain_supported(self):
         self.a.begin_verification('Crée une note dans le projet.')
@@ -65,7 +69,7 @@ class DeliveryRecovery(unittest.TestCase):
         write('note.txt', 'complete content\n')
         write('note.txt', 'complete content\n')
         self.assertEqual((self.workspace/'note.txt').read_text(), 'complete content\n')
-        self.assertFalse(self.a.TASK_ENGINE.journal.snapshot()['unresolved_mutations'])
+        self.assertFalse(self.a.run_dependencies().engine.journal.snapshot()['unresolved_mutations'])
 
     def test_root_search_prefers_sources_but_explicit_archive_remains_searchable(self):
         subprocess.run(['git', 'init', '-q', str(self.workspace)], check=True)
@@ -96,13 +100,13 @@ class DeliveryRecovery(unittest.TestCase):
         self.a.begin_verification('Vérifie verify_extension_delivery en lecture seule.')
         definition = ToolDefinition(name='verify_extension_delivery', description='Inspect delivery', parameters_json_schema={})
         visible = asyncio.run(self.a.prepare_tool_for_request(
-            SimpleNamespace(prompt='lecture seule', messages=[]), definition))
+            SimpleNamespace(prompt='lecture seule', messages=[], deps=self.a.run_dependencies()), definition))
         self.assertIsNotNone(visible)
         calls = []
         def verify_extension_delivery():
             calls.append('inspection')
             return json.dumps({'complete': True})
-        result = json.loads(self.a.TASK_ENGINE.invoke(verify_extension_delivery))
+        result = json.loads(self.a.run_dependencies().engine.invoke(verify_extension_delivery))
         self.assertTrue(result['complete'])
         self.assertEqual(calls, ['inspection'])
 
@@ -111,15 +115,15 @@ class DeliveryRecovery(unittest.TestCase):
         command = shlex.join([sys.executable, '-c',
             "from pathlib import Path;Path('partial.txt').write_text('partial');raise SystemExit(1)"])
         self.tool('run_command')(command)
-        pending = self.a.TASK_ENGINE.journal.snapshot()['unresolved_mutations']
+        pending = self.a.run_dependencies().engine.journal.snapshot()['unresolved_mutations']
         self.assertTrue(pending)
         self.a.begin_verification('Explique le résultat en lecture seule.')
         answer = 'Le fichier partial.txt existe ; la commande a échoué.'
         result = self.a.validate_task_output(answer)
         self.assertIn(answer, result)
         self.assertIn('historique', result.lower())
-        self.assertEqual(self.a.TASK_ENGINE.journal.snapshot()['unresolved_mutations'], pending)
-        self.assertTrue(self.a.TASK_ENGINE.final_status()['incomplete'])
+        self.assertEqual(self.a.run_dependencies().engine.journal.snapshot()['unresolved_mutations'], pending)
+        self.assertTrue(self.a.run_dependencies().engine.final_status()['incomplete'])
         self.assertEqual(self.a.validate_task_output(result), result)
         self.a.begin_verification('Installe et publie le projet.')
         self.assertTrue(self.a.validate_task_output('Terminé.').startswith('Tâche incomplète.'))

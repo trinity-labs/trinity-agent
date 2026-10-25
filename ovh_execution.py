@@ -6,7 +6,10 @@ configured transactions. File tools additionally retain before/after hashes.
 """
 from __future__ import annotations
 
-import functools
+from contextlib import contextmanager
+from contextvars import ContextVar
+from _thread import LockType
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import inspect
@@ -19,10 +22,66 @@ import stat
 import threading
 import time
 import unicodedata
+from typing import Any, TYPE_CHECKING
+
+from pydantic_ai import RunContext
+from pydantic_ai.capabilities import AbstractCapability
+
+if TYPE_CHECKING:
+    from ovh_verification import ChangeGuard
+    from ovh_tools import ToolSelection
 
 from ovh_memory import atomic_write
 from ovh_task_engine import TaskJournal, FailureTracker, classify_failure
 from ovh_acceptance import AcceptanceSuite
+
+
+@dataclass
+class RunDependencies:
+    """Mutable services and receipts owned by one Pydantic AI run."""
+    verification: ChangeGuard | None = None
+    engine: WorkflowController | None = None
+    tools: ToolSelection | None = None
+    full_access: bool = False
+    external_access_notices: set[str] = field(default_factory=set)
+    activity_started: dict[str, float] = field(default_factory=dict)
+    activity_lock: LockType = field(default_factory=threading.Lock)
+    request_receipts: list[dict] = field(default_factory=list)
+    usage_reported: dict[str, dict] = field(default_factory=dict)
+    services: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ToolExecution:
+    execute: bool = True
+    result: Any = None
+
+
+class ExecutionCapability(AbstractCapability[RunDependencies]):
+    """Let Pydantic own scheduling while TRINITY records actual side effects."""
+
+    def __init__(self, context: ContextVar[RunDependencies | None]):
+        self.context = context
+
+    async def wrap_run(self, ctx: RunContext[RunDependencies], *, handler):
+        if not isinstance(ctx.deps, RunDependencies):
+            raise TypeError('TRINITY runs require explicit RunDependencies.')
+        token = self.context.set(ctx.deps)
+        try:
+            return await handler()
+        finally:
+            self.context.reset(token)
+
+    async def wrap_tool_execute(self, ctx: RunContext[RunDependencies], *, call, tool_def, args, handler):
+        engine = ctx.deps.engine
+        if engine is None:
+            return await handler(args)
+        # Native validation has already produced the arguments; native execution
+        # retains sync/async dispatch, sequential barriers and cancellation.
+        with engine.execution(tool_def.name, args) as execution:
+            if execution.execute:
+                execution.result = await handler(args)
+        return execution.result
 
 MUTATIONS = frozenset({'edit_file', 'write_file', 'edit_file_batch', 'run_command',
                       'run_host_command', 'install_tools', 'remember_context'})
@@ -144,7 +203,7 @@ class WorkflowController:
         # inspect only operations started by this controller/request.
         self.initial_action_ids = {row['id'] for row in self.journal.snapshot()['operations']}
         self.initial_transaction_ids = {row['id'] for row in self.transactions.snapshot()['operations']}
-        self.local = threading.local()
+        self.events = ContextVar('trinity_tool_events', default=None)
         self.lock = threading.RLock()
         self.failures = FailureTracker()
         self.progress = 0
@@ -215,7 +274,7 @@ class WorkflowController:
                     'les résultats et coûts sont conservés pour une reprise explicite.')
 
     def observe_event(self, event):
-        rows = getattr(self.local, 'events', None)
+        rows = self.events.get()
         if rows is not None and event.get('type') in {'tool_start', 'tool_end', 'tool_error'}:
             rows.append(dict(event))
 
@@ -439,29 +498,39 @@ class WorkflowController:
         return json.dumps(revision)
 
     def invoke(self, function, *args, **kwargs):
-        name = function.__name__
+        """Direct Python execution shares the same receipts as native AI hooks."""
         bound = inspect.signature(function).bind(*args, **kwargs)
         bound.apply_defaults()
-        arguments = dict(bound.arguments)
+        with self.execution(function.__name__, dict(bound.arguments)) as execution:
+            if execution.execute:
+                execution.result = function(*args, **kwargs)
+        return execution.result
+
+    @contextmanager
+    def execution(self, name: str, arguments: dict):
+        """One receipt boundary for both synchronous and asynchronous tools."""
         diagnostic = (self.trusted_diagnostics and name == 'run_command'
                       and command_is_read_only(arguments.get('command')))
         # Enforce authorization at execution, including stale/hallucinated tool
         # calls and private wrappers. Hiding a JSON schema is only a UI measure.
         if self.read_only and name not in READ_ONLY_TOOLS and not diagnostic:
-            return json.dumps({'status': 'blocked', 'category': 'read_only', 'executed': False,
-                'tool': name, 'message': 'Consigne utilisateur de lecture seule active. Aucune action modificatrice exécutée.'}, ensure_ascii=False)
+            yield ToolExecution(False, json.dumps({'status': 'blocked', 'category': 'read_only', 'executed': False,
+                'tool': name, 'message': 'Consigne utilisateur de lecture seule active. Aucune action modificatrice exécutée.'}, ensure_ascii=False))
+            return
         if name in CONTROL:
             if name == 'execute_operation':
                 self.last_acceptance = None
-            result = function(*args, **kwargs)
-            self.note_observation(name, arguments, result)
-            return result
+            execution = ToolExecution()
+            yield execution
+            self.note_observation(name, arguments, execution.result)
+            return
         revision = self._observation_revision(name, arguments)
         if self.failures.before_call(name, arguments, revision=revision)['blocked']:
             result = json.dumps({'status': 'blocked', 'category': 'no_progress', 'executed': False,
                 'tool': name, 'message': 'Échecs répétés sans progrès vérifié. Inspecte la cause ou répare avant de répéter.'}, ensure_ascii=False)
             self.note_observation(name, arguments, result)
-            return result
+            yield ToolExecution(False, result)
+            return
         mutation = name in MUTATIONS and not diagnostic
         if mutation:
             # Failed commands can still change files; cached evidence is stale
@@ -472,18 +541,22 @@ class WorkflowController:
                                            scope=str(arguments.get('host') or self.workspace),
                                            requires_verification=name in FILE_TOOLS)
         except (ValueError, RuntimeError) as error:
-            return json.dumps({'status': 'blocked', 'category': 'recovery_required',
-                               'executed': False, 'message': str(error)}, ensure_ascii=False)
+            yield ToolExecution(False, json.dumps({'status': 'blocked', 'category': 'recovery_required',
+                               'executed': False, 'message': str(error)}, ensure_ascii=False))
+            return
         proof = self._file_proof(name, arguments)
         if proof is not None:
             atomic_write(self.proofs / (operation + '.json'), json.dumps(proof))
             self.current_file_attempts[proof['path']] = operation
-        self.local.events = []
+        events = []
+        token = self.events.set(events)
+        execution = ToolExecution()
         try:
-            result = function(*args, **kwargs)
-            category, command = self._outcome(name, result, self.local.events)
+            yield execution
+            result = execution.result
+            category, command = self._outcome(name, result, events)
             failed = category != 'none'
-            command_proof = self._command_proof(name, result, self.local.events)
+            command_proof = self._command_proof(name, result, events)
             if command_proof is not None:
                 entry = next(row for row in self.journal.snapshot()['operations'] if row['id'] == operation)
                 atomic_write(self.command_proofs / (operation + '.json'), json.dumps(
@@ -516,7 +589,7 @@ class WorkflowController:
             self.note_observation(name, arguments, result)
             self.publish({'type': 'workflow_action', 'operation': operation, 'tool': name,
                           'status': status, 'category': category})
-            return result
+            execution.result = result
         except BaseException as error:
             # Cancellation cannot prove that a remote command or write did not run.
             current = next(row for row in self.journal.snapshot()['operations'] if row['id'] == operation)
@@ -527,7 +600,7 @@ class WorkflowController:
                     self.journal.reconcile(operation, evidence={})
             raise
         finally:
-            self.local.events = None
+            self.events.reset(token)
 
     def reconcile(self, operation_id):
         if any(row['id'] == operation_id for row in self.transactions.snapshot()['operations']):
@@ -630,11 +703,3 @@ class WorkflowController:
                 collection.pop(0)
                 payload['truncated'] = True
         return render()
-
-
-def guarded_tool(function, controller):
-    @functools.wraps(function)
-    def run(*args, **kwargs):
-        engine = controller()
-        return engine.invoke(function, *args, **kwargs) if engine is not None else function(*args, **kwargs)
-    return run

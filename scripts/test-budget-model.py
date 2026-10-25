@@ -253,7 +253,7 @@ with patch.object(sys, 'argv', ['request-receipt-test', '--billing-status']):
     spec.loader.exec_module(backend)
 with tempfile.TemporaryDirectory() as directory:
     folder = Path(directory)
-    backend.MODEL_REQUEST_RECEIPTS.clear(); backend.MODEL_USAGE_REPORTED.clear()
+    backend.run_dependencies().request_receipts.clear(); backend.run_dependencies().usage_reported.clear()
     events = []
     original_emit = backend.emit
     def capture(event):

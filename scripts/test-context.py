@@ -221,7 +221,7 @@ with tempfile.TemporaryDirectory() as folder:
     with patch.object(a,'conversation_dir',return_value=Path(folder)), \
          patch.object(a,'save_history'), patch.object(a,'emit'), \
          patch.object(a,'context_overhead',return_value=0), \
-         patch.object(a,'ACTIVE_TOOLS',selection), patch.object(a,'TASK_ENGINE',None), \
+         patch.object(a.run_dependencies(), 'tools',selection), patch.object(a.run_dependencies(), 'engine',None), \
          patch.object(a,'fetch_model_catalog',return_value=[{'id':fm.model_name,'context_length':131072}]), \
          patch.object(a,'model_capabilities',return_value={'reasoning':False,'tools':True}):
         memory_tools=[tool for tool in a.agent_tools() if tool.name in {'read_memory','search_memory'}]
@@ -251,7 +251,7 @@ with tempfile.TemporaryDirectory() as folder:
          patch.object(a, 'SUMMARY_TIMEOUT_SECONDS', .25), \
          patch.object(a, 'fetch_model_catalog', return_value=[{'id': fm.model_name, 'context_length': 131072}]), \
          patch.object(a, 'model_capabilities', return_value={'reasoning': False, 'tools': True}):
-        ctx = SimpleNamespace(model=fm, model_settings={'max_tokens': 2048}, run_step=1)
+        ctx = SimpleNamespace(deps=a.run_dependencies(), model=fm, model_settings={'max_tokens': 2048}, run_step=1)
         managed = asyncio.run(a.manage_model_context(ctx, history))
         assert cancelled == [True]
         stats = next(e for e in events if e['type'] == 'context_compacted')
@@ -343,8 +343,8 @@ with tempfile.TemporaryDirectory() as folder:
     from types import SimpleNamespace
     from ovh_tools import ToolSelection
     selection = ToolSelection('Modernise la vue')
-    with patch.object(a, 'ACTIVE_TOOLS', selection), patch.object(a, 'TASK_ENGINE', None):
-        ctx = SimpleNamespace(prompt='Modernise la vue', messages=clean)
+    with patch.object(a.run_dependencies(), 'tools', selection), patch.object(a.run_dependencies(), 'engine', None):
+        ctx = SimpleNamespace(deps=a.run_dependencies(), prompt='Modernise la vue', messages=clean)
         for name in ('search_memory', 'read_memory'):
             definition = SimpleNamespace(name=name, description='memory', parameters_json_schema={})
             assert asyncio.run(a.prepare_tool_for_request(ctx, definition)) is definition

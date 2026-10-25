@@ -451,7 +451,7 @@ class SourceEvidence(unittest.TestCase):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.guard = SimpleNamespace(source_review=self.review, require_verified=lambda: {'status':'not_required'})
-        self.stack.enter_context(patch.object(self.backend, 'VERIFICATION_GUARD', self.guard))
+        self.stack.enter_context(patch.object(self.backend.run_dependencies(), 'verification', self.guard))
         self.stack.enter_context(patch.object(self.backend, 'activity_start', return_value='web'))
         self.stack.enter_context(patch.object(self.backend, 'activity_end'))
         self.stack.enter_context(patch.object(self.backend, 'conversation_dir', return_value=Path('/unused-test-archive')))

@@ -19,7 +19,7 @@ from ovh_evaluation import load_evidence, routing_domain, prefer_evaluated, meas
 from typing import Annotated, Literal
 from pydantic import Field
 from ovh_verification import ChangeGuard, VerificationError, run_check
-from ovh_execution import WorkflowController, guarded_tool, READ_ONLY_TOOLS, read_only_policy, command_is_read_only
+from ovh_execution import WorkflowController, RunDependencies, ExecutionCapability, READ_ONLY_TOOLS, read_only_policy, command_is_read_only
 from ovh_repository import repository_map
 from ovh_vision import run_reader_sync
 from ovh_process import run_process, command_is_destructive
@@ -31,6 +31,7 @@ import hashlib
 import errno
 import socket
 from contextlib import contextmanager
+from contextvars import ContextVar
 from html.parser import HTMLParser
 import xml.etree.ElementTree as ET
 import json
@@ -58,6 +59,7 @@ from pydantic_ai.providers.ovhcloud import OVHcloudProvider
 from pydantic_ai.providers.deepseek import DeepSeekProvider
 from pydantic_ai import Agent, ModelRetry, RunContext, Tool
 from pydantic_ai.usage import UsageLimits
+from pydantic_ai.toolsets import FunctionToolset
 from ovh_limits import limit_setting, resolve_limits
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.capabilities import ProcessHistory
@@ -121,20 +123,25 @@ MODEL_CATALOG_EXPIRES = 0.0
 BILLING_CACHE_SECONDS = budget_setting("OVH_AGENT_BILLING_CACHE_SECONDS", 60)
 BILLING_REFRESH_LOCK = threading.Lock()
 JSON_MODE = False
-VERIFICATION_GUARD: ChangeGuard | None = None
-TASK_ENGINE: WorkflowController | None = None
-ACTIVE_TOOLS: ToolSelection | None = None
-FULL_ACCESS = False
-EXTERNAL_ACCESS_NOTICES: set[str] = set()
+RUN_CONTEXT: ContextVar[RunDependencies | None] = ContextVar('trinity_run_dependencies', default=None)
+
+
+def run_dependencies() -> RunDependencies:
+    """Current CLI task or the explicit dependencies bound by Pydantic AI."""
+    deps = RUN_CONTEXT.get()
+    if deps is None:
+        deps = RunDependencies()
+        RUN_CONTEXT.set(deps)
+    return deps
+
+
 OUTPUT_LOCK = threading.Lock()
 METADATA_LOCK = threading.RLock()
 TASK_STATE_LOCK = threading.RLock()
-ACTIVITY_STARTED: dict[str, float] = {}
-ACTIVITY_LOCK = threading.Lock()
 APPROVALS: dict[str, queue.Queue[bool]] = {}
 APPROVALS_LOCK = threading.Lock()
 MODEL_CATALOG: list[dict[str, object]] | None = None
-AGENTS: dict[str, Agent] = {}
+AGENTS: dict[str, Agent[RunDependencies, str]] = {}
 SUPPORTED_IMAGE_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -361,13 +368,13 @@ if "--billing-status" not in sys.argv:
 
 
 def emit(payload: dict[str, object]) -> None:
-    if payload.get('type') == 'usage' and 'MODEL_USAGE_REPORTED' in globals():
-        total = MODEL_USAGE_REPORTED.setdefault(str(payload.get('model', '')), {})
+    if payload.get('type') == 'usage':
+        total = run_dependencies().usage_reported.setdefault(str(payload.get('model', '')), {})
         for key in ('requests', 'input_tokens', 'output_tokens'):
             total[key] = total.get(key, 0) + int(payload.get(key, 0) or 0)
         total['cost_eur'] = total.get('cost_eur', 0) + float(payload.get('cost_eur', 0) or 0)
-    if TASK_ENGINE is not None:
-        TASK_ENGINE.observe_event(payload)
+    if run_dependencies().engine is not None:
+        run_dependencies().engine.observe_event(payload)
     if not JSON_MODE:
         return
     payload.setdefault("timestamp", datetime.now(timezone.utc).isoformat(timespec="milliseconds"))
@@ -382,7 +389,7 @@ def emit(payload: dict[str, object]) -> None:
 
 def resolve_path(path: str) -> Path:
     candidate = (WORKSPACE / path).resolve() if not Path(path).is_absolute() else Path(path).resolve()
-    if not FULL_ACCESS and not candidate.is_relative_to(WORKSPACE):
+    if not run_dependencies().full_access and not candidate.is_relative_to(WORKSPACE):
         raise ModelRetry(
             f"Chemin hors espace de travail : {path}. "
             f"Racine autorisée : {WORKSPACE}. "
@@ -391,17 +398,17 @@ def resolve_path(path: str) -> Path:
             "pas /tmp. Pour un fichier existant hors racine, explique la limite "
             "à l’utilisateur ; ne prétends pas l’avoir lu ou déplacé."
         )
-    if FULL_ACCESS and not candidate.is_relative_to(WORKSPACE):
+    if run_dependencies().full_access and not candidate.is_relative_to(WORKSPACE):
         # A visible archived activity informs the user without blocking full access.
         # Deduplicate repeated reads of the same path within one task.
         name = str(candidate)
-        if name not in EXTERNAL_ACCESS_NOTICES:
-            EXTERNAL_ACCESS_NOTICES.add(name)
+        if name not in run_dependencies().external_access_notices:
+            run_dependencies().external_access_notices.add(name)
             notice = activity_start("scope", "Accès hors projet", name)
             activity_end(notice, f"Accès complet : sortie du projet {WORKSPACE} vers {name}.")
-    if VERIFICATION_GUARD is not None:
+    if run_dependencies().verification is not None:
         try:
-            VERIFICATION_GUARD.observe(candidate)
+            run_dependencies().verification.observe(candidate)
         except VerificationError as error:
             raise ModelRetry(str(error)) from error
     return candidate
@@ -473,8 +480,8 @@ def save_task_state(**changes: object) -> None:
 
 def activity_start(tool: str, title: str, detail: str) -> str:
     activity_id = uuid.uuid4().hex
-    with ACTIVITY_LOCK:
-        ACTIVITY_STARTED[activity_id] = time.monotonic()
+    with run_dependencies().activity_lock:
+        run_dependencies().activity_started[activity_id] = time.monotonic()
     if read_task_state().get("status") == "running":
         save_task_state(last_tool={"id": activity_id, "tool": tool, "title": title,
                                    "detail": detail[:2000], "state": "started"})
@@ -484,16 +491,16 @@ def activity_start(tool: str, title: str, detail: str) -> str:
 
 def activity_progress(activity_id: str, elapsed_seconds: int, detail: str = "") -> None:
     """Bounded progress for a long tool run; never a success claim."""
-    with ACTIVITY_LOCK:
-        if activity_id not in ACTIVITY_STARTED:
+    with run_dependencies().activity_lock:
+        if activity_id not in run_dependencies().activity_started:
             return
     emit({"type": "tool_progress", "id": activity_id, "elapsed_seconds": int(elapsed_seconds),
           "detail": (detail or "")[-600:]})
 
 
 def activity_end(activity_id: str, detail: str, success: bool = True) -> None:
-    with ACTIVITY_LOCK:
-        started = ACTIVITY_STARTED.pop(activity_id, None)
+    with run_dependencies().activity_lock:
+        started = run_dependencies().activity_started.pop(activity_id, None)
     if started is None:
         return
     duration_ms = round(max(0, time.monotonic() - started) * 1000)
@@ -506,7 +513,7 @@ def activity_end(activity_id: str, detail: str, success: bool = True) -> None:
 
 
 def request_approval(kind: str, title: str, detail: str, diff: str = "") -> bool:
-    if not JSON_MODE or FULL_ACCESS:
+    if not JSON_MODE or run_dependencies().full_access:
         return True
     approval_id = uuid.uuid4().hex
     answer: queue.Queue[bool] = queue.Queue(maxsize=1)
@@ -532,8 +539,8 @@ def request_approval(kind: str, title: str, detail: str, diff: str = "") -> bool
 
 
 def local_tool_error(error: Exception) -> str:
-    if TASK_ENGINE is not None:
-        TASK_ENGINE.observe_event({"type": "tool_error", "error_type": type(error).__name__})
+    if run_dependencies().engine is not None:
+        run_dependencies().engine.observe_event({"type": "tool_error", "error_type": type(error).__name__})
     if isinstance(error, IsADirectoryError):
         return f"Erreur outil : {error.filename} est un dossier. Utilise list_files sur ce dossier, puis read_file sur un fichier de la liste. Aucune modification effectuée."
     if isinstance(error, FileNotFoundError):
@@ -725,31 +732,31 @@ def run_verified_check(argv: list[str], cwd: Path, timeout: int) -> dict:
 
 
 def begin_verification(prompt: str = "", fact_check: bool | None = None) -> ChangeGuard:
-    global VERIFICATION_GUARD, TASK_ENGINE, ACTIVE_TOOLS
     ensure_conversation()
     identifier = uuid.uuid4().hex
-    EXTERNAL_ACCESS_NOTICES.clear()
-    VERIFICATION_GUARD = ChangeGuard(WORKSPACE, conversation_dir() / "verification" / identifier,
-                                    runner=run_verified_check, publish=emit, allow_external=FULL_ACCESS)
+    deps = run_dependencies()
+    deps.external_access_notices.clear()
+    run_dependencies().verification = ChangeGuard(WORKSPACE, conversation_dir() / "verification" / identifier,
+                                    runner=run_verified_check, publish=emit, allow_external=run_dependencies().full_access)
     analysis = analyze_request(prompt)
-    VERIFICATION_GUARD.task_intent = analysis.intent
-    VERIFICATION_GUARD.source_review = SourceReview(analysis.fact_check if fact_check is None else fact_check,
+    run_dependencies().verification.task_intent = analysis.intent
+    run_dependencies().verification.source_review = SourceReview(analysis.fact_check if fact_check is None else fact_check,
                                                     allowed=analysis.web_allowed)
-    VERIFICATION_GUARD.started_at = time.monotonic()
-    VERIFICATION_GUARD.checkpoints = set()
-    TASK_ENGINE = WorkflowController(WORKSPACE, conversation_dir() / 'execution',
-        publish=emit, receipts=lambda: VERIFICATION_GUARD.state.get('receipts', []) if VERIFICATION_GUARD else [],
-        allow_external=FULL_ACCESS, operation_runner=run_operation_stage, trusted_diagnostics=True)
-    TASK_ENGINE.focus(prompt)
+    run_dependencies().verification.started_at = time.monotonic()
+    run_dependencies().verification.checkpoints = set()
+    run_dependencies().engine = WorkflowController(WORKSPACE, conversation_dir() / 'execution',
+        publish=emit, receipts=lambda: deps.verification.state.get('receipts', []) if deps.verification else [],
+        allow_external=run_dependencies().full_access, operation_runner=run_operation_stage, trusted_diagnostics=True)
+    run_dependencies().engine.focus(prompt)
     if AI_PROVIDER == 'deepseek':
         # Keep failure receipts, but let the model decide how many repairs to try.
-        TASK_ENGINE.failures.exact_limit = None
-        TASK_ENGINE.failures.equivalent_limit = None
-    ACTIVE_TOOLS = ToolSelection(prompt)
+        run_dependencies().engine.failures.exact_limit = None
+        run_dependencies().engine.failures.equivalent_limit = None
+    run_dependencies().tools = ToolSelection(prompt)
     save_task_state(verification_id=identifier)
-    if VERIFICATION_GUARD.require_checks:
+    if run_dependencies().verification.require_checks:
         emit({"type": "verification_status", "status": "pending"})
-    return VERIFICATION_GUARD
+    return run_dependencies().verification
 
 
 def run_operation_stage(argv, cwd, timeout, *, scope, target):
@@ -785,23 +792,23 @@ def inspect_repository(path: str = '.', query: str = '') -> str:
 
 def workflow_status() -> str:
     """Journal réel, effets inconnus, critères et plans transactionnels disponibles. Ne certifie pas l'intention utilisateur."""
-    return json.dumps(TASK_ENGINE.snapshot() if TASK_ENGINE else {'status': 'inactive'}, ensure_ascii=False)
+    return json.dumps(run_dependencies().engine.snapshot() if run_dependencies().engine else {'status': 'inactive'}, ensure_ascii=False)
 
 
 def verify_task_acceptance(proposed_criteria: list[dict] | None = None) -> str:
     """Vérifie les postconditions figées du projet. Les critères proposés par le modèle restent non indépendants."""
-    return json.dumps(TASK_ENGINE.evaluate(proposed_criteria or ()) if TASK_ENGINE else {'status': 'inactive'}, ensure_ascii=False)
+    return json.dumps(run_dependencies().engine.evaluate(proposed_criteria or ()) if run_dependencies().engine else {'status': 'inactive'}, ensure_ascii=False)
 
 
 def execute_operation(name: str) -> str:
     """Exécute un plan nommé configuré : effet, postcondition, rollback et contrôle du rollback. Jamais de commande improvisée ici."""
-    if TASK_ENGINE is None:
+    if run_dependencies().engine is None:
         return 'Erreur outil : aucune tâche active.'
-    TASK_ENGINE.last_acceptance = None
+    run_dependencies().engine.last_acceptance = None
     try:
-        result = TASK_ENGINE.operations.execute(name)
+        result = run_dependencies().engine.operations.execute(name)
         if result.get('executed') and result.get('verified') and result.get('status') == 'applied':
-            TASK_ENGINE.progress += 1
+            run_dependencies().engine.progress += 1
         return json.dumps(result, ensure_ascii=False)
     except (ValueError, RuntimeError, OSError) as error:
         return local_tool_error(error)
@@ -809,26 +816,26 @@ def execute_operation(name: str) -> str:
 
 def reconcile_operation(operation_id: str) -> str:
     """Vérifie les effets actuels d'une opération interrompue. Les affirmations du modèle ne servent jamais de preuve."""
-    if TASK_ENGINE is None:
+    if run_dependencies().engine is None:
         return 'Erreur outil : aucune tâche active.'
     try:
-        return json.dumps(TASK_ENGINE.reconcile(operation_id), ensure_ascii=False)
+        return json.dumps(run_dependencies().engine.reconcile(operation_id), ensure_ascii=False)
     except (ValueError, RuntimeError, OSError) as error:
         return local_tool_error(error)
 
 
 def active_workflow_context() -> str:
-    return TASK_ENGINE.context() if TASK_ENGINE is not None else ''
+    return run_dependencies().engine.context() if run_dependencies().engine is not None else ''
 
 
 def verification_plan(path: str = ".") -> str:
     """Découvre les contrôles et les fichiers protégés du dossier du projet AVANT les modifications. Aucun test exécuté."""
-    if VERIFICATION_GUARD is None:
+    if run_dependencies().verification is None:
         return "Aucune tâche active."
     try:
         target = resolve_path(path)
-        VERIFICATION_GUARD.observe(target)
-        return json.dumps(VERIFICATION_GUARD.plan(), ensure_ascii=False)
+        run_dependencies().verification.observe(target)
+        return json.dumps(run_dependencies().verification.plan(), ensure_ascii=False)
     except (OSError, VerificationError, ModelRetry) as error:
         return local_tool_error(error)
 
@@ -841,10 +848,10 @@ def task_error_message(error: Exception) -> str:
     return str(error)
 
 
-def task_checkpoint(ctx: RunContext, messages: list) -> list:
+def task_checkpoint(ctx: RunContext[RunDependencies], messages: list) -> list:
     """Append bounded milestones without rewriting reusable context on each call."""
     started = time.monotonic()
-    guard = VERIFICATION_GUARD
+    guard = run_dependencies().verification
     if guard is None or not hasattr(guard, "checkpoints") or REQUEST_LIMIT is None:
         return messages
     used = ctx.usage.requests
@@ -869,32 +876,32 @@ def task_checkpoint(ctx: RunContext, messages: list) -> list:
 
 def verify_changes() -> str:
     """Exécute les contrôles du projet sur les fichiers actuels. Retourne leurs résultats réels, sans verdict inventé."""
-    if VERIFICATION_GUARD is None:
+    if run_dependencies().verification is None:
         return "Aucune modification suivie dans cette tâche."
     # Calling this tool explicitly requests checks, including a read-only audit
     # or an already-correct project. Merely asking a question does not run suites.
-    VERIFICATION_GUARD.require_checks = True
-    if TASK_ENGINE is not None:
-        names = [item['check'] for item in TASK_ENGINE.acceptance.describe()['criteria']
+    run_dependencies().verification.require_checks = True
+    if run_dependencies().engine is not None:
+        names = [item['check'] for item in run_dependencies().engine.acceptance.describe()['criteria']
                  if item['type'] == 'configured_check']
-        VERIFICATION_GUARD.ensure_checks(names)
-    return json.dumps(VERIFICATION_GUARD.verify(), ensure_ascii=False)
+        run_dependencies().verification.ensure_checks(names)
+    return json.dumps(run_dependencies().verification.verify(), ensure_ascii=False)
 
 
 def validate_task_output(output: str) -> str:
     """A final model answer cannot bypass executable verification."""
     historical_notice = ""
-    if VERIFICATION_GUARD is not None:
+    if run_dependencies().verification is not None:
         try:
-            review = getattr(VERIFICATION_GUARD, "source_review", None)
+            review = getattr(run_dependencies().verification, "source_review", None)
             if review is not None:
                 output = review.validate(output)
-            VERIFICATION_GUARD.require_verified()
+            run_dependencies().verification.require_verified()
         except (VerificationError, ValueError) as error:
             raise ModelRetry(str(error)) from error
-    if TASK_ENGINE is not None:
-        status = TASK_ENGINE.final_status()
-        historical_diagnostic = (TASK_ENGINE.read_only and bool(status['unresolved'])
+    if run_dependencies().engine is not None:
+        status = run_dependencies().engine.final_status()
+        historical_diagnostic = (run_dependencies().engine.read_only and bool(status['unresolved'])
             and set(status['unresolved']) <= set(status.get('historical_unresolved', []))
             and not any(status.get(key) for key in ('running', 'failed_files', 'failed_checks'))
             and status['criteria_status'] in {'passed', 'not_configured'})
@@ -903,8 +910,8 @@ def validate_task_output(output: str) -> str:
                 "conservent des effets non vérifiés ; ce diagnostic ne les valide pas et ne les rejoue pas.")
         if status['incomplete'] and not historical_diagnostic:
             detail = json.dumps(status, ensure_ascii=False)
-            if TASK_ENGINE._validation_retries < 1 and not status['unresolved']:
-                TASK_ENGINE._validation_retries += 1
+            if run_dependencies().engine._validation_retries < 1 and not status['unresolved']:
+                run_dependencies().engine._validation_retries += 1
                 raise ModelRetry('Postconditions non satisfaites. Inspecte verify_task_acceptance ; corrige ou décris le blocage. ' + detail)
             # Do not publish an unsupported model success after a failed check.
             reasons = []
@@ -922,9 +929,9 @@ def validate_task_output(output: str) -> str:
             return 'Tâche incomplète. ' + ' '.join(reasons)
     # A controller-generated incomplete verdict remains valid when the JSON-lines
     # loop validates it again. Validate success claims only after execution state.
-    if VERIFICATION_GUARD is not None:
+    if run_dependencies().verification is not None:
         try:
-            validate_summary = getattr(VERIFICATION_GUARD, "validate_summary", None)
+            validate_summary = getattr(run_dependencies().verification, "validate_summary", None)
             if validate_summary is not None:
                 output = validate_summary(output)
         except (VerificationError, ValueError) as error:
@@ -1030,7 +1037,7 @@ def edit_file(path: str, old_text: str = "", new_text: str | None = None) -> str
         if not request_approval("edit", "Modifier un fichier", name, diff):
             return "Modification refusée par l’utilisateur."
         activity_id = activity_start("edit", "Modification hors projet" if not target.is_relative_to(WORKSPACE) else "Modification du fichier", name)
-        guard = VERIFICATION_GUARD or begin_verification()
+        guard = run_dependencies().verification or begin_verification()
         validation = guard.write(target, content, updated)
         activity_end(activity_id, validation)
         emit_file_change(name, diff)
@@ -1057,7 +1064,7 @@ def write_file(path: str, content: str) -> str:
         if not request_approval("write", title, name, diff):
             return "Écriture refusée par l’utilisateur."
         activity_id = activity_start("write", title + (" hors projet" if not target.is_relative_to(WORKSPACE) else ""), name)
-        guard = VERIFICATION_GUARD or begin_verification()
+        guard = run_dependencies().verification or begin_verification()
         validation = guard.write(target, None if created else before, content)
         activity_end(activity_id, f"{len(content.encode())} octets écrits · {validation}")
         emit_file_change(name, diff, created)
@@ -1099,16 +1106,16 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
             if binary is None:
                 return command_not_executed("invalid_command_target", "Outil de diagnostic système indisponible.")
             diagnostic_argv = [binary, *(["--no-config"] if words[0] == "rg" else []), *words[1:]]
-        if VERIFICATION_GUARD is not None and not diagnostic:
+        if run_dependencies().verification is not None and not diagnostic:
             # The configured runner may launch a check before a receipt write
             # fails. An exception from here onward cannot prove non-execution.
             execution_entered = True
-            receipt = VERIFICATION_GUARD.execute_configured(command, working_dir)
+            receipt = run_dependencies().verification.execute_configured(command, working_dir)
             if receipt is not None:
                 evidence = {key: receipt.get(key) for key in (
                     "id", "check", "argv", "cwd", "exit_code", "passed", "timed_out",
                     "duration_ms", "reported_tests", "count_source", "output")}
-                return json.dumps({"check_evidence": evidence, "test_summary": VERIFICATION_GUARD.test_summary()}, ensure_ascii=False)
+                return json.dumps({"check_evidence": evidence, "test_summary": run_dependencies().verification.test_summary()}, ensure_ascii=False)
         if not request_approval("command", "Exécuter une commande", command):
             return command_not_executed("approval_denied", "Commande refusée par l’utilisateur.")
         activity_id = activity_start("command", "Commande dans le conteneur IDE", f"cwd={working_dir}\n{command}")
@@ -2228,7 +2235,7 @@ def fetch_web_document(url: str) -> tuple[bytes, str]:
 
 def search_web(query: str, source_type: Literal["official", "issues", "other"] = "official") -> str:
     """Recherche publique : official (documentation d'abord), issues (dépôt officiel ensuite), other. Les résultats ne certifient pas l'identité de la source : vérifier domaine/dépôt et lire la page. Ne pas envoyer de données privées."""
-    review = getattr(VERIFICATION_GUARD, "source_review", None) or SourceReview()
+    review = getattr(run_dependencies().verification, "source_review", None) or SourceReview()
     try:
         query = review.search_query(query[:850], source_type)
     except ValueError as error:
@@ -2307,7 +2314,7 @@ class WebTextParser(HTMLParser):
 
 def read_webpage(url: str, offset: int = 0, length: int = 12000, query: str = "") -> str:
     """Lit une page publique. query cible un terme exact et évite de lire toute la navigation ; offset choisit la prochaine occurrence. Les autres plages restent accessibles avec read_memory."""
-    review = getattr(VERIFICATION_GUARD, "source_review", None)
+    review = getattr(run_dependencies().verification, "source_review", None)
     if review is not None and not review.allowed:
         raise ModelRetry('L’utilisateur demande une vérification hors ligne : ne consulte pas de page Internet.')
     activity_id = activity_start("read", "Lecture d’une page web", url)
@@ -2395,8 +2402,8 @@ def install_tools(ecosystem: str, packages: list[str], scope: str = "project") -
     activity_id = activity_start("command", "Installation des outils du projet" if scope == "project" else "Installation système dans l’IDE", detail)
     receipts = []
     try:
-        if VERIFICATION_GUARD is not None:
-            VERIFICATION_GUARD.invalidate_environment()
+        if run_dependencies().verification is not None:
+            run_dependencies().verification.invalidate_environment()
         for command in commands:
             result = run_check(command, WORKSPACE, 180)
             receipts.append({"argv": command, **result})
@@ -2596,14 +2603,14 @@ def apply_steering(messages: list) -> list:
             consume_followup(item["id"], prompt=str(state.get("prompt", "")) + "\n\n" + item["text"])
             messages.append(ModelRequest(parts=[UserPromptPart(content=item["text"])]))
             analysis = analyze_request(item["text"])
-            if TASK_ENGINE is not None:
-                TASK_ENGINE.focus(item["text"])
-            if ACTIVE_TOOLS is not None:
-                ACTIVE_TOOLS.hint(item["text"])
-            if VERIFICATION_GUARD is not None:
-                VERIFICATION_GUARD.task_intent = analysis.intent
-            if VERIFICATION_GUARD is not None and (analysis.fact_check or not analysis.web_allowed):
-                VERIFICATION_GUARD.source_review = SourceReview(analysis.fact_check, allowed=analysis.web_allowed)
+            if run_dependencies().engine is not None:
+                run_dependencies().engine.focus(item["text"])
+            if run_dependencies().tools is not None:
+                run_dependencies().tools.hint(item["text"])
+            if run_dependencies().verification is not None:
+                run_dependencies().verification.task_intent = analysis.intent
+            if run_dependencies().verification is not None and (analysis.fact_check or not analysis.web_allowed):
+                run_dependencies().verification.source_review = SourceReview(analysis.fact_check, allowed=analysis.web_allowed)
                 if analysis.fact_check:
                     messages.append(ModelRequest(parts=[SystemPromptPart(content=REVIEW_INSTRUCTIONS)]))
             archive_event({"type": "user", "text": item["text"], "steering": True})
@@ -2631,7 +2638,7 @@ def routing_billing_status() -> dict:
 def context_overhead() -> int:
     return text_tokens(load_infrastructure_instructions() + active_plan_context() + active_workflow_context()
                        + access_instructions() + emoji_instructions(EMOJI_MODE)
-                       + execution_instructions(WORKSPACE)) + (ACTIVE_TOOLS.token_overhead() if ACTIVE_TOOLS else 8500)
+                       + execution_instructions(WORKSPACE)) + (run_dependencies().tools.token_overhead() if run_dependencies().tools else 8500)
 
 
 def prompt_component_profile(history: list) -> dict:
@@ -2645,7 +2652,7 @@ def prompt_component_profile(history: list) -> dict:
         "infrastructure_instructions_tokens": text_tokens(infrastructure),
         "workflow_state_tokens": text_tokens(plan + workflow),
         "presentation_and_access_tokens": text_tokens(emoji_instructions(EMOJI_MODE) + access_instructions()),
-        "tool_schema_tokens": ACTIVE_TOOLS.token_overhead() if ACTIVE_TOOLS else 8500,
+        "tool_schema_tokens": run_dependencies().tools.token_overhead() if run_dependencies().tools else 8500,
         "prepared_history_tokens": estimate_tokens(history),
     }
 
@@ -2764,8 +2771,6 @@ def budget_ledger():
 
 
 # Request-level evidence is independent from successful run finalization.
-MODEL_REQUEST_RECEIPTS = []
-MODEL_USAGE_REPORTED = {}
 
 
 def record_provider_request(receipt, response):
@@ -2780,14 +2785,14 @@ def record_provider_request(receipt, response):
             stream.write(json.dumps(data, ensure_ascii=False) + '\n')
             stream.flush()
             os.fsync(stream.fileno())
-        MODEL_REQUEST_RECEIPTS.append(receipt)
+        run_dependencies().request_receipts.append(receipt)
     emit({'type': 'model_request_usage', **receipt})
 
 
 def report_unreported_usage():
-    for model in dict.fromkeys(row['model'] for row in MODEL_REQUEST_RECEIPTS):
-        rows = [row for row in MODEL_REQUEST_RECEIPTS if row['model'] == model]
-        previous = MODEL_USAGE_REPORTED.get(model, {})
+    for model in dict.fromkeys(row['model'] for row in run_dependencies().request_receipts):
+        rows = [row for row in run_dependencies().request_receipts if row['model'] == model]
+        previous = run_dependencies().usage_reported.get(model, {})
         requests = max(0, len(rows) - previous.get('requests', 0))
         if not requests:
             continue
@@ -2818,7 +2823,7 @@ def current_budget_status():
 
 def discover_tools(query: str = '') -> str:
     """Recherche et active les outils spécialisés : web, mémoire, dépôt, système, reprise, styles ou livraison. Utilise un groupe ou un nom exact."""
-    return json.dumps(ACTIVE_TOOLS.discover(query) if ACTIVE_TOOLS else {'status': 'inactive'}, ensure_ascii=False)
+    return json.dumps(run_dependencies().tools.discover(query) if run_dependencies().tools else {'status': 'inactive'}, ensure_ascii=False)
 
 
 def ask_user_questions(questions: list[dict]) -> str:
@@ -2849,40 +2854,49 @@ def ask_user_questions(questions: list[dict]) -> str:
             "les choix de l’utilisateur et n’exécute aucune action qui dépend de sa réponse.")
 
 
-async def prepare_tool_for_request(ctx: RunContext, definition):
+async def prepare_tool_for_request(ctx: RunContext[RunDependencies], definition):
     """Task-local schema visibility; permission checks remain on every execution."""
-    if ACTIVE_TOOLS is not None:
-        ACTIVE_TOOLS.register(definition.name, definition.description, definition.parameters_json_schema)
-        if (TASK_ENGINE is not None and not ACTIVE_TOOLS.visible(definition.name)
+    if ctx.deps.tools is not None:
+        ctx.deps.tools.register(definition.name, definition.description, definition.parameters_json_schema)
+        if (ctx.deps.engine is not None and not ctx.deps.tools.visible(definition.name)
                 and definition.name in {'workflow_status', 'verify_task_acceptance',
                                         'execute_operation', 'reconcile_operation'}):
             # Actual execution state, not wording in a short follow-up, makes
             # recovery discoverable. Authorization is still checked below.
-            if TASK_ENGINE.operations.plans:
-                ACTIVE_TOOLS.hint('workflow_status verify_task_acceptance execute_operation reconcile_operation')
-            elif (TASK_ENGINE.journal.snapshot()['unresolved_mutations']
-                  or TASK_ENGINE.transactions.snapshot()['unresolved_mutations']):
-                ACTIVE_TOOLS.hint('workflow_status verify_task_acceptance reconcile_operation')
-        if not ACTIVE_TOOLS.visible(definition.name):
+            if ctx.deps.engine.operations.plans:
+                ctx.deps.tools.hint('workflow_status verify_task_acceptance execute_operation reconcile_operation')
+            elif (ctx.deps.engine.journal.snapshot()['unresolved_mutations']
+                  or ctx.deps.engine.transactions.snapshot()['unresolved_mutations']):
+                ctx.deps.tools.hint('workflow_status verify_task_acceptance reconcile_operation')
+        if not ctx.deps.tools.visible(definition.name):
             return None
     prompt = prompt_part_text(ctx.prompt)
     # WorkflowController owns the current authorization across steering,
     # compaction and restart; a neutral "continue" cannot grant write access.
-    readonly = TASK_ENGINE.read_only if TASK_ENGINE is not None else read_only_policy(prompt)
-    if TASK_ENGINE is None:
+    readonly = ctx.deps.engine.read_only if ctx.deps.engine is not None else read_only_policy(prompt)
+    if ctx.deps.engine is None:
         latest = recent_prompts_from_messages(ctx.messages)
         if latest and latest != prompt:
             readonly = read_only_policy(latest, readonly)
     if not readonly:
-        if definition.name == 'execute_operation' and TASK_ENGINE is not None and TASK_ENGINE.operations.plans:
+        if definition.name == 'execute_operation' and ctx.deps.engine is not None and ctx.deps.engine.operations.plans:
             schema = definition.parameters_json_schema
             properties = schema.get('properties', {})
             definition = replace(definition, parameters_json_schema={**schema, 'properties': {
-                **properties, 'name': {**properties.get('name', {}), 'enum': list(TASK_ENGINE.operations.plans)}}})
+                **properties, 'name': {**properties.get('name', {}), 'enum': list(ctx.deps.engine.operations.plans)}}})
         return definition
     analysis = analyze_request(prompt)
     allowed = READ_ONLY_TOOLS if analysis.web_allowed else READ_ONLY_TOOLS - {'search_web', 'read_webpage'}
     return definition if definition.name in allowed else None
+
+
+async def prepare_tools_for_request(ctx: RunContext[RunDependencies], definitions):
+    prepared = []
+    for definition in definitions:
+        visible = await prepare_tool_for_request(ctx, definition)
+        if visible is not None:
+            prepared.append(visible)
+    return prepared
 
 
 def recent_prompts_from_messages(messages):
@@ -2896,14 +2910,13 @@ def recent_prompts_from_messages(messages):
 def agent_tools() -> list[Tool]:
     # Independent reads share a round; mutations and verification form execution barriers.
     exclusive = {remember_context, install_tools, update_plan, edit_file, write_file, run_command, run_host_command, verification_plan, verify_changes, execute_operation, reconcile_operation, verify_task_acceptance, discover_tools}
-    tools = [Tool(guarded_tool(function, lambda: TASK_ENGINE), sequential=function in exclusive, prepare=prepare_tool_for_request) for function in
+    tools = [Tool(function, sequential=function in exclusive) for function in
             [update_plan, read_memory, search_web, read_webpage,
              list_files, read_file, search_text, edit_file, write_file,
              run_command, run_host_command, verification_plan, verify_changes,
              remember_context, search_project_memory, read_project_memory, inspect_environment, install_tools, inspect_repository, workflow_status,
              verify_task_acceptance, execute_operation, reconcile_operation, discover_tools, ask_user_questions]]
-    tools.insert(1, Tool(search_memory_for_context, name='search_memory', takes_ctx=True,
-                         prepare=prepare_tool_for_request))
+    tools.insert(1, Tool(search_memory_for_context, name='search_memory', takes_ctx=True))
     return tools
 
 
@@ -2982,7 +2995,7 @@ def access_instructions() -> str:
         "Indique les chemins absolus des fichiers modifiés hors projet dans ton bilan. "
         "Pour une commande shell qui touche des chemins hors projet, annonce ces chemins avant exécution. "
         "Les contrôles de modification restent obligatoires. "
-        if FULL_ACCESS else
+        if run_dependencies().full_access else
         "Mode restreint : les outils de fichiers et le cwd restent dans le projet. "
         "Ne contourne pas cette limite par des chemins absolus dans le shell. "
     )
@@ -2994,15 +3007,16 @@ def access_instructions() -> str:
     )
 
 
-def get_agent(model_id: str, *, output_validator=None) -> Agent:
+def get_agent(model_id: str, *, output_validator=None) -> Agent[RunDependencies, str]:
     if model_id not in AGENTS:
         AGENTS[model_id] = Agent(
             get_budgeted_model(model_id),
             instructions=emoji_instructions(EMOJI_MODE) + execution_instructions(WORKSPACE),
-            tools=agent_tools() if model_capabilities(model_id)["tools"] else [],
+            deps_type=RunDependencies,
+            toolsets=[FunctionToolset(agent_tools()).prepared(prepare_tools_for_request)] if model_capabilities(model_id)["tools"] else [],
             # The SDK requires an integer; DeepSeek has no practical retry ceiling.
             retries=sys.maxsize if AI_PROVIDER == 'deepseek' else 2,
-            capabilities=[ProcessHistory(apply_steering), ProcessHistory(task_checkpoint), ProcessHistory(manage_model_context)],
+            capabilities=[ExecutionCapability(RUN_CONTEXT), ProcessHistory(apply_steering), ProcessHistory(task_checkpoint), ProcessHistory(manage_model_context)],
         )
         AGENTS[model_id].instructions(load_infrastructure_instructions)
         AGENTS[model_id].instructions(active_plan_context)
@@ -3079,15 +3093,12 @@ def search_memory(query: str, *, context_card=None) -> str:
     return (local + "\n" + shared).strip() or "Aucun souvenir correspondant."
 
 
-def search_memory_for_context(ctx: RunContext, query: str) -> str:
+def search_memory_for_context(ctx: RunContext[RunDependencies], query: str) -> str:
     """Recherche la conversation, les autres conversations du projet et les notes utilisateur partagées. Les sources anciennes ne sont pas des preuves actuelles."""
     card = next((row for row in fetch_model_catalog() if row['id'] == ctx.model.model_name), {})
     # Only the query is a model argument. Keep SDK state (including credentials)
     # out of the workflow journal while retaining the usual execution checks.
-    def retrieve(query: str) -> str:
-        return search_memory(query, context_card=card)
-    retrieve.__name__ = 'search_memory'
-    return guarded_tool(retrieve, lambda: TASK_ENGINE)(query)
+    return search_memory(query, context_card=card)
 
 
 def read_memory(reference: str, offset: int = 0, length: int = 3000) -> str:
@@ -3131,9 +3142,9 @@ def active_plan_context() -> str:
         return ""
 
 
-async def manage_model_context(ctx: RunContext, messages: list) -> list:
-    if TASK_ENGINE is not None:
-        TASK_ENGINE.check_progress()
+async def manage_model_context(ctx: RunContext[RunDependencies], messages: list) -> list:
+    if run_dependencies().engine is not None:
+        run_dependencies().engine.check_progress()
     started = time.monotonic()
     model_id = ctx.model.model_name
     card = next((item for item in fetch_model_catalog() if item["id"] == model_id), {})
@@ -3311,7 +3322,7 @@ def prepare_task_context(history: list, prompt: str, image_count: int = 0, *, co
     # Mutation tasks need current files, not top-ranked unverified assistant prose.
     # Historical evidence remains available through explicit memory tools.
     history = history_with_memory(history, query, include_excerpts=analysis.intent not in {"edit", "execute"}, context_card=context_card)
-    retrieval_root = ALLOWED_ROOT if FULL_ACCESS else WORKSPACE
+    retrieval_root = ALLOWED_ROOT if run_dependencies().full_access else WORKSPACE
     prepared = prepare_request(prompt, history, WORKSPACE, retrieval_root, image_count,
                                navigation_root=ALLOWED_ROOT, context_card=context_card)
     prepared['preparation_ms'] = round((time.monotonic()-started)*1000)
@@ -3334,7 +3345,7 @@ def complete_memory_answer(history: list, prompt: str, answer: dict, selection: 
     """Persist a local documentary response through the same archive lifecycle."""
     output = answer['text']
     archive_event({'type':'user','text':prompt,'model':'local-memory','selection':selection,'images':[]})
-    save_task_state(status='running',prompt=prompt,model=selection,full_access=FULL_ACCESS,last_tool={},images=[],deleted_paths=[],
+    save_task_state(status='running',prompt=prompt,model=selection,full_access=run_dependencies().full_access,last_tool={},images=[],deleted_paths=[],
                     verification_id='',verification={},local_answer=True)
     emit({'type':'status','conversation':CONVERSATION_ID,'text':'Lecture de la mémoire du projet…'})
     emit({'type':'request_prepared','sources':[{'path':answer['source']}],
@@ -3579,7 +3590,6 @@ def read_snapshot(conversation_id: str | None = None) -> dict[str, object] | Non
 
 
 def main_terminal() -> None:
-    global VERIFICATION_GUARD, TASK_ENGINE, ACTIVE_TOOLS
     recover_verification()
     selected_model = DEFAULT_MODEL
     print(f"OVH Agent - modèle {selected_model}")
@@ -3601,8 +3611,7 @@ def main_terminal() -> None:
             start_new_conversation()
             print("Nouvelle conversation.")
             continue
-        MODEL_REQUEST_RECEIPTS.clear()
-        MODEL_USAGE_REPORTED.clear()
+        RUN_CONTEXT.set(RunDependencies(full_access=run_dependencies().full_access))
         try:
             ensure_conversation()
             archive_event({"type": "user", "text": prompt, "model": selected_model})
@@ -3610,27 +3619,27 @@ def main_terminal() -> None:
             request_history, preparation = prepare_task_context(history, prompt,
                 context_card=next((card for card in (MODEL_CATALOG or []) if card['id'] == selected_model), None))
             begin_verification(prompt, preparation.get("analysis", {}).get("fact_check"))
-            result = get_agent(selected_model).run_sync(prompt, message_history=request_history,
+            result = get_agent(selected_model).run_sync(prompt, message_history=request_history, deps=run_dependencies(),
                                                         model_settings=generation_settings(selected_model, prompt, preparation.get('analysis')),
                                                         usage_limits=UsageLimits(request_limit=REQUEST_LIMIT))
-            VERIFICATION_GUARD.require_verified()
-            output = validate_task_output(str(result.output))
+            run_dependencies().verification.require_verified()
+            output = str(result.output)  # Already validated by the native output callback.
             print(f"\nOVH > {output}")
             history, _ = compact_history(result.all_messages())
             save_history(history)
             archive_event({"type": "response", "text": output})
         except Exception as error:
             report_unreported_usage()
-            if VERIFICATION_GUARD is not None and VERIFICATION_GUARD.state["status"] != "passed":
+            if run_dependencies().verification is not None and run_dependencies().verification.state["status"] != "passed":
                 try:
-                    VERIFICATION_GUARD.rollback()
+                    run_dependencies().verification.rollback()
                 except (OSError, VerificationError) as recovery_error:
                     print(f"\nRestauration à vérifier : {recovery_error}")
             print(f"\nErreur OVH: {error}")
         finally:
-            VERIFICATION_GUARD = None
-            TASK_ENGINE = None
-            ACTIVE_TOOLS = None
+            run_dependencies().verification = None
+            run_dependencies().engine = None
+            run_dependencies().tools = None
 
 
 def refresh_billing_async(request: dict) -> None:
@@ -3693,7 +3702,7 @@ def stdin_reader(requests: queue.Queue[dict]) -> None:
 
 
 def main_json_lines() -> None:
-    global JSON_MODE, FULL_ACCESS, CONVERSATION_ID, FOLLOWUP_RUNNING, FOLLOWUP_CLAIMED, FOLLOWUP_GENERATION, VERIFICATION_GUARD, TASK_ENGINE, ACTIVE_TOOLS
+    global JSON_MODE, CONVERSATION_ID, FOLLOWUP_RUNNING, FOLLOWUP_CLAIMED, FOLLOWUP_GENERATION
     JSON_MODE = True
     try:
         read_task_state()  # Validate receipts before any recovery may update state.
@@ -3932,8 +3941,7 @@ def main_json_lines() -> None:
             if not followup_id:
                 FOLLOWUP_GENERATION += 1
             FOLLOWUP_RUNNING = True
-        MODEL_REQUEST_RECEIPTS.clear()
-        MODEL_USAGE_REPORTED.clear()
+        RUN_CONTEXT.set(RunDependencies(full_access=run_dependencies().full_access))
         prompt = str(request.get("text", "")).strip()
         raw_images = request.get("images", [])
         if not prompt and not raw_images:
@@ -3948,7 +3956,7 @@ def main_json_lines() -> None:
             requested_model = AUTO_MODEL
         selected_model = requested_model
         save_selected_model(selected_model)
-        FULL_ACCESS = bool(request.get("full_access", False))
+        run_dependencies().full_access = bool(request.get("full_access", False))
         try:
             ensure_conversation()
             binary_images, archived_images = prepare_images(raw_images)
@@ -3980,7 +3988,7 @@ def main_json_lines() -> None:
             emit({"type": "error", "text": str(error)})
             continue
         task_changes = dict(status="running", prompt=str(request.get("original_task", prompt)), deleted_paths=[],
-                            model=selected_model, full_access=FULL_ACCESS, last_tool={}, images=archived_images)
+                            model=selected_model, full_access=run_dependencies().full_access, last_tool={}, images=archived_images)
         if followup_id:
             consume_followup(followup_id, **task_changes)
         else:
@@ -4024,7 +4032,7 @@ def main_json_lines() -> None:
                 "vision": True,
                 "duration_ms": routing_duration_ms,
             })
-        emit({"type": "access_mode", "full_access": FULL_ACCESS})
+        emit({"type": "access_mode", "full_access": run_dependencies().full_access})
         with FOLLOWUP_LOCK:
             FOLLOWUP_RUNNING = True
         emit({
@@ -4049,7 +4057,7 @@ def main_json_lines() -> None:
             settings = generation_settings(active_model, prompt, preparation.get('analysis'))
             try:
                 result = get_agent(active_model).run_sync(
-                    user_content, message_history=request_history,
+                    user_content, message_history=request_history, deps=run_dependencies(),
                     model_settings=settings,
                     usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
@@ -4057,7 +4065,7 @@ def main_json_lines() -> None:
             except Exception as primary_error:
                 fallback_model = 'gpt-oss-120b'
                 fallback_reason = automatic_fallback_reason(
-                    active_model, primary_error, TASK_ENGINE, VERIFICATION_GUARD)
+                    active_model, primary_error, run_dependencies().engine, run_dependencies().verification)
                 if (selected_model != AUTO_MODEL
                         or not fallback_reason
                         or not is_selectable_model(fallback_model)):
@@ -4078,14 +4086,14 @@ def main_json_lines() -> None:
                 stream = ResponseStream()
                 settings = generation_settings(active_model, prompt, preparation.get('analysis'))
                 result = get_agent(active_model).run_sync(
-                    user_content, message_history=request_history,
+                    user_content, message_history=request_history, deps=run_dependencies(),
                     model_settings=settings,
                     usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
                 )
             fallback_model = 'gpt-oss-120b'
             fallback_reason = automatic_fallback_reason(
-                active_model, str(result.output), TASK_ENGINE, VERIFICATION_GUARD)
+                active_model, str(result.output), run_dependencies().engine, run_dependencies().verification)
             if (selected_model == AUTO_MODEL and fallback_reason
                     and is_selectable_model(fallback_model)):
                 previous_model = active_model
@@ -4113,7 +4121,7 @@ def main_json_lines() -> None:
                 stream = ResponseStream()
                 settings = generation_settings(active_model, prompt, preparation.get('analysis'))
                 result = get_agent(active_model).run_sync(
-                    user_content, message_history=request_history,
+                    user_content, message_history=request_history, deps=run_dependencies(),
                     model_settings=settings,
                     usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
@@ -4137,15 +4145,15 @@ def main_json_lines() -> None:
             # A failed primary model or image reader may precede a successful
             # fallback. Include those requests even when the task finally succeeds.
             report_unreported_usage()
-            verification = VERIFICATION_GUARD.require_verified()
-            output = validate_task_output(str(result.output))
+            verification = run_dependencies().verification.require_verified()
+            output = str(result.output)  # Already validated by the native output callback.
             if result.response.finish_reason == "length":
                 raise RuntimeError("Réponse tronquée par la limite de tokens ; la tâche reste à reprendre.")
             emit({"type": "response", "text": output, "verification": verification})
-            incomplete = ((TASK_ENGINE is not None and TASK_ENGINE.incomplete)
+            incomplete = ((run_dependencies().engine is not None and run_dependencies().engine.incomplete)
                           or tool_protocol_failure(output))
             save_task_state(status="interrupted" if incomplete else "completed", verification=verification,
-                            acceptance=TASK_ENGINE.last_acceptance if TASK_ENGINE else None)
+                            acceptance=run_dependencies().engine.last_acceptance if run_dependencies().engine else None)
             with FOLLOWUP_LOCK:
                 FOLLOWUP_RUNNING = False
                 if not incomplete:
@@ -4153,9 +4161,9 @@ def main_json_lines() -> None:
         except Exception as error:
             report_unreported_usage()
             detail = task_error_message(error)
-            if VERIFICATION_GUARD is not None and VERIFICATION_GUARD.state["status"] != "passed":
+            if run_dependencies().verification is not None and run_dependencies().verification.state["status"] != "passed":
                 try:
-                    recovery = VERIFICATION_GUARD.rollback()
+                    recovery = run_dependencies().verification.rollback()
                     save_task_state(verification_recovery=recovery)
                     if recovery["restored"]:
                         detail += "\nLes modifications suivies non validées ont été restaurées."
@@ -4167,9 +4175,9 @@ def main_json_lines() -> None:
             emit({"type": "error", "text": detail})
             emit({"type": "task_interrupted", "id": CONVERSATION_ID})
         finally:
-            VERIFICATION_GUARD = None
-            TASK_ENGINE = None
-            ACTIVE_TOOLS = None
+            run_dependencies().verification = None
+            run_dependencies().engine = None
+            run_dependencies().tools = None
             with FOLLOWUP_LOCK:
                 FOLLOWUP_RUNNING = False
 

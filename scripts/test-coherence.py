@@ -28,9 +28,9 @@ class CoherenceTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.workspace = self.root / 'project'
         self.workspace.mkdir()
-        for name, value in {'WORKSPACE': self.workspace, 'ALLOWED_ROOT': self.root,
-                            'FULL_ACCESS': False, 'VERIFICATION_GUARD': None,
-                            'TASK_ENGINE': None}.items():
+        token = a.RUN_CONTEXT.set(a.RunDependencies())
+        self.addCleanup(a.RUN_CONTEXT.reset, token)
+        for name, value in {'WORKSPACE': self.workspace, 'ALLOWED_ROOT': self.root}.items():
             override = patch.object(a, name, value)
             override.start()
             self.addCleanup(override.stop)
@@ -72,7 +72,7 @@ class CoherenceTests(unittest.TestCase):
     def test_failed_operation_invalidates_previous_acceptance(self):
         engine = SimpleNamespace(last_acceptance={'passed':True}, observe_event=lambda event: None,
             operations=SimpleNamespace(execute=lambda name: (_ for _ in ()).throw(OSError('lost receipt'))))
-        with patch.object(a, 'TASK_ENGINE', engine):
+        with patch.object(a.run_dependencies(), 'engine', engine):
             self.assertIn('lost receipt', a.execute_operation('fixture'))
         self.assertIsNone(engine.last_acceptance)
 
@@ -123,7 +123,7 @@ class CoherenceTests(unittest.TestCase):
             history, details = a.prepare_task_context([], prompt)
             self.assertNotIn('AUDIT_SENTINEL', str(history))
             self.assertNotIn(str(source), [item['path'] for item in details['sources']])
-            with patch.object(a, 'FULL_ACCESS', True):
+            with patch.object(a.run_dependencies(), 'full_access', True):
                 history, details = a.prepare_task_context([], prompt)
                 self.assertIn('AUDIT_SENTINEL', str(history))
                 self.assertIn(str(source), [item['path'] for item in details['sources']])
@@ -145,7 +145,7 @@ class CoherenceTests(unittest.TestCase):
         def failed_receipt(*args):
             raise OSError('Fixture: check ran, receipt storage failed')
         guard.execute_configured = failed_receipt
-        with patch.object(a, 'VERIFICATION_GUARD', guard):
+        with patch.object(a.run_dependencies(), 'verification', guard):
             result = a.run_command('configured-check')
         self.assertIn('receipt storage failed', result)
         self.assertNotIn('"executed": false', result)
@@ -179,7 +179,7 @@ class CoherenceTests(unittest.TestCase):
         history += [a.ModelResponse(parts=[a.TextPart(content='Earlier evidence. ' * 1000)])]
         guard = SimpleNamespace(checkpoints=set(), started_at=time.monotonic() - 100000)
         ctx = SimpleNamespace(usage=SimpleNamespace(requests=0))
-        with patch.object(a, 'VERIFICATION_GUARD', guard):
+        with patch.object(a.run_dependencies(), 'verification', guard):
             marked = a.task_checkpoint(ctx, history)
         self.assertEqual(a.recent_prompts_from_messages(marked), request)
         memory = a.ConversationMemory(self.root / 'memory')
