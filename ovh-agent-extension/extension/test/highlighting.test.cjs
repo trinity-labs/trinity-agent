@@ -279,7 +279,7 @@ test('archive header restores its own routed model and clears stale routes', () 
     emit({type:'archive_loaded',id:'unknown',messages:[]});
     assert.doesNotMatch(label(),/qwen|gpt/);
     emit({type:'archive_loaded',id:'manual',model:'manual-model',messages:[]});
-    assert.equal(label(),'manual-model');
+    assert.match(label(),/auto/i);assert.doesNotMatch(label(),/manual-model/);
     emit({type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced',automatic:true});
     assert.match(label(),/gpt-oss-120b/);
     emit({type:'cleared',conversation:'fresh'});
@@ -303,7 +303,7 @@ test('manual model changes render and restore an inline conversation divider',()
     ]});
     divider=w.document.querySelector('.model-change');
     assert(divider);assert.match(divider.textContent,/Qwen3\.6-27B/);
-    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.6-27B');
+    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.8-27B','archived dividers do not replace the current preference');
     const children=[...w.document.getElementById('messages').children];
     assert(children.indexOf(divider)>children.findIndex(node=>node.textContent.includes('Avant')));
     assert(children.indexOf(divider)<children.findIndex(node=>node.textContent.includes('Après')));
@@ -350,7 +350,7 @@ test('archive click immediately displays themed loading shell, bounded preview a
 test('restored execution survives delayed global model replies and snapshots echo its revision', async()=>{
   const {dom,w,emit,posted}=browser();
   try {
-    emit({type:'ready',model:'Qwen3.5-9B',conversation:'x'});
+    emit({type:'ready',model:'auto-balanced',conversation:'x'});
     emit({type:'snapshot_loaded',id:'x',html:'<p>Latest answer</p>',model:'Qwen3.5-9B',archive_revision:'42:1234',timeline:[
       {type:'user',model:'gpt-oss-120b',selection:'auto-balanced'},
       {type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced',automatic:true}
@@ -533,5 +533,84 @@ test(`selecting a model from history preserves navigation with ${restoration} ${
     assert(!posted.some(message=>['loadArchive','openProject','resumeArchive','prompt'].includes(message.type)));
     doc.getElementById('model-picker').click();doc.getElementById('close-models').click();
     assert.equal(catalogue.hidden,true);assert.equal(history.hidden,false);
+  } finally {dom.window.close();}
+});
+
+for (const restoration of ['archive_loaded','snapshot_loaded'])
+for (const saved of [undefined,{model:'chosen-model'}])
+test(`catalogue startup preserves the ${saved?'saved webview':'backend'} user model through ${restoration}`,()=>{
+  const {dom,w,emit,posted,states}=browser(undefined,saved);
+  try {
+    const doc=w.document;
+    doc.getElementById('model-picker').click();
+    emit({type:'ready',model:saved?'old-model':'chosen-model',conversation:'old'});
+    emit({type:restoration,automatic:true,id:'old',model:'old-model',
+      html:'<p>Old conversation</p>',messages:[],timeline:[
+        {type:'model_active',model:'old-model',selection:'old-model'}
+      ]});
+    emit({type:'models',selected:'old-model',items:[
+      {id:'chosen-model',kind:'chat',selectable:true},
+      {id:'old-model',kind:'chat',selectable:true}
+    ]});
+    assert.equal(doc.getElementById('selected-model').textContent,'chosen-model');
+    assert.match(doc.querySelector('.model-item.selected').textContent,/chosen-model/);
+    doc.getElementById('refresh-models').click();
+    emit({type:'models',selected:'auto-balanced',items:[]});
+    assert.equal(doc.getElementById('selected-model').textContent,'chosen-model');
+    assert(!posted.some(message=>message.type==='selectModel'));
+    assert.equal(states.at(-1).model,'chosen-model');
+    doc.getElementById('close-models').click();
+    const prompt=doc.getElementById('prompt');prompt.value='Continue with my model';
+    doc.getElementById('send').click();
+    assert.equal(posted.find(message=>message.type==='prompt').model,'chosen-model');
+  } finally {dom.window.close();}
+});
+
+test('the latest explicit choice survives provider restart, stale acknowledgements and webview reload',()=>{
+  const first=browser();let reloaded;
+  try {
+    const {w,emit,posted,states}=first,doc=w.document;
+    emit({type:'models',items:[
+      {id:'first-model',kind:'chat',selectable:true,provider:'ovhcloud'},
+      {id:'last-model',kind:'chat',selectable:true,provider:'deepseek'}
+    ]});
+    for(const model of ['first-model','last-model']) {
+      doc.getElementById('model-picker').click();
+      [...doc.querySelectorAll('.model-item')].find(item=>item.textContent.includes(model)).click();
+    }
+    emit({type:'provider_switched',provider:'deepseek'});
+    emit({type:'ready',model:'provider-default',conversation:'previous'});
+    emit({type:'model_selected',model:'first-model'});
+    emit({type:'model_changed',from_model:'auto-balanced',to_model:'first-model'});
+    emit({type:'model_active',model:'first-model',selection:'first-model'});
+    emit({type:'models',selected:'provider-default',items:[]});
+    assert.equal(doc.getElementById('selected-model').textContent,'last-model');
+    emit({type:'model_selected',model:'last-model'});
+    assert.equal(states.at(-1).model,'last-model');
+    assert.deepEqual(posted.filter(message=>message.type==='selectModel').map(message=>message.model),['first-model','last-model']);
+    reloaded=browser(undefined,states.at(-1));
+    reloaded.emit({type:'ready',model:'first-model',conversation:'previous'});
+    reloaded.emit({type:'models',selected:'first-model',items:[]});
+    assert.equal(reloaded.w.document.getElementById('selected-model').textContent,'last-model');
+  } finally {first.dom.window.close();reloaded?.dom.window.close();}
+});
+
+test('a model selected while an archive loads is persisted before the archive reply',()=>{
+  const saved={html:'<p>Saved conversation</p>',model:'old-model'};
+  const {dom,w,emit,states,posted}=browser(undefined,saved);
+  try {
+    const doc=w.document;
+    emit({type:'archives',items:[{id:'slow',title:'Loading conversation'}]});
+    doc.querySelector('[data-archive-id="slow"] .archive-open').click();
+    doc.getElementById('model-picker').click();
+    emit({type:'models',items:[{id:'chosen-model',kind:'chat',selectable:true}]});
+    doc.querySelector('.model-item').click();
+    assert.equal(states.at(-1).model,'chosen-model');
+    assert.equal(states.at(-1).hasModelPreference,true);
+    assert.equal(states.at(-1).html,saved.html,'the loading placeholder must not replace saved conversation content');
+    assert(!posted.some(message=>message.type==='snapshot'));
+    emit({type:'snapshot_loaded',id:'slow',html:'<p>Archive loaded</p>',model:'old-model'});
+    assert.equal(doc.getElementById('selected-model').textContent,'chosen-model');
+    assert.equal(states.at(-1).model,'chosen-model');
   } finally {dom.window.close();}
 });

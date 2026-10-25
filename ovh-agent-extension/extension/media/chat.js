@@ -257,7 +257,6 @@ let activeArchiveId = "";
 let loadingArchive = null;
 let archivePreviewKey = '';
 let archiveRevision = '';
-let archiveModelRestored = false;
 const archivePreviews = new Map();
 // Two bounded previews accelerate repeat opens. The archive timestamp is part
 // of the key, and the backend always reloads authoritative context/permissions.
@@ -265,8 +264,7 @@ function beginArchiveLoading(item, source, title, color) {
   // Resolve the clicked folder now: a previous conversation must not tint this loader.
   if (/^#[a-f0-9]{6}$/i.test(color || "")) messages.style.setProperty("--archive-loading-color", color);
   else messages.style.removeProperty("--archive-loading-color");
-  archiveRevision = ""; archiveModelRestored = false;
-  archiveLoadingModelRevision = modelSelectionRevision;
+  archiveRevision = "";
   window.clearTimeout(snapshotTimer);
   window.clearTimeout(viewStateTimer);
   if (currentRun) window.clearInterval(currentRun.timer);
@@ -350,9 +348,7 @@ let lastRoutedModel = saved?.lastRoutedModel || "";
 let modelCatalog = [];
 let modelCatalogueNote = "";
 let modelPanelActive = false;
-let modelSelectionChanged = false;
-let modelSelectionRevision = 0;
-let archiveLoadingModelRevision = 0;
+let hasModelPreference = saved?.hasModelPreference ?? Boolean(saved?.model);
 let backendReady = false;
 let creatingConversation = false;
 let selectedArchiveForDeletion = null;
@@ -368,14 +364,14 @@ const maxImages = 5;
 const maxClientImageBytes = 4 * 1024 * 1024;
 
 function persist(streaming = false) {
-  if (loadingArchive || restoringArchive) return;
+  if (restoringArchive) return;
   // Full history serialization is expensive. Coalesce streamed updates only;
   // approvals, navigation and terminal events cancel the delay and save now.
   window.clearTimeout(viewStateTimer);
-  const saveView = () => vscode.setState({ html: messages.innerHTML, fullAccess, model: selectedModel, lastRoutedModel, promptHistory });
+  const saveView = () => vscode.setState({ html: loadingArchive ? (vscode.getState()?.html || "") : messages.innerHTML, fullAccess, model: selectedModel, hasModelPreference, lastRoutedModel, promptHistory });
   if (streaming === true) viewStateTimer = window.setTimeout(saveView, 150);
   else saveView();
-  if (!backendReady || creatingConversation || !activeArchiveId) return;
+  if (loadingArchive || !backendReady || creatingConversation || !activeArchiveId) return;
   window.clearTimeout(snapshotTimer);
   const snapshotConversation = activeArchiveId;
   snapshotTimer = window.setTimeout(() => {
@@ -392,17 +388,26 @@ function persist(streaming = false) {
   }, 350);
 }
 
-// Routing belongs to a conversation, not to the webview instance. Rebuild it
-// from archived execution events so a previous conversation cannot label this one.
+// Backend replies may describe an older request. Only a user click may replace
+// an established preference; the catalogue and archived executions are descriptive.
+function syncModelSelection(value) {
+  if (!value) return false;
+  const model = normalizeModelSelection(value);
+  if (hasModelPreference && model !== selectedModel) return false;
+  selectedModel = model;
+  return true;
+}
+
+// Restore the archive's routing evidence without replacing the user's selection.
 function restoreArchiveModel(data) {
-  archiveModelRestored = true;
   const events = data.timeline || data.messages || [];
   const execution = [...events].reverse().find(event =>
     ['model_active', 'model_routed'].includes(event.type) && event.model);
   const changed = [...events].reverse().find(event => event.type === 'model_changed' && event.to_model);
   const request = [...events].reverse().find(event => event.type === 'user' && !event.steering);
-  selectedModel = normalizeModelSelection(execution?.selection || changed?.to_model || request?.selection || data.model || request?.model);
-  lastRoutedModel = selectedModel === 'auto-balanced'
+  const archivedSelection = execution?.selection || changed?.to_model || request?.selection || data.model || request?.model;
+  syncModelSelection(archivedSelection);
+  lastRoutedModel = selectedModel === 'auto-balanced' && normalizeModelSelection(archivedSelection) === 'auto-balanced'
     ? (execution?.model || data.active_model || '') : '';
   updateModelButton();
 }
@@ -512,8 +517,7 @@ function renderModels() {
     if (model.selectable) {
       row.addEventListener("click", () => {
         selectedModel = model.id;
-        modelSelectionChanged = true;
-        modelSelectionRevision += 1;
+        hasModelPreference = true;
         if (selectedModel !== "auto-balanced") lastRoutedModel = "";
         updateModelButton();
         renderModels();
@@ -951,8 +955,7 @@ function restorePendingSubmission(submission, restoredText) {
   // request. Merge the optimistic prompt after authoritative history, without
   // turning the still-pending request into an idle conversation.
   if (submission) {
-    selectedModel = submission.model;
-    archiveModelRestored = true;
+    syncModelSelection(submission.model);
     updateModelButton();
     if (submission.kind === "prompt") {
       addUserMessage(submission.text, submission.images, submission.timestamp);
@@ -2241,7 +2244,7 @@ clear.addEventListener("click", () => {
   if (creatingConversation) return;
   creatingConversation = true;
   stopping = false;
-  archiveRevision = ""; archiveModelRestored = false;
+  archiveRevision = "";
   endArchiveLoading();
   loadingArchive = null;
   window.clearTimeout(snapshotTimer);
@@ -2423,7 +2426,7 @@ window.addEventListener("message", ({ data }) => {
     }
     backendReady = true;
     followupCommand("list");
-    if (data.model && !loadingArchive && !archiveModelRestored && !pendingSubmission && !modelSelectionChanged) selectedModel = data.model;
+    if (!pendingSubmission && syncModelSelection(data.model)) hasModelPreference = true;
     updateModelButton();
     setBusy(busy, busy ? status.textContent : t("Connecté · {0}", data.model));
     persist();
@@ -2501,9 +2504,7 @@ window.addEventListener("message", ({ data }) => {
     setBusy(true, data.text);
   }
   if (data.type === "provider_switched") {
-    // The backend restarts with the new provider: its model and balance replace
-    // the previous provider's selection instead of being ignored as a manual pick.
-    if (!data.pending) modelSelectionChanged = false;
+    // A restart can accompany a model click; it must not discard that choice.
     setStatus(data.pending ? t("Fournisseur {0} · appliqué à la fin de la tâche", data.provider)
       : t("Fournisseur : {0}", data.provider));
   }
@@ -2540,14 +2541,16 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "file_change") addFileChange(data);
   if (data.type === "model_changed") {
-    selectedModel = normalizeModelSelection(data.to_model);
-    lastRoutedModel = "";
+    if (syncModelSelection(data.to_model)) {
+      hasModelPreference = true;
+      lastRoutedModel = "";
+    }
     updateModelButton();
     addModelChange(data);
   }
   if (data.type === "model_active") {
-    if (data.selection) selectedModel = data.selection;
-    lastRoutedModel = selectedModel === "auto-balanced" ? (data.model || "") : "";
+    syncModelSelection(data.selection);
+    lastRoutedModel = selectedModel === "auto-balanced" && normalizeModelSelection(data.selection) === "auto-balanced" ? (data.model || "") : "";
     updateModelButton();
     const mode = data.automatic ? t("sélection automatique") : t("choix manuel verrouillé");
     const id=addActivity({...data, tool:"model", title:t("Modèle exécuté"), detail:`${data.model} · ${mode}`},false);
@@ -2742,18 +2745,18 @@ window.addEventListener("message", ({ data }) => {
     if (panelTitle) panelTitle.textContent = t("Modèles {0}", providerLabel);
     const panelSource = document.getElementById("model-panel-source");
     if (panelSource) panelSource.textContent = t("Catalogue et tarifs des deux fournisseurs");
-    // A delayed catalogue reply describes global preference, not the opened archive.
-    if (data.selected && !loadingArchive && !archiveModelRestored && !modelSelectionChanged) selectedModel = normalizeModelSelection(data.selected);
+    // Listing or refreshing available models is never a selection action.
     updateModelButton();
     renderModels();
     if (pendingImages.length) ensureVisionModel();
     setStatus(modelAvailabilityLabel());
   }
-  if (data.type === "model_selected") {
-    selectedModel = normalizeModelSelection(data.model);
-    modelSelectionChanged = true;
+  if (data.type === "model_selected" && syncModelSelection(data.model)) {
+    hasModelPreference = true;
     if (selectedModel !== "auto-balanced") lastRoutedModel = "";
     updateModelButton();
+    renderModels();
+    persist();
   }
   if (data.type === "project_selected") {
     archiveList.querySelectorAll('.archive-project').forEach(group=>group.classList.toggle('selected',group.dataset.projectId===data.project));
@@ -2767,8 +2770,7 @@ window.addEventListener("message", ({ data }) => {
     activeArchiveId = data.id || activeArchiveId;
     followups = [];
     followupCommand("list");
-    if (modelSelectionRevision === archiveLoadingModelRevision) restoreArchiveModel(data);
-    else { archiveModelRestored = true; updateModelButton(); }
+    restoreArchiveModel(data);
     renderArchiveMessages(data.messages);
     if (data.resumable) resumableArchives.add(activeArchiveId);
     endArchiveLoading(true);
@@ -2784,15 +2786,7 @@ window.addEventListener("message", ({ data }) => {
     if (data.resumable) resumableArchives.add(activeArchiveId);
     followups = [];
     followupCommand("list");
-    const preserveModel = modelSelectionRevision !== archiveLoadingModelRevision
-      ? { selectedModel, lastRoutedModel } : null;
     applySnapshot(data);
-    if (preserveModel) {
-      selectedModel = preserveModel.selectedModel;
-      lastRoutedModel = preserveModel.lastRoutedModel;
-      archiveModelRestored = true;
-      updateModelButton();
-    }
     endArchiveLoading(true);
     restorePendingSubmission(submission, t("Conversation restaurée"));
   }

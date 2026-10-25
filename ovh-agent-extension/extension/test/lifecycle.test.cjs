@@ -178,6 +178,9 @@ test('access preference stays distinct from active rights and resume transmits c
   assert.match(access.textContent,/Prochaine demande.*Demander l’accès/,'backend acknowledgement must not overwrite preference');
   h.emit({type:'idle'});
   h.emit({type:'task_interrupted',id:'conversation'});
+  h.emit({type:'models',items:[{id:'chosen-model',kind:'chat',selectable:true}]});
+  h.document.getElementById('model-picker').click();
+  h.document.querySelector('.model-item').click();
   h.emit({type:'model_selected',model:'chosen-model'});
   h.send.click();await h.flush();
   const resume=h.commands.find(m=>m.type==='resume_archive');

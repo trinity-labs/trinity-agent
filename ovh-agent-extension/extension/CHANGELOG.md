@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.56
+
+- Preserve the latest user-selected model across catalogue refreshes, conversation restoration, provider restarts and delayed backend replies.
+- Persist model choices during archive loading and webview reloads without replacing saved conversation content.
+
 ## 1.17.55
 
 - Keep the history view open after selecting a model in the catalogue, including delayed automatic conversation restoration.
