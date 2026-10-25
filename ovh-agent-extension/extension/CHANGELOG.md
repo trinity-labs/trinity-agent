@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.53
+
+- Highlight the selected catalogue model with a subtle primary-color background that follows the theme.
+
 ## 1.17.52
 
 - Select the clicked model and immediately close the catalogue, preserving the selection across delayed replies.

@@ -165,7 +165,7 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .model-item.selected {
   border-color: var(--vscode-focusBorder);
   color: var(--ovh-primary-text);
-  background: transparent;
+  background: var(--ovh-primary-selected);
 }
 .model-item:disabled { opacity: .68; cursor: default; }
 .model-item:disabled:hover { background: transparent; }
@@ -797,10 +797,7 @@ header {
 }
 .brand strong { color: var(--ovh-primary); }
 .back-history { color: var(--ovh-primary); }
-.model-item.selected {
-  border-color: var(--ovh-primary);
-  background: transparent;
-}
+.model-item.selected { border-color: var(--ovh-primary); }
 .model-item.selected .model-title span { background: transparent; color: var(--ovh-primary-text); }
 .composer:focus-within { border-color: var(--ovh-primary); }
 .run-spinner { border-top-color: var(--ovh-primary); }
