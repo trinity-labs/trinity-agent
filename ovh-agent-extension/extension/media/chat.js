@@ -3,6 +3,9 @@ const uiLanguage = OvhI18n.setLanguage(OvhI18n.resolveLanguage(
   document.body.dataset.language, navigator.languages?.length ? navigator.languages : [navigator.language]));
 const { t } = OvhI18n;
 document.documentElement.lang = uiLanguage;
+const shortDateTime = new Intl.DateTimeFormat(uiLanguage, {dateStyle:"short",timeStyle:"short"});
+const fullDateTime = new Intl.DateTimeFormat(uiLanguage, {year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric",second:"numeric"});
+const durationNumber = new Intl.NumberFormat(uiLanguage, {maximumFractionDigits:2});
 OvhI18n.translateStatic(document.body);
 const vscode = acquireVsCodeApi();
 let emojiMode = /^[0-3]$/.test(document.body.dataset.emojiMode || "") ? Number(document.body.dataset.emojiMode) : 1;
@@ -271,7 +274,7 @@ function beginArchiveLoading(item, source, title, color) {
   currentRun = null;
   activityRows.clear(); approvalCards.clear();
   archivePreviewKey = `${source || ''}:${item.id}:${item.updated_at || ''}`;
-  messages.innerHTML = safeHtml(archivePreviews.get(archivePreviewKey) || '');
+  messages.replaceChildren(safeHtml(archivePreviews.get(archivePreviewKey) || '', true));
   if (!messages.firstChild) {
     const heading = document.createElement('h2'); heading.className = 'archive-loading-title';
     heading.textContent = title; messages.appendChild(heading);
@@ -569,8 +572,8 @@ function stamp(block, timestamp = new Date().toISOString()) {
   const date = timestamp ? new Date(timestamp) : null;
   if (!date || !Number.isFinite(date.getTime())) { time.textContent = "-"; return; }
   time.dateTime = date.toISOString();
-  time.textContent = new Intl.DateTimeFormat(uiLanguage, { dateStyle: "short", timeStyle: "short" }).format(date);
-  time.title = date.toLocaleString(uiLanguage);
+  time.textContent = shortDateTime.format(date);
+  time.title = fullDateTime.format(date);
 }
 
 function restoreTimestamps(root, timeline = []) {
@@ -920,32 +923,35 @@ function renderArchiveMessages(items) {
 
 function applySnapshot(data) {
   if (!data.html) return;
-  if (currentRun) window.clearInterval(currentRun.timer);
-  currentRun = null;
-  activityRows.clear();
-  approvalCards.clear();
-  messages.innerHTML = safeHtml(data.html);
-  upgradeSnapshotPresentation(messages);
-  restoreTimestamps(messages, data.timeline || []);
-  restoreActivityTimings(messages, data.timeline || []);
-  OvhI18n.translateSnapshot(messages);
-  messages.querySelectorAll("details.activity").forEach(activity => { activity.open = false; });
-  for (const article of messages.querySelectorAll(".message.failure")) article.remove();
-  for (const article of messages.querySelectorAll(".message.assistant")) {
-    if (article.textContent.includes(t("Aucune clé OVH n’est configurée"))) article.remove();
-  }
-  for (const article of messages.querySelectorAll(".message.working")) {
-    article.classList.remove("working");
-    article.classList.add("stopped");
-    article.querySelectorAll(".streaming").forEach(content => content.classList.remove("streaming"));
-  }
-  for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
-  for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
-  for (const change of messages.querySelectorAll(".file-change")) wireFileChangeCopy(change);
-  restoreExecutionEvidence(messages, data.timeline || []);
-  // Restored content must not change the access mode chosen in this webview.
-  restoreArchiveModel(data);
-  updateAccessButton();
+  restoringArchive = true;
+  try {
+    if (currentRun) window.clearInterval(currentRun.timer);
+    currentRun = null;
+    activityRows.clear();
+    approvalCards.clear();
+    messages.replaceChildren(safeHtml(data.html, true));
+    upgradeSnapshotPresentation(messages);
+    restoreTimestamps(messages, data.timeline || []);
+    restoreActivityTimings(messages, data.timeline || []);
+    OvhI18n.translateSnapshot(messages);
+    messages.querySelectorAll("details.activity").forEach(activity => { activity.open = false; });
+    for (const article of messages.querySelectorAll(".message.failure")) article.remove();
+    for (const article of messages.querySelectorAll(".message.assistant")) {
+      if (article.textContent.includes(t("Aucune clé OVH n’est configurée"))) article.remove();
+    }
+    for (const article of messages.querySelectorAll(".message.working")) {
+      article.classList.remove("working");
+      article.classList.add("stopped");
+      article.querySelectorAll(".streaming").forEach(content => content.classList.remove("streaming"));
+    }
+    for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
+    for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
+    for (const change of messages.querySelectorAll(".file-change")) wireFileChangeCopy(change);
+    restoreExecutionEvidence(messages, data.timeline || []);
+    // Restored content must not change the access mode chosen in this webview.
+    restoreArchiveModel(data);
+    updateAccessButton();
+  } finally { restoringArchive = false; }
   persist();
   scrollToBottom();
 }
@@ -1277,7 +1283,7 @@ function renderArchiveRows(items, container, project) {
     const meta = document.createElement("span");
     const date = item.updated_at ? new Date(item.updated_at) : null;
     const dateText = date && !Number.isNaN(date.valueOf())
-      ? date.toLocaleString(uiLanguage, { dateStyle: "short", timeStyle: "short" })
+      ? shortDateTime.format(date)
       : item.id;
     meta.textContent = [dateText, item.model].filter(Boolean).join(" · ");
     button.append(title, meta);
@@ -1425,7 +1431,7 @@ function createAssistantRun() {
     timer: undefined,
   };
   updateRunSummary(run);
-  run.timer = window.setInterval(() => {updateRunSummary(run);updateActivityTimers(run);}, 1000);
+  if (!restoringArchive) run.timer = window.setInterval(() => {updateRunSummary(run);updateActivityTimers(run);}, 1000);
   currentRun = run;
   persist();
   scrollToBottom();
@@ -1496,6 +1502,7 @@ function renderQuestionnaire(data) {
 }
 
 function updateRunSummary(run, state = "") {
+  if (restoringArchive && !state) return;
   const count = run.actions;
   const actionLabel = t("{0} action{1}", count, count === 1 ? "" : "s");
   const elapsed = formatElapsed(run.startedAt);
@@ -1516,7 +1523,7 @@ function finishRun(state = "done") {
   window.clearInterval(run.timer);
   for (const item of activityRows.values()) {
     if (item.row.closest('.message')!==run.article || !item.row.classList.contains('running')) continue;
-    setActivityDuration(item.row, Date.now()-item.startedAt, {partial:true});
+    if (!restoringArchive) setActivityDuration(item.row, Date.now()-item.startedAt, {partial:true});
     item.row.classList.replace('running','stopped');
   }
   updateRunSummary(run, state);
@@ -1749,7 +1756,7 @@ function setActivityDuration(row, milliseconds, {estimated=false,partial=false}=
   }
   const ms=Math.max(0,Math.round(milliseconds));
   row.dataset.durationMs=String(ms);row.dataset.durationEstimated=String(estimated);row.dataset.durationPartial=String(partial);
-  const duration=ms<1000?(ms?`${ms} ms`:'< 1 ms'):ms<60000?`${new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:2}).format(ms/1000)} s`:`${Math.floor(ms/60000)} min ${Math.floor(ms/1000)%60} s`;
+  const duration=ms<1000?(ms?`${ms} ms`:'< 1 ms'):ms<60000?`${durationNumber.format(ms/1000)} s`:`${Math.floor(ms/60000)} min ${Math.floor(ms/1000)%60} s`;
   elapsed.textContent=(partial?'≥ ':estimated?'≈ ':'')+duration;
   elapsed.title=t('Durée : {0}',elapsed.textContent);
 }
@@ -1766,20 +1773,42 @@ function restoreActivityTimings(root, timeline=[]) {
     ['Budget de contexte','context_compacted'],['Contexte compacté','context_compacted'],
     ['Utilisation du modèle','usage'],['Coût de la compaction','usage'],['Mémoire locale · aucun appel API','usage'],
   ].map(([label,type])=>[activityLabel(t(label)),type]));
-  const used=new Set();
+  // Build lookups once: rescanning a long timeline for every action is quadratic.
+  const used=new Set(),starts=new Map(),ends=new Map(),types=new Map(),stamps=new Map(),titles=new Map(),positions=new Map();
+  const index=(map,key,item)=>{
+    let bucket=map.get(key);if(!bucket)map.set(key,bucket={items:[],next:0});
+    bucket.items.push(item);
+  };
+  const take=bucket=>{
+    while(bucket && bucket.next<bucket.items.length) {
+      const item=bucket.items[bucket.next++];if(!used.has(item))return item;
+    }
+  };
+  for(const [position,item] of timeline.entries()) {
+    positions.set(item,position);index(types,item.type,item);
+    const time=Date.parse(item.timestamp);
+    if(Number.isFinite(time))index(stamps,`${item.type}:${time}`,item);
+    if(item.type==='tool_start') {
+      index(starts,item.id,item);
+      index(titles,activityLabel(OvhI18n.message(item.title || '')),item);
+    }
+    if(item.type==='tool_end' && !ends.has(item.id))ends.set(item.id,item);
+  }
   for(const row of root.querySelectorAll('.activity-row')) {
     const title=activityLabel(OvhI18n.message(row.querySelector('strong')?.textContent || ''));
     const type=row.dataset.eventType || labels.get(title);
     const stampValue=row.querySelector('.message-time')?.dateTime;
-    let event=row.dataset.activityId && timeline.find(item=>!used.has(item) && item.id===row.dataset.activityId && item.type==='tool_start');
-    if(!event)event=timeline.find(item=>!used.has(item) && (type?item.type===type:item.type==='tool_start' && activityLabel(OvhI18n.message(item.title || ''))===title)
-      && (!row.dataset.eventType || !stampValue || Date.parse(item.timestamp)===Date.parse(stampValue)));
+    let event=row.dataset.activityId && take(starts.get(row.dataset.activityId));
+    if(!event)event=take(type
+      ? (row.dataset.eventType && stampValue ? stamps.get(`${type}:${Date.parse(stampValue)}`) : types.get(type))
+      : titles.get(title));
     if(event)used.add(event);
     let end=event;
-    if(event?.type==='tool_start')end=timeline.find(item=>item.type==='tool_end' && item.id===event.id);
+    if(event?.type==='tool_start')end=ends.get(event.id);
     if(event?.type==='model_active') {
       end=undefined;
-      for(const item of timeline.slice(timeline.indexOf(event)+1)) {
+      for(let i=positions.get(event)+1;i<timeline.length;i++) {
+        const item=timeline[i];
         if((item.type==='user' && !item.steering) || item.type==='model_active')break;
         if((item.type==='usage' && !item.purpose && item.model===event.model) || ['response','error'].includes(item.type)) {end=item;break;}
       }
@@ -1830,7 +1859,7 @@ function addActivity(data, updateCurrentAction = true) {
   row.append(icon, body);
   run.list.appendChild(row);
   activityRows.set(data.id, { row, icon, detail, startedAt:Date.now(), timestamp:data.timestamp });
-  setActivityDuration(row,0);
+  if (!restoringArchive) setActivityDuration(row,0);
   persist();
   scrollToBottom();
   return data.id;
@@ -1851,7 +1880,7 @@ function finishActivity(data) {
   item.detail.textContent = data.detail || "";
   let duration=actionDuration(data);
   if(duration===null && !data.completedOnly)duration=!wasRunning && validDuration(Number(item.row.dataset.durationMs))?Number(item.row.dataset.durationMs):Math.max(0,Date.now()-item.startedAt);
-  setActivityDuration(item.row,duration);
+  if (!restoringArchive) setActivityDuration(item.row,duration);
   persist();
 }
 
@@ -2209,7 +2238,7 @@ function submit() {
 }
 
 if (saved?.html) {
-  messages.innerHTML = safeHtml(saved.html);
+  messages.replaceChildren(safeHtml(saved.html, true));
   upgradeSnapshotPresentation(messages);
   restoreTimestamps(messages);
   restoreActivityTimings(messages);

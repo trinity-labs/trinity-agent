@@ -325,6 +325,11 @@ class OvhAgentViewProvider {
   }
 
   async activateProject(entry, conversation) {
+    if (conversation && entry.root === this.workspace) {
+      // Navigating this project's history does not require restarting Python.
+      await this.sendControl({type:"load_archive",id:conversation});
+      return;
+    }
     await this.stopAgent(false);
     this.busy = false;
     const dataRoot=this.store.dataRoot;
@@ -347,9 +352,9 @@ class OvhAgentViewProvider {
     this.switchingProject=true;
     try {
       const projects=new ProjectStore(this.store.dataRoot);
-      const entry=projects.catalog().find(p=>p.id===id);
+      const entry=id===this.store.session ? {id,root:this.workspace} : projects.catalog().find(p=>p.id===id);
       if(!entry)throw new Error(t("Projet introuvable."));
-      if(conversation && !new ArchiveStore(entry.root,this.store.dataRoot).list().some(item=>item.id===conversation))throw new Error(t("Conversation introuvable."));
+      if(conversation && !(entry.root===this.workspace ? this.store : new ArchiveStore(entry.root,this.store.dataRoot)).has(conversation))throw new Error(t("Conversation introuvable."));
       if(conversation)await this.activateProject(entry,conversation);
       else {projects.register(entry.root);await this.selectConversationFolder(entry);this.showArchives();}
     } catch(error) {this.post({type:"archive_open_failed",text:String(error.message)});vscode.window.showErrorMessage(String(error.message));}
@@ -814,7 +819,7 @@ class OvhAgentViewProvider {
         if (message.type === "archive_loaded") {
           message.messages = (message.messages || []).map((item) => ({
             ...item,
-            html: item.type === "user" ? undefined : this.renderMarkdown(item.text || ""),
+            html: ["response", "partial_response", "error"].includes(item.type) ? this.renderMarkdown(item.text || "") : undefined,
           }));
         }
         this.post(message);

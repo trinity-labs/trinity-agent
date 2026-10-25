@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.57
+
+- Open conversations in the active project without restarting the backend or scanning its entire archive catalogue.
+- Restore action histories with indexed timing lookups, cached date formatters and one final summary per run.
+- Restore saved conversation HTML directly from a sanitized DOM fragment and save webview state once.
+- Render Markdown only for archived replies and errors, preserving the complete action history.
+
 ## 1.17.56
 
 - Preserve the latest user-selected model across catalogue refreshes, conversation restoration, provider restarts and delayed backend replies.

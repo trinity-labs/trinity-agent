@@ -73,6 +73,13 @@ class ArchiveStore {
     return value;
   }
   current() { try { assertStoragePath(path.join(this.root,'current')); return readStorageFile(path.join(this.root,'current'),'utf8',4096).trim(); } catch { return ''; } }
+  has(id) {
+    if (!/^[0-9A-Za-z_-]+$/.test(String(id || ''))) return false;
+    try {
+      const meta=this.readCached(path.join(this.root,id,'meta.json'));
+      return !!meta && typeof meta==='object' && !Array.isArray(meta);
+    } catch { return false; }
+  }
   transcript(id) {
     // Read-only view of one conversation, usable while the backend is busy.
     if (!/^[0-9A-Za-z_-]+$/.test(String(id || ''))) throw new Error(t("Identifiant de conversation invalide."));

@@ -12,7 +12,7 @@ DOMPurify.addHook("afterSanitizeAttributes", node => {
     node.setAttribute("rel", "noopener noreferrer");
   }
 });
-window.safeHtml = value => DOMPurify.sanitize(typeof value === "string" ? value : "", {
+window.safeHtml = (value, fragment = false) => DOMPurify.sanitize(typeof value === "string" ? value : "", {
   ALLOWED_TAGS: ["time","section","article","div","span","p","br","hr","h1","h2","h3","h4","h5","h6",
     "strong","b","em","i","s","del","blockquote","ul","ol","li","pre","code","a","img",
     "table","thead","tbody","tfoot","tr","th","td","details","summary","button",
@@ -25,4 +25,5 @@ window.safeHtml = value => DOMPurify.sanitize(typeof value === "string" ? value 
   ALLOW_DATA_ATTR: false,
   ALLOW_ARIA_ATTR: true,
   SANITIZE_DOM: true,
+  RETURN_DOM_FRAGMENT: fragment,
 });

@@ -550,3 +550,34 @@ test('a removed selected folder cannot silently create a conversation in the IDE
  await provider.clearConversation();
  assert.equal(posted.at(-1).type,'error');assert.equal(calls.length,0);
 });
+
+test('opening another conversation in the active project reuses the backend and avoids catalogue scans',async t=>{
+ const {root,store,provider,calls}=typedPicker(t),project=store.register(root);
+ for(const id of ['first','second']) {
+  const folder=path.join(store.dataRoot,'archive',project.id,id);fs.mkdirSync(folder,{recursive:true});
+  fs.writeFileSync(path.join(folder,'meta.json'),JSON.stringify({workspace:root,title:id}));
+ }
+ t.mock.method(ProjectStore.prototype,'catalog',()=>assert.fail('No project scan is needed for the active project'));
+ t.mock.method(provider.store,'list',()=>assert.fail('Opening one conversation must not enumerate archives'));
+ const backend={};provider.agent=backend;
+ provider.sendControl=async message=>calls.push({...message});
+ await provider.openProject(project.id,'first');await provider.openProject(project.id,'second');
+ assert.deepEqual(calls,[{type:'load_archive',id:'first'},{type:'load_archive',id:'second'}]);
+ assert.equal(provider.agent,backend);assert.equal(provider.workspace,root);
+});
+
+test('archive restoration renders Markdown only for textual replies',t=>{
+ const {provider}=typedPicker(t),rendered=[],posted=[];
+ provider.renderMarkdown=text=>{rendered.push(text);return `<p>${text}</p>`;};
+ provider.post=message=>posted.push(message);
+ provider.consumeOutput(JSON.stringify({type:'archive_loaded',messages:[
+  {type:'user',text:'Request'},{type:'tool_start',id:'a',title:'Read'},
+  {type:'tool_end',id:'a',success:true,detail:'Result'},
+  {type:'response',text:'Answer'},{type:'partial_response',text:'Draft'},
+  {type:'error',text:'Failure'}
+ ]})+'\n');
+ assert.deepEqual(rendered,['Answer','Draft','Failure']);
+ assert.equal(posted[0].messages.length,6);
+ assert.equal(posted[0].messages[2].detail,'Result');
+ assert.equal(posted[0].messages[4].html,'<p>Draft</p>');
+});

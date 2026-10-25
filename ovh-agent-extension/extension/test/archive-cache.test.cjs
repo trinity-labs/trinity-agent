@@ -121,3 +121,16 @@ test('storage reader rejects large and special files and refuses parent links',(
     assert.throws(()=>readStorageFile(path.join(root,'link')),/symbolique/);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('single archive lookup validates metadata without scanning or following symlinks',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'archive-has-'));
+ try {
+  const store=new ArchiveStore(root,root),folder=path.join(store.root,'saved');
+  fs.mkdirSync(folder,{recursive:true});fs.writeFileSync(path.join(folder,'meta.json'),'{}');
+  store.list=()=>assert.fail('No archive enumeration');
+  assert(store.has('saved'));assert(!store.has('../saved'));assert(!store.has('missing'));
+  fs.symlinkSync(folder,path.join(store.root,'linked'));assert(!store.has('linked'));
+  fs.renameSync(path.join(folder,'meta.json'),path.join(folder,'original.json'));
+  fs.symlinkSync(path.join(folder,'original.json'),path.join(folder,'meta.json'));assert(!store.has('saved'));
+ } finally {fs.rmSync(root,{recursive:true,force:true});}
+});

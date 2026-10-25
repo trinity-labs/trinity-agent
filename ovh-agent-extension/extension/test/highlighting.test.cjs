@@ -614,3 +614,13 @@ test('a model selected while an archive loads is persisted before the archive re
     assert.equal(states.at(-1).model,'chosen-model');
   } finally {dom.window.close();}
 });
+
+test('snapshot restoration saves state once and preserves all sanitized content',()=>{
+ const {dom,w,states}=browser();
+ try {
+  states.length=0;
+  w.applySnapshot({html:'<article class="message assistant"><div class="content markdown"><p>Saved answer</p><script>bad()</script></div></article>'});
+  assert.equal(states.length,1);
+  assert.match(states[0].html,/Saved answer/);assert.doesNotMatch(states[0].html,/<script>/);
+ } finally {dom.window.close();}
+});
