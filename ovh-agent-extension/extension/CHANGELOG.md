@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.52
+
+- Select the clicked model and immediately close the catalogue, preserving the selection across delayed replies.
+
 ## 1.17.51
 
 - Reduce repeated history input while retaining user corrections and archived observations.

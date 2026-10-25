@@ -516,6 +516,9 @@ function renderModels() {
         if (selectedModel !== "auto-balanced") lastRoutedModel = "";
         updateModelButton();
         renderModels();
+        modelPanelActive = false;
+        modelPanel.hidden = true;
+        modelPicker.focus();
         setStatus(t("Modèle sélectionné : {0}", selectedModel));
         vscode.postMessage({ type: "selectModel", model: selectedModel, provider: model.provider || "" });
         persist();

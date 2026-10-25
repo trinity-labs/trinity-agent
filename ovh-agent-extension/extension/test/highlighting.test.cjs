@@ -368,7 +368,7 @@ test('restored execution survives delayed global model replies and snapshots ech
   } finally {dom.window.close();}
 });
 
-test('model catalogue stays open during archive completion and keeps the chosen model active',()=>{
+test('model selection closes the catalogue and survives delayed catalogue and archive replies',()=>{
   const {dom,w,emit,posted}=browser();
   try {
     emit({type:'archives',items:[{id:'a',title:'A'}]});
@@ -376,21 +376,25 @@ test('model catalogue stays open during archive completion and keeps the chosen 
     w.document.getElementById('model-picker').click();
     emit({type:'models',selected:'auto-balanced',items:[
       {id:'auto-balanced',kind:'auto',selectable:true},
-      {id:'gpt-oss-120b',kind:'chat',selectable:true}
+      {id:'gpt-oss-120b',kind:'chat',selectable:true,provider:'ovhcloud'}
     ]});
     const panel=w.document.getElementById('model-panel');
     assert.equal(panel.hidden,false);
     [...w.document.querySelectorAll('.model-item')].find(item=>item.textContent.includes('gpt-oss-120b')).click();
-    assert.equal(panel.hidden,false);
+    assert.equal(panel.hidden,true);
+    assert.equal(w.document.activeElement,w.document.getElementById('model-picker'));
     emit({type:'models',selected:'auto-balanced',items:[
       {id:'auto-balanced',kind:'auto',selectable:true},
-      {id:'gpt-oss-120b',kind:'chat',selectable:true}
+      {id:'gpt-oss-120b',kind:'chat',selectable:true,provider:'ovhcloud'}
     ]});
     emit({type:'archive_loaded',id:'a',messages:[]});
-    assert.equal(panel.hidden,false);
+    assert.equal(panel.hidden,true);
     assert.equal(w.document.getElementById('selected-model').textContent,'gpt-oss-120b');
     assert.match(w.document.querySelector('.model-item.selected').textContent,/gpt-oss-120b/);
-    assert(posted.some(message=>message.type==='selectModel' && message.model==='gpt-oss-120b'));
+    assert(posted.some(message=>message.type==='selectModel' && message.model==='gpt-oss-120b' && message.provider==='ovhcloud'));
+    w.document.getElementById('model-picker').click();
+    assert.equal(panel.hidden,false);
+    assert.match(w.document.querySelector('.model-item.selected').textContent,/gpt-oss-120b/);
   } finally {dom.window.close();}
 });
 
