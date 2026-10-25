@@ -82,7 +82,7 @@ def worker(args):
     stamp=time.perf_counter();agent=a.get_agent('gpt-oss-120b');build=(time.perf_counter()-stamp)*1000
     stamps=[]
     for _ in range(4):
-        stamp=time.perf_counter();agent.run_sync('Inspecte le projet sans le modifier.',model_settings={'max_tokens':8192});stamps.append((time.perf_counter()-stamp)*1000)
+        stamp=time.perf_counter();agent.run_sync('Inspecte le projet sans le modifier.',deps=a.run_dependencies(),model_settings={'max_tokens':8192});stamps.append((time.perf_counter()-stamp)*1000)
     # Small files use the real configured reader, cold then warm, without mutations.
     sample=Path(args.workspace)/'sample.py';sample.write_text('value = 42\n'*1000)
     reads=[]

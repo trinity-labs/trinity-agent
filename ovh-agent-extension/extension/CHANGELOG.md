@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.59
+
+- Pass typed run dependencies in the offline startup benchmark used by release CI.
+
 ## 1.17.58
 
 - Pass task services, permissions, usage and execution receipts through typed Pydantic AI run dependencies instead of shared task globals.
