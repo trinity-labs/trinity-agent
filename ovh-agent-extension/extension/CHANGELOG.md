@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.55
+
+- Keep the history view open after selecting a model in the catalogue, including delayed automatic conversation restoration.
+
 ## 1.17.54
 
 - Move archive catalogue scans to a worker so slow project storage does not block the VS Code extension host.

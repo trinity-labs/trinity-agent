@@ -2287,7 +2287,7 @@ closeHistory?.addEventListener("click", () => {
   document.getElementById("archive-banner").hidden = true;
 });
 modelPicker.addEventListener("click", () => {
-  setArchiveVisible(false);
+  // The catalogue overlays the current view; closing it must reveal that view.
   modelPanel.hidden = !modelPanel.hidden;
   modelPanelActive = !modelPanel.hidden;
   if (!modelPanel.hidden) {
@@ -2761,7 +2761,8 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "archive_loaded") {
     const submission = (data.automatic || pendingSubmission?.kind === "resume") ? pendingSubmission : null;
     loadingArchive = null;
-    setArchiveVisible(false);
+    // Starting the backend for the catalogue restores data, not navigation.
+    if (!data.automatic || submission) setArchiveVisible(false);
     modelPanel.hidden = !modelPanelActive;
     activeArchiveId = data.id || activeArchiveId;
     followups = [];
@@ -2776,7 +2777,8 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "snapshot_loaded") {
     const submission = (data.automatic || pendingSubmission?.kind === "resume") ? pendingSubmission : null;
     loadingArchive = null;
-    setArchiveVisible(false);
+    // Starting the backend for the catalogue restores data, not navigation.
+    if (!data.automatic || submission) setArchiveVisible(false);
     modelPanel.hidden = !modelPanelActive;
     activeArchiveId = data.id || activeArchiveId;
     if (data.resumable) resumableArchives.add(activeArchiveId);

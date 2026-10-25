@@ -230,6 +230,8 @@ with tempfile.TemporaryDirectory() as folder:
 print('PASS: backend archive references expose memory tools in the first affected SDK round')
 
 # Exercise the actual deadline, cancellation and fallback without network or credits.
+# Leave time for SDK setup: 10 ms can expire before slow_summary starts under load.
+# The 10-second fake call must still be cancelled and the fallback finish within 2 s.
 from types import SimpleNamespace
 with tempfile.TemporaryDirectory() as folder:
     events, cancelled = [], []
@@ -246,7 +248,7 @@ with tempfile.TemporaryDirectory() as folder:
          patch.object(a, 'emit', side_effect=events.append), \
          patch.object(a, 'save_history'), patch.object(a, 'context_overhead', return_value=0), \
          patch.object(a, 'CONTEXT_TOKEN_CAP', 5000), \
-         patch.object(a, 'SUMMARY_TIMEOUT_SECONDS', .01), \
+         patch.object(a, 'SUMMARY_TIMEOUT_SECONDS', .25), \
          patch.object(a, 'fetch_model_catalog', return_value=[{'id': fm.model_name, 'context_length': 131072}]), \
          patch.object(a, 'model_capabilities', return_value={'reasoning': False, 'tools': True}):
         ctx = SimpleNamespace(model=fm, model_settings={'max_tokens': 2048}, run_step=1)

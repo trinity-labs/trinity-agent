@@ -501,3 +501,37 @@ test('restoring a long action history saves and scrolls once without losing acti
     assert.match(states[0].html,/Completed/);
   } finally {dom.window.close();}
 });
+
+for(const restoration of ['archive_loaded','snapshot_loaded'])
+for(const restoreFirst of [false,true])
+test(`selecting a model from history preserves navigation with ${restoration} ${restoreFirst?'before':'after'} selection`,()=>{
+  const {dom,w,emit,posted}=browser();
+  try {
+    const doc=w.document,history=doc.getElementById('archive-panel'),catalogue=doc.getElementById('model-panel');
+    assert.equal(history.hidden,false);
+    doc.getElementById('model-picker').click();
+    assert.equal(catalogue.hidden,false);
+    emit({type:'models',selected:'auto-balanced',items:[
+      {id:'auto-balanced',kind:'auto',selectable:true},
+      {id:'chosen-model',kind:'chat',selectable:true,provider:'ovhcloud'}
+    ]});
+    const restore=()=>{
+      emit({type:'ready',conversation:'previous',model:'old-model'});
+      emit({type:restoration,automatic:true,id:'previous',model:'old-model',
+        messages:[{type:'response',html:'<p>Previous conversation</p>'}],
+        html:'<article class="message assistant"><p>Previous conversation</p></article>'});
+    };
+    if(restoreFirst)restore();
+    [...doc.querySelectorAll('.model-item')].find(item=>item.textContent.includes('chosen-model')).click();
+    assert.equal(catalogue.hidden,true);assert.equal(history.hidden,false);
+    if(!restoreFirst)restore();
+    assert.equal(doc.getElementById('selected-model').textContent,'chosen-model');
+    emit({type:'model_selected',model:'chosen-model'});
+    assert.equal(catalogue.hidden,true);assert.equal(history.hidden,false);
+    assert.equal(doc.getElementById('selected-model').textContent,'chosen-model');
+    assert.equal(posted.filter(message=>message.type==='selectModel').length,1);
+    assert(!posted.some(message=>['loadArchive','openProject','resumeArchive','prompt'].includes(message.type)));
+    doc.getElementById('model-picker').click();doc.getElementById('close-models').click();
+    assert.equal(catalogue.hidden,true);assert.equal(history.hidden,false);
+  } finally {dom.window.close();}
+});
