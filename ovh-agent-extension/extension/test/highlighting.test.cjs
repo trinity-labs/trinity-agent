@@ -482,3 +482,22 @@ test('archive loading uses folder color and clears it for ungrouped conversation
     assert.equal(messages.style.getPropertyValue('--archive-loading-color'),'');
   } finally {dom.window.close();}
 });
+
+test('restoring a long action history saves and scrolls once without losing actions',()=>{
+  const {dom,w,states}=browser();
+  try {
+    states.length=0;let layouts=0;
+    const messages=w.document.getElementById('messages');
+    Object.defineProperty(messages,'scrollHeight',{get(){layouts++;return 1000;}});
+    const items=[{type:'user',text:'Keep all actions'}];
+    for(let i=0;i<100;i++)items.push(
+      {type:'tool_start',id:'restored-'+i,tool:'read_file',title:'Read '+i},
+      {type:'tool_end',id:'restored-'+i,success:true,detail:'Result '+i});
+    items.push({type:'response',text:'Completed',html:'<p>Completed</p>'});
+    w.renderArchiveMessages(items);
+    assert.equal(states.length,1);assert.equal(layouts,1);
+    assert.equal(messages.querySelectorAll('.activity-row').length,100);
+    assert.match(states[0].html,/Result 0/);assert.match(states[0].html,/Result 99/);
+    assert.match(states[0].html,/Completed/);
+  } finally {dom.window.close();}
+});

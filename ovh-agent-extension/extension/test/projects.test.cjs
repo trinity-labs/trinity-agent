@@ -58,7 +58,7 @@ test('opening a saved conversation restores its workspace and persists across pr
  const extension=path.resolve(__dirname,'..'),{createRequire}=require('module'),vm=require('vm');
  const native=createRequire(path.join(extension,'extension.js'));const values={};let picks=0;
  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:root}}]},env:{language:'fr'},window:{showQuickPick:async()=>{picks++;return {root:project.root};},showInformationMessage:()=>{},showErrorMessage:message=>assert.fail(message)}};
- const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
+ const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{...native(name),ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
  vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
  const Provider=sandbox.module.exports.Provider,state={get:key=>values[key],update:async(key,value)=>{values[key]=value;}};
  const provider=new Provider(extension,{},state);provider.windowLock={};provider.pickProject=items=>vscode.window.showQuickPick(items);provider.store.dataRoot=path.join(root,'data');
@@ -99,7 +99,7 @@ test('project menu aggregation sends selected project IDs without a prompt to th
  const {root,store}=setup(t),a=store.create(root,'one'),b=store.create(root,'two');
  const extension=path.resolve(__dirname,'..'),{createRequire}=require('module'),vm=require('vm'),native=createRequire(path.join(extension,'extension.js'));
  let calls=0;const vscode={workspace:{workspaceFolders:[{uri:{fsPath:a.root}}]},env:{language:'fr'},window:{showQuickPick:async(items,options)=>++calls===1?{action:'aggregate'}:items.filter(p=>p.id===b.id),showErrorMessage:message=>assert.fail(message)}};
- const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
+ const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{...native(name),ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
  vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
  const provider=new sandbox.module.exports.Provider(extension,{});provider.windowLock={};provider.pickProject=items=>vscode.window.showQuickPick(items);provider.store.dataRoot=store.dataRoot;
  let sent;provider.sendControl=async value=>sent=value;
@@ -115,10 +115,11 @@ function typedPicker(t) {
   type(value){this.value=value;this.selectedItems=[];this.activeItems=[];for(const fn of events.change)fn(value);},
   enter(){for(const fn of [...events.accept])fn();},cancel(){for(const fn of [...events.hide])fn();}};
  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:root}}]},env:{language:'fr'},window:{createQuickPick:()=>picker,showErrorMessage:message=>assert.fail(message)}};
- const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
+ const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{...native(name),ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
  vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
  const values={},state={get:key=>values[key],update:async(key,value)=>values[key]=value};
  const provider=new sandbox.module.exports.Provider(extension,{},state);provider.windowLock={};provider.store.dataRoot=store.dataRoot;
+ provider.archiveReader=new (native('./archive-store').ArchiveReader)({allowedRoot:root});t.after(()=>provider.archiveReader.dispose());
  const calls=[];provider.stopAgent=async()=>calls.push('stop');provider.ensureAgent=async()=>{calls.push(provider.workspace);return true;};provider.showArchives=()=>calls.push('archives');
  return {root,store,provider,picker,calls,values,events,state};
 }
@@ -222,21 +223,21 @@ test('opening an archived conversation switches project before sending its archi
  assert.deepEqual(calls.at(-1),{workspace:project.root,type:'load_archive',id:'saved'});
  assert.equal(store.active(root).root,project.root);
 });
-test('history groups only explicit choices, preserving ungrouped archives with identical IDs',t=>{
+test('history groups only explicit choices, preserving ungrouped archives with identical IDs',async t=>{
  const {root,store,provider}=typedPicker(t),project=store.create(root,'other');store.register(root);
  for(const entry of store.list()) {
   const folder=path.join(store.dataRoot,'archive',entry.id,'same-id');fs.mkdirSync(folder,{recursive:true});fs.writeFileSync(path.join(folder,'meta.json'),JSON.stringify({workspace:entry.root,title:entry.name}));
  }
  provider.store=new (require('../archive-store').ArchiveStore)(root,store.dataRoot);
- let posted;provider.post=message=>posted=message;Object.getPrototypeOf(provider).showArchives.call(provider);
+ let posted;provider.post=message=>posted=message;await Object.getPrototypeOf(provider).showArchives.call(provider);
  assert.equal(posted.projects.length,2);assert.equal(posted.items.length,2);
  assert(posted.projects.every(group=>group.items.length===0));
  store.assign(project.id,'same-id',project.id);
- Object.getPrototypeOf(provider).showArchives.call(provider);
+ await Object.getPrototypeOf(provider).showArchives.call(provider);
  assert.equal(posted.items.length,1);assert.equal(posted.items[0].archive_project,provider.store.session);
  assert.equal(posted.projects.find(group=>group.id===project.id).items.length,1);
  store.assign(project.id,'same-id',null);
- Object.getPrototypeOf(provider).showArchives.call(provider);
+ await Object.getPrototypeOf(provider).showArchives.call(provider);
  assert.equal(posted.items.length,2);assert(posted.projects.every(group=>group.items.length===0));
 });
 test('project history actions validate their IDs and reject traversal',()=>{
@@ -259,12 +260,12 @@ test('project history actions validate their IDs and reject traversal',()=>{
  for(const change of [{target:order.source},{target:null},{position:'inside'},{source:'../outside'}])assert(!validMessage({...order,...change}));
 });
 
-test('history keeps chosen folder order when the active project changes',t=>{
+test('history keeps chosen folder order when the active project changes',async t=>{
  const {root,store,provider}=typedPicker(t),a=store.create(root,'a'),b=store.create(root,'b'),c=store.create(root,'c');
  store.reorder(c.id,a.id,'before');store.activate(root,b.root);
  provider.workspace=b.root;provider.store=new (require('../archive-store').ArchiveStore)(b.root,store.dataRoot);
  let posted;provider.post=message=>posted=message;
- Object.getPrototypeOf(provider).showArchives.call(provider);
+ await Object.getPrototypeOf(provider).showArchives.call(provider);
  assert.deepEqual(Array.from(posted.projects,p=>p.id),[c.id,a.id,b.id]);
  assert.equal(posted.projects[2].active,true);
 });
@@ -298,14 +299,14 @@ test('drop assignment moves only the chosen conversation, preserving archive fil
  assert.equal(store.assignments()[a.id+':same'],null);
 });
 
-test('folder reorder bridge saves before refreshing history and reports failures',t=>{
+test('folder reorder bridge saves before refreshing history and reports failures',async t=>{
  const {root,store,provider}=typedPicker(t),a=store.create(root,'a'),b=store.create(root,'b');
  const posted=[];provider.post=message=>posted.push(message);
  provider.showArchives=()=>Object.getPrototypeOf(provider).showArchives.call(provider);
- provider.organizeArchives({type:'moveProject',source:b.id,target:a.id,position:'before'});
+ provider.organizeArchives({type:'moveProject',source:b.id,target:a.id,position:'before'});await provider.archivesPromise;
  assert.equal(posted[0].type,'archives_organized');
  assert.deepEqual(Array.from(posted[1].projects,p=>p.id),[b.id,a.id]);
- provider.organizeArchives({type:'moveProject',source:b.id,target:'f'.repeat(20),position:'before'});
+ provider.organizeArchives({type:'moveProject',source:b.id,target:'f'.repeat(20),position:'before'});await provider.archivesPromise;
  assert.equal(posted.at(-2).type,'archive_organization_failed');
  assert.deepEqual(Array.from(posted.at(-1).projects,p=>p.id),[b.id,a.id]);
 });
@@ -351,18 +352,18 @@ test('a color-only update preserves the latest saved title and survives a new st
  assert.equal(fs.readFileSync(target,'utf8'),before);
 });
 
-test('project updates acknowledge disk persistence and report write failures without a false success',t=>{
+test('project updates acknowledge disk persistence and report write failures without a false success',async t=>{
  const {root,store,provider}=typedPicker(t),project=store.create(root,'folder'),posted=[];
  provider.post=message=>posted.push(message);
  provider.showArchives=()=>Object.getPrototypeOf(provider).showArchives.call(provider);
- provider.updateProject({project:project.id,color:'#AB12CD',requestId:'color-1'});
+ provider.updateProject({project:project.id,color:'#AB12CD',requestId:'color-1'});await provider.archivesPromise;
  assert.equal(posted[0].type,'project_updated');assert.equal(posted[0].requestId,'color-1');
  const reloaded=new ProjectStore(store.dataRoot,root).list()[0];
  assert.equal(reloaded.color,'#ab12cd');assert.equal(posted[0].project.color,reloaded.color);
  assert.equal(posted[1].type,'archives');assert.equal(posted[1].projects[0].color,reloaded.color);
  posted.length=0;
  const target=store.file+'.saved';fs.renameSync(store.file,target);fs.mkdirSync(store.file);
- provider.updateProject({project:project.id,color:'#000000',requestId:'color-2'});
+ provider.updateProject({project:project.id,color:'#000000',requestId:'color-2'});await provider.archivesPromise;
  assert.equal(posted[0].type,'project_update_failed');assert.equal(posted[0].requestId,'color-2');
  assert(!posted.some(message=>message.type==='project_updated'));
  assert.equal(JSON.parse(fs.readFileSync(target))[0].color,'#ab12cd');
@@ -385,7 +386,7 @@ test('classification preserves archive bytes and supports moving and removing a 
  assert.throws(()=>store.assign(source.id,'../saved',a.id));
 });
 
-test('legacy attachments retain their group while ordinary archives stay ungrouped; opt-out persists',t=>{
+test('legacy attachments retain their group while ordinary archives stay ungrouped; opt-out persists',async t=>{
  const {root,store,provider}=typedPicker(t),project=store.create(root,'target');
  for(const [id,previous_workspace] of [['attached',root],['ordinary',undefined]]) {
   const folder=path.join(store.dataRoot,'archive',project.id,id);fs.mkdirSync(folder,{recursive:true});
@@ -393,13 +394,13 @@ test('legacy attachments retain their group while ordinary archives stay ungroup
  }
  let posted;provider.post=message=>posted=message;
  const refresh=()=>Object.getPrototypeOf(provider).showArchives.call(provider);
- refresh();assert.deepEqual(Array.from(posted.projects[0].items,item=>item.id),['attached']);
+ await refresh();assert.deepEqual(Array.from(posted.projects[0].items,item=>item.id),['attached']);
  assert.deepEqual(Array.from(posted.items,item=>item.id),['ordinary']);
- store.assign(project.id,'attached',null);refresh();
+ store.assign(project.id,'attached',null);await refresh();
  assert.equal(posted.projects[0].items.length,0);assert.equal(posted.items.length,2);
  const reloaded=new ProjectStore(store.dataRoot,root);
  assert.equal(reloaded.assignedProject(project,{id:'attached',previous_workspace:root}),null);
- store.assign(project.id,'attached',project.id);refresh();assert.equal(posted.projects[0].items.length,1);
+ store.assign(project.id,'attached',project.id);await refresh();assert.equal(posted.projects[0].items.length,1);
 });
 
 test('new project colors inherit branding until explicitly customized',t=>{
@@ -415,7 +416,7 @@ test('opening an unregistered archive does not create a project or classify its 
  fs.writeFileSync(path.join(archive,'meta.json'),JSON.stringify({workspace:folder}));
  provider.sendControl=async()=>{};await provider.openProject(source.id,'saved');
  assert.equal(provider.workspace,folder);assert.equal(store.list().length,0);assert.deepEqual(store.assignments(),{});
- let posted;provider.post=message=>posted=message;Object.getPrototypeOf(provider).showArchives.call(provider);
+ let posted;provider.post=message=>posted=message;await Object.getPrototypeOf(provider).showArchives.call(provider);
  assert.equal(posted.projects.length,0);assert.equal(posted.items.length,1);
 });
 

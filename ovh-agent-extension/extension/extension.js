@@ -3,7 +3,7 @@ const vscode = require("vscode");
 const i18n = require("./media/i18n");
 const { t } = i18n;
 i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [vscode.env.language]));
-const { ArchiveStore } = require("./archive-store");
+const { ArchiveStore, ArchiveReader } = require("./archive-store");
 const { ProjectStore, assertStoragePath, readStorageFile } = require("./project-store");
 const { acquireWindowLock, releaseWindowLock } = require("./window-lock");
 const { spawn, execFile } = require("child_process");
@@ -81,10 +81,10 @@ class OvhAgentViewProvider {
       if(remembered && remembered!==initial) {
         const archive=new ArchiveStore(remembered,this.store.dataRoot);
         // Only a saved conversation can restore a project context, never a folder selection alone.
-        if(archive.list().some(item=>item.current)) {this.workspace=remembered;this.store=archive;}
+        const current = archive.current();
+        if (/^[0-9A-Za-z_-]+$/.test(current) && archive.readCached(path.join(archive.root,current,"meta.json"))) {this.workspace=remembered;this.store=archive;}
       }
     } catch {}
-    this.projectArchives = new Map();
     this.newConversationProject = state?.get("ovhAgent.newConversationProject");
   }
 
@@ -560,34 +560,28 @@ class OvhAgentViewProvider {
 
   showArchives() {
     clearTimeout(this.archiveRefreshTimer);this.archiveRefreshTimer=undefined;
-    try {
-      const registry=new ProjectStore(this.store.dataRoot);
-      const entries=registry.catalog();
-      if(!entries.some(p=>p.id===this.store.session))entries.unshift({id:this.store.session,name:path.basename(this.workspace),root:this.workspace});
-      const assignments=registry.assignments(),items=[];
-      const projects=registry.list().map(entry=>({...entry,selected:entry.id===this.newConversationProject,active:entry.id===this.store.session,documents:registry.documents(entry),items:[]}));
-      const groups=new Map(projects.map(entry=>[entry.id,entry]));
-      for(const entry of entries) {
-        const active=entry.id===this.store.session;
-        let archive=this.store;
-        if(!active) {
-          archive=this.projectArchives.get(entry.id);
-          if(!archive) {
-            archive=new ArchiveStore(entry.root,this.store.dataRoot);
-            if(this.projectArchives.size>=8)this.projectArchives.delete(this.projectArchives.keys().next().value);
-            this.projectArchives.set(entry.id,archive);
+    if (this.disposed) return Promise.resolve();
+    this.archiveRefreshRequested = true;
+    if (this.archivesPromise) return this.archivesPromise;
+    this.archivesPromise = (async () => {
+      while (this.archiveRefreshRequested && !this.disposed) {
+        this.archiveRefreshRequested = false;
+        const request = {workspace:this.workspace, dataRoot:this.store.dataRoot, selected:this.newConversationProject};
+        try {
+          this.archiveReader ||= new ArchiveReader();
+          const result = await this.archiveReader.read(request);
+          if (this.disposed) return;
+          if (request.workspace !== this.workspace || request.dataRoot !== this.store.dataRoot || request.selected !== this.newConversationProject) {
+            this.archiveRefreshRequested = true;
+            continue;
           }
-        }
-        for(const item of archive.list()) {
-          const group=groups.get(registry.assignedProject(entry,item,assignments));
-          const row={...item,archive_project:entry.id,archive_active:active};
-          (group?group.items:items).push(row);
+          this.post(result);
+        } catch(error) {
+          if (!this.disposed) this.post({type:"archive_delete_failed",text:t("Historique indisponible : {0}",error.message)});
         }
       }
-      const newest=(a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||''));
-      items.sort(newest);for(const project of projects)project.items.sort(newest);
-      this.post({type:"archives",items,projects,archive_root:this.store.root});
-    } catch(error) {this.post({type:"archive_delete_failed",text:t("Historique indisponible : {0}",error.message)});}
+    })().finally(() => {this.archivesPromise=undefined;});
+    return this.archivesPromise;
   }
 
   async deleteArchive(id, source = this.store.session) {
@@ -983,6 +977,8 @@ class OvhAgentViewProvider {
   }
 
   dispose() {
+    this.disposed = true;
+    this.archiveReader?.dispose();
     this.view = undefined;
     this.renderMarkdown.clear();
     clearTimeout(this.archiveRefreshTimer);this.archiveRefreshTimer=undefined;

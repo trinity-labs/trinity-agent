@@ -180,3 +180,43 @@ test('Explorer refresh is reserved for possible mutations including failed comma
   emit({type:'tool_start',tool:'read_file'});emit({type:'response',text:'read'});assert.equal(executed.length,1);
   emit({type:'tool_start',tool:'run_command'});emit({type:'idle'});assert.equal(executed.length,2);
 });
+
+test('archive reads keep the host event loop available and recover after a storage error',async t=>{
+  const os=require('node:os');
+  const {ArchiveReader,ArchiveStore}=require('../archive-store');
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'trinity-archive-worker-'));
+  const dataRoot=path.join(folder,'data'),store=new ArchiveStore(folder,dataRoot);
+  const conversation=path.join(store.root,'saved');fs.mkdirSync(conversation,{recursive:true});
+  fs.writeFileSync(path.join(conversation,'meta.json'),JSON.stringify({workspace:folder,title:'Saved'}));
+  fs.writeFileSync(path.join(conversation,'events.jsonl'),JSON.stringify({type:'user',text:'Keep this task'})+'\n');
+  const reader=new ArchiveReader({allowedRoot:folder});
+  t.after(async()=>{await reader.dispose();fs.rmSync(folder,{recursive:true,force:true});});
+  let responsive=false;
+  const pending=reader.read({workspace:folder,dataRoot}).then(result=>{assert(responsive,'host heartbeat must run before the scan completes');return result;});
+  await new Promise(resolve=>setImmediate(()=>{responsive=true;resolve();}));
+  const result=await pending;
+  assert(responsive);assert.equal(result.items[0].id,'saved');assert(result.items[0].resumable);
+  fs.writeFileSync(path.join(dataRoot,'projects.json'),'invalid');
+  await assert.rejects(reader.read({workspace:folder,dataRoot}));
+  fs.writeFileSync(path.join(dataRoot,'projects.json'),'[]');
+  assert.equal((await reader.read({workspace:folder,dataRoot})).items.length,1);
+  const abandoned=assert.rejects(reader.read({workspace:folder,dataRoot}),/closed/);
+  await reader.dispose();await abandoned;
+  await assert.rejects(reader.read({workspace:folder,dataRoot}),/closed/);
+});
+
+test('archive refresh coalesces requests and discards results for a previous workspace',async()=>{
+  const {provider,posted}=setup();const reads=[];
+  provider.archiveReader={read:request=>new Promise(resolve=>reads.push({request,resolve}))};
+  const pending=provider.showArchives();
+  assert.equal(reads.length,1);
+  provider.workspace+='-new';
+  assert.equal(provider.showArchives(),pending);
+  assert.equal(provider.showArchives(),pending);
+  reads[0].resolve({type:'archives',items:[{id:'stale'}]});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(reads.length,2);assert.equal(posted.length,0);
+  reads[1].resolve({type:'archives',items:[{id:'current'}]});
+  await pending;
+  assert.equal(posted.length,1);assert.equal(posted[0].items[0].id,'current');
+});

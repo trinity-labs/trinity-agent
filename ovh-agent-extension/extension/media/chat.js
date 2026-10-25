@@ -358,6 +358,7 @@ let creatingConversation = false;
 let selectedArchiveForDeletion = null;
 let snapshotTimer;
 let viewStateTimer;
+let restoringArchive = false;
 const noticeTimers = new WeakMap();
 let pendingImages = [];
 const activityRows = new Map();
@@ -367,7 +368,7 @@ const maxImages = 5;
 const maxClientImageBytes = 4 * 1024 * 1024;
 
 function persist(streaming = false) {
-  if (loadingArchive) return;
+  if (loadingArchive || restoringArchive) return;
   // Full history serialization is expensive. Coalesce streamed updates only;
   // approvals, navigation and terminal events cancel the delay and save now.
   window.clearTimeout(viewStateTimer);
@@ -546,6 +547,7 @@ function updateAccessButton() {
 }
 
 function scrollToBottom() {
+  if (restoringArchive) return;
   messages.scrollTop = messages.scrollHeight;
 }
 
@@ -854,57 +856,60 @@ function addArchivedFileChange(data) {
 }
 
 function renderArchiveMessages(items) {
-  if (currentRun) window.clearInterval(currentRun.timer);
-  currentRun = null;
-  activityRows.clear();
-  approvalCards.clear();
-  messages.innerHTML = "";
-  for (const item of items || []) {
-    if (item.type === "user" && !item.steering && currentRun) finishRun("stopped");
-    if (item.type === "model_changed") addModelChange(item);
-    if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
-    if (item.type === "tool_start") addActivity(item);
-    if (item.type === "tool_end") finishActivity(item);
-    if (item.type === "partial_response") {
-      setMarkdown(item.html || "");
-      finishRun("stopped");
+  restoringArchive = true;
+  try {
+    if (currentRun) window.clearInterval(currentRun.timer);
+    currentRun = null;
+    activityRows.clear();
+    approvalCards.clear();
+    messages.innerHTML = "";
+    for (const item of items || []) {
+      if (item.type === "user" && !item.steering && currentRun) finishRun("stopped");
+      if (item.type === "model_changed") addModelChange(item);
+      if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
+      if (item.type === "tool_start") addActivity(item);
+      if (item.type === "tool_end") finishActivity(item);
+      if (item.type === "partial_response") {
+        setMarkdown(item.html || "");
+        finishRun("stopped");
+      }
+      if (["response", "error"].includes(item.type) && currentRun) finishRun(item.type === "response" ? "done" : "error");
+      if (item.type === "user" && !item.resume) addUserMessage(item.text || "", item.images || [], item.timestamp || null);
+      if (item.type === "user" && item.resume) {
+        const divider = document.createElement("p");
+        divider.className = "resume-divider";
+        divider.textContent = t("Reprise de la tâche après interruption");
+        messages.appendChild(divider);
+      }
+      if (item.type === "file_change") addArchivedFileChange(item);
+      if (item.type === "response") {
+        addArchivedAssistant(item.html || "", false, item.timestamp || null);
+      }
+      if (item.type === "error") addArchivedAssistant(item.html || "", true, item.timestamp || null);
+      if (item.type === "verification_status" && item.status !== "running") {
+        const article = document.createElement("article");
+        article.className = "message assistant archived-verification";
+        showVerification(item, article);
+        messages.appendChild(article);
+      }
+      if (item.type === "verification_check") {
+        const article = document.createElement("article");
+        article.className = "message assistant archived-verification";
+        const detail = document.createElement("pre");
+        detail.textContent = verificationCheckText(item);
+        article.appendChild(detail);
+        messages.appendChild(article);
+      }
     }
-    if (["response", "error"].includes(item.type) && currentRun) finishRun(item.type === "response" ? "done" : "error");
-    if (item.type === "user" && !item.resume) addUserMessage(item.text || "", item.images || [], item.timestamp || null);
-    if (item.type === "user" && item.resume) {
-      const divider = document.createElement("p");
-      divider.className = "resume-divider";
-      divider.textContent = t("Reprise de la tâche après interruption");
-      messages.appendChild(divider);
+    if (currentRun) finishRun("stopped");
+    messages.querySelectorAll(".activity-row").forEach(row => { delete row.dataset.durationMs; });
+    restoreActivityTimings(messages, items || []);
+    // Replaying an archive is not a new execution: do not display its render time.
+    messages.querySelectorAll(".activity-elapsed").forEach(el => { el.textContent = ""; el.removeAttribute("title"); });
+    if (!messages.children.length) {
+      messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
     }
-    if (item.type === "file_change") addArchivedFileChange(item);
-    if (item.type === "response") {
-      addArchivedAssistant(item.html || "", false, item.timestamp || null);
-    }
-    if (item.type === "error") addArchivedAssistant(item.html || "", true, item.timestamp || null);
-    if (item.type === "verification_status" && item.status !== "running") {
-      const article = document.createElement("article");
-      article.className = "message assistant archived-verification";
-      showVerification(item, article);
-      messages.appendChild(article);
-    }
-    if (item.type === "verification_check") {
-      const article = document.createElement("article");
-      article.className = "message assistant archived-verification";
-      const detail = document.createElement("pre");
-      detail.textContent = verificationCheckText(item);
-      article.appendChild(detail);
-      messages.appendChild(article);
-    }
-  }
-  if (currentRun) finishRun("stopped");
-  messages.querySelectorAll(".activity-row").forEach(row => { delete row.dataset.durationMs; });
-  restoreActivityTimings(messages, items || []);
-  // Replaying an archive is not a new execution: do not display its render time.
-  messages.querySelectorAll(".activity-elapsed").forEach(el => { el.textContent = ""; el.removeAttribute("title"); });
-  if (!messages.children.length) {
-    messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
-  }
+  } finally { restoringArchive = false; }
   persist();
   scrollToBottom();
 }

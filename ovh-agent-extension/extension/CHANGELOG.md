@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.54
+
+- Move archive catalogue scans to a worker so slow project storage does not block the VS Code extension host.
+- Coalesce archive refreshes and discard results from a previous workspace.
+- Restore action histories with one state save and one scroll, avoiding repeated full-history serialization.
+- Restore the active project without scanning all its conversations during extension activation.
+
 ## 1.17.53
 
 - Highlight the selected catalogue model with a subtle primary-color background that follows the theme.

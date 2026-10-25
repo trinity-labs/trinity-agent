@@ -174,3 +174,87 @@ class ArchiveStore {
   }
 }
 module.exports={ArchiveStore,archiveCacheBudget};
+
+// Directory scans and legacy transcript parsing must never run on VS Code's
+// shared extension-host thread. Reuse the same stores and path validation here.
+const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
+class ArchiveReader {
+  constructor({allowedRoot='/home/coder'}={}) {
+    this.allowedRoot=allowedRoot;this.pending=new Map();this.sequence=0;
+  }
+  read(request) {
+    if(this.disposed)return Promise.reject(new Error('Archive reader closed.'));
+    if(!this.worker) {
+      const worker=this.worker=new Worker(__filename,{workerData:{archiveCatalog:true,allowedRoot:this.allowedRoot}});
+      const fail=error=>{
+        if(this.worker!==worker)return;
+        this.worker=undefined;
+        for(const entry of this.pending.values())entry.reject(error);
+        this.pending.clear();
+      };
+      worker.on('message',message=>{
+        const entry=this.pending.get(message.id);if(!entry)return;
+        this.pending.delete(message.id);
+        if(!this.pending.size)worker.unref();
+        if(message.error)entry.reject(new Error(message.error));else entry.resolve(message.result);
+      });
+      worker.on('error',fail);
+      worker.on('exit',()=>fail(new Error('Archive reader stopped.')));
+    }
+    const id=++this.sequence;this.worker.ref();
+    return new Promise((resolve,reject)=>{
+      this.pending.set(id,{resolve,reject});
+      try {this.worker.postMessage({id,request});}
+      catch(error) {this.pending.delete(id);reject(error);if(!this.pending.size)this.worker.unref();}
+    });
+  }
+  dispose() {
+    this.disposed=true;
+    for(const entry of this.pending.values())entry.reject(new Error('Archive reader closed.'));
+    this.pending.clear();
+    const worker=this.worker;this.worker=undefined;
+    return worker?.terminate();
+  }
+}
+module.exports.ArchiveReader=ArchiveReader;
+
+if(!isMainThread && workerData?.archiveCatalog) {
+  const {ProjectStore}=require('./project-store');
+  const projectArchives=new Map();
+  let store;
+  parentPort.on('message',({id,request})=>{
+    try {
+      const {workspace,dataRoot,selected}=request;
+      const allowedRoot=workerData.allowedRoot;
+      if(!store || store.dataRoot!==dataRoot || store.workspace!==workspace) {
+        projectArchives.clear();store=new ArchiveStore(workspace,dataRoot);store.workspace=workspace;
+      }
+      const registry=new ProjectStore(store.dataRoot, allowedRoot);
+      const entries=registry.catalog();
+      if(!entries.some(p=>p.id===store.session))entries.unshift({id:store.session,name:path.basename(workspace),root:workspace});
+      const assignments=registry.assignments(),items=[];
+      const projects=registry.list().map(entry=>({...entry,selected:entry.id===selected,active:entry.id===store.session,documents:registry.documents(entry),items:[]}));
+      const groups=new Map(projects.map(entry=>[entry.id,entry]));
+      for(const entry of entries) {
+        const active=entry.id===store.session;
+        let archive=store;
+        if(!active) {
+          archive=projectArchives.get(entry.id);
+          if(!archive) {
+            archive=new ArchiveStore(entry.root,store.dataRoot);
+            if(projectArchives.size>=8)projectArchives.delete(projectArchives.keys().next().value);
+            projectArchives.set(entry.id,archive);
+          }
+        }
+        for(const item of archive.list()) {
+          const group=groups.get(registry.assignedProject(entry,item,assignments));
+          const row={...item,archive_project:entry.id,archive_active:active};
+          (group?group.items:items).push(row);
+        }
+      }
+      const newest=(a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+      items.sort(newest);for(const project of projects)project.items.sort(newest);
+      parentPort.postMessage({id,result:{type:'archives',items,projects,archive_root:store.root}});
+    } catch(error) {parentPort.postMessage({id,error:String(error.message)});}
+  });
+}
