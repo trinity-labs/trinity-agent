@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json')));
 const publisher = process.env.MARKETPLACE_PUBLISHER || 'stopyz';
-const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.Preview';
+const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.HistoryDemo';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
 try {
@@ -30,7 +30,7 @@ try {
     const readme = fs.readFileSync(readmePath, 'utf8');
     const previewLink = '](media/trinity_agent_screenshot.png)';
     if (!readme.includes(previewLink)) throw Error('README must reference the bundled preview screenshot');
-    const previewUrl = 'https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/ovh-agent-extension/extension/media/trinity_agent_screenshot.png';
+    const previewUrl = `https://${publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/${publisher}/extension/${manifest.name}/${manifest.version}/assetbyname/${previewAssetType}`;
     fs.writeFileSync(readmePath, readme.replace(previewLink, `](${previewUrl})`));
   }
   // Generate from readable sources in the isolated stage: never trust stale build output.
