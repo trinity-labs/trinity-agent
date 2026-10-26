@@ -993,7 +993,7 @@ function updateProject(project, patch) {
 function flushDeferredArchives() {
   if(deferredArchives) {const latest=deferredArchives;deferredArchives=null;renderArchives(latest.items,latest.projects);}
 }
-function closeProjectEditor(group) {
+function closeProjectEditor(group, restoreFocus = true) {
   group.querySelector('.project-editor').hidden=true;
   group.querySelector('input[type=text]').value=group.dataset.projectName;
   group.querySelector('.project-path-input').value=group.dataset.projectRoot;
@@ -1003,8 +1003,22 @@ function closeProjectEditor(group) {
     group.style.setProperty('--project-color',group.dataset.projectColor);
   }
   flushDeferredArchives();
-  [...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===group.dataset.projectId)?.querySelector('.project-edit').focus();
+  if(restoreFocus)[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===group.dataset.projectId)?.querySelector('.project-edit').focus();
 }
+document.addEventListener('click',event=>{
+  const target=event.target;
+  if(!(target instanceof Node))return;
+  const editors=[...archiveList.querySelectorAll('.project-editor:not([hidden])')].filter(editor=>
+    !editor.contains(target) && !editor.closest('.archive-project').querySelector('.project-edit').contains(target));
+  if(!editors.length)return;
+  // Capture also sees stopped clicks. Defer closure until the clicked control
+  // has run: flushing deferred archives may replace nodes in the history.
+  setTimeout(()=>{
+    for(const editor of editors) {
+      if(editor.isConnected && !editor.hidden)closeProjectEditor(editor.closest('.archive-project'),false);
+    }
+  },0);
+},true);
 function projectUpdateResult(data) {
   const success=data.type==='project_updated',id=success?(data.previousId || data.project.id):data.project;
   const group=[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===id);

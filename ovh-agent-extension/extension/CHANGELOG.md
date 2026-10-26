@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.65
+
+- Close a folder editor when clicking outside its form, while preserving the clicked action, keyboard focus, other folder editors and pending history refreshes.
+
 ## 1.17.64
 
 - Complete hover, keyboard focus and disabled feedback for the retry button on the window-lock screen, and keep the delete-dialog icon readable in both themes.
