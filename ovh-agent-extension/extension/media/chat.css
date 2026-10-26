@@ -886,7 +886,7 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 }
 
 #delete-dialog h3 { display: flex; align-items: center; gap: 10px; }
-.delete-title-icon { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: #000; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .33; }
+.delete-title-icon { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .65; }
 
 /* Derived brand text stays visible on dark backgrounds. */
 body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 55%, #fff); }
@@ -982,7 +982,7 @@ svg.agent-icon { display: inline-block; fill: currentColor; stroke: none; flex-s
 svg.agent-icon path { fill: inherit; stroke: none; }
 .icon svg.agent-icon, .round svg.agent-icon, .access svg.agent-icon,
 #model-picker svg.agent-icon, .run-indicator svg.agent-icon { fill: currentColor; stroke: none; }
-.delete-title-icon.agent-icon { color: #000; fill: currentColor; stroke: none; }
+.delete-title-icon.agent-icon { color: inherit; fill: currentColor; stroke: none; }
 .activity-icon .agent-icon, .file-change-icon .agent-icon { width: 14px; height: 14px; }
 .attachment-preview button .agent-icon { width: 10px; height: 10px; }
 .summary-chevron { width: 10px; height: 10px; margin-left: auto; transition: transform .15s ease; }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.64
+
+- Complete hover, keyboard focus and disabled feedback for the retry button on the window-lock screen, and keep the delete-dialog icon readable in both themes.
+
 ## 1.17.63
 
 - Add a red Delete button to the project editor, with an accessible confirmation that explicitly includes all conversations inside the folder. Keep project files, manual notes and conversations assigned elsewhere. Perform deletion outside the extension host and report partial failures accurately.
