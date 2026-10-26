@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 from ovh_memory import atomic_write
 from ovh_task_engine import TaskJournal, FailureTracker, classify_failure
 from ovh_acceptance import AcceptanceSuite
-from ovh_request import read_only_policy
+from ovh_request import read_only_policy, commentary_silenced
 
 
 @dataclass
@@ -80,6 +80,17 @@ class ExecutionCapability(AbstractCapability[RunDependencies]):
         engine = ctx.deps.engine
         if engine is None:
             return await handler(args)
+        if engine.commentary_pending and tool_def.name != 'ask_user_questions':
+            if tool_def.name != 'update_plan' or not str(args.get('explanation') or '').strip():
+                notice = ("Point d'avancement requis : cet outil reste disponible, mais n'a pas été exécuté. "
+                          "Appelle maintenant update_plan avec une explanation non vide : actions prévues ou faits "
+                          "observés et prochain contrôle, dans la langue de l'utilisateur. Reprends ensuite cet outil.")
+                with engine.lock:
+                    if engine.commentary_blocked_step != ctx.run_step:
+                        engine.commentary_blocked_step = ctx.run_step
+                        engine.note_observation('commentary_required', {}, notice)
+                        engine.check_progress()
+                raise ToolFailed(notice)
         # Native validation has already produced the arguments; native execution
         # retains sync/async dispatch, sequential barriers and cancellation.
         with engine.execution(tool_def.name, args) as execution:
@@ -162,10 +173,17 @@ class WorkflowController:
         self.lock = threading.RLock()
         self.failures = FailureTracker()
         self.progress = 0
+        self.commentary_enabled = False
+        self.commentary_pending = False
+        self.commentary_at = None
+        self.commentary_actions = 0
+        self.commentary_silent = False
+        self.commentary_blocked_step = None
         self.recent_observations = []
         self.focus_file = self.directory / 'focus.json'
         try:
             previous = json.loads(self.focus_file.read_text())
+            self.commentary_silent = previous.get('commentary_silent') is True
             self.goal_revision = int(previous['revision'])
             self.corrections = previous.get('corrections', [])[-4:]
             previous_read_only = previous.get('read_only')
@@ -196,6 +214,11 @@ class WorkflowController:
     def focus(self, prompt):
         with self.lock:
             self.read_only = read_only_policy(prompt, self.read_only)
+            self.commentary_silent = commentary_silenced(prompt, self.commentary_silent)
+            self.commentary_at = None
+            self.commentary_actions = 0
+            self.commentary_pending = False
+            self.commentary_blocked_step = None
             self.goal_revision += 1
             self.recent_observations.clear()
             self.goal = str(prompt)[-4000:]
@@ -208,7 +231,14 @@ class WorkflowController:
                 'revision': self.goal_revision, 'goal': self.goal,
                 'corrections': self.corrections, 'previous_conclusions_valid': False,
                 'read_only': self.read_only,
+                'commentary_silent': self.commentary_silent,
                 'updated_at': time.time()}, ensure_ascii=False))
+
+    def commentary_due(self):
+        with self.lock:
+            return (self.commentary_enabled and not self.commentary_silent and
+                    (self.commentary_at is None or self.commentary_actions >= 3 or
+                     time.monotonic() - self.commentary_at >= 45))
 
     def note_observation(self, name, arguments, result):
         # Compare observed results, not model claims of progress. Keep only hashes
@@ -229,6 +259,11 @@ class WorkflowController:
                     'les résultats et coûts sont conservés pour une reprise explicite.')
 
     def observe_event(self, event):
+        if event.get('type') == 'plan_updated' and str(event.get('explanation') or '').strip():
+            with self.lock:
+                self.commentary_at = time.monotonic()
+                self.commentary_actions = 0
+                self.commentary_pending = False
         rows = self.events.get()
         if rows is not None and event.get('type') in {'tool_start', 'tool_end', 'tool_error'}:
             rows.append(dict(event))
@@ -559,6 +594,9 @@ class WorkflowController:
                 if proof and proof['expected'] != proof['before'] and self._verify_file({'id': operation}, {})['outcome'] == 'applied':
                     self.progress += 1
             self.note_observation(name, arguments, result)
+            if name not in {'update_plan', 'discover_tools', 'ask_user_questions'}:
+                with self.lock:
+                    self.commentary_actions += 1
             self.publish({'type': 'workflow_action', 'operation': operation, 'tool': name,
                           'status': status, 'category': category})
             execution.result = result

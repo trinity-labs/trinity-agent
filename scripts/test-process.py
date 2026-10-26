@@ -24,6 +24,48 @@ class ProcessTests(unittest.TestCase):
     def run_python(self, source, **kwargs):
         return runner.run_process([sys.executable, '-c', source], self.root, **kwargs)
 
+    def test_literal_script_start_failure_and_success_after_chmod(self):
+        script = self.root / 'task with spaces.sh'
+        marker = self.root / 'executed'
+        script.write_text('#!/bin/sh\nprintf ran >> executed\n')
+        argv = runner.command_argv("'" + str(script) + "'")
+        self.assertEqual(argv, [str(script)])
+        denied = runner.run_process(argv, self.root)
+        self.assertFalse(denied['executed'])
+        self.assertEqual(denied['error'], 'process_start_failed')
+        self.assertEqual(denied['error_type'], 'PermissionError')
+        self.assertFalse(marker.exists())
+        script.chmod(0o700)
+        result = runner.run_process(argv, self.root)
+        self.assertTrue(result['passed'], result)
+        self.assertEqual(marker.read_text(), 'ran')
+
+    def test_shell_syntax_and_failures_after_effects_stay_executed(self):
+        for command in ('printf ran > effect; missing_fixture_executable',
+                        "sh -c 'printf ran > effect; exit 126'",
+                        "sh -c 'printf ran > effect; exit 127'"):
+            with self.subTest(command=command):
+                result = runner.run_process(runner.command_argv(command), self.root)
+                self.assertTrue(result['executed'])
+                self.assertFalse(result['passed'])
+                self.assertEqual((self.root/'effect').read_text(), 'ran')
+                (self.root/'effect').unlink()
+        for command in ('X=value python3 app.py', 'echo "$X"', 'cat *.txt', 'cd subdir',
+                        'if true; then echo yes; fi', 'cat < input', 'echo x\necho y'):
+            self.assertEqual(runner.command_argv(command), ['sh', '-c', command])
+
+    def test_direct_arguments_and_workspace_tools_preserve_command_semantics(self):
+        tools = self.root/'.agent-tools/venv/bin'
+        tools.mkdir(parents=True)
+        executable = tools/'fixture-tool'
+        executable.write_text('#!/bin/sh\nprintf "%s" "$1"\n')
+        executable.chmod(0o700)
+        child = self.root/'child'
+        child.mkdir()
+        result = runner.run_process(runner.command_argv("fixture-tool 'two words'"), child, workspace=self.root)
+        self.assertTrue(result['passed'], result)
+        self.assertEqual(result['output'], 'two words')
+
     def assert_child_stopped(self, pid):
         # A reparented zombie is already unable to run or mutate; PID 1 owns its
         # eventual reaping. Do not confuse existence in /proc with a live child.

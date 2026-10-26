@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.75
+
+- Require visible progress before tool work and at work checkpoints, respecting explicit silence requests. Keep long command status visible without accumulating notices.
+- Execute literal commands directly so an OS refusal before launch is recorded as not applied and can be retried after correction. Preserve uncertainty for commands that started, timed out or failed after effects.
+
 ## 1.17.74
 
 - Select the local extension icon for the active editor theme before installation caches its manifest. Keep the public Marketplace icon unchanged.

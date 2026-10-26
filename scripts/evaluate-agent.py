@@ -213,6 +213,17 @@ def oracle(fixture, root):
     return {'passed': not errors, 'mismatches': sorted(set(errors))}
 
 
+def reference_progress(info):
+    """The offline adapter follows the same visible progress contract as a model."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    if any(tool.name == 'update_plan' and 'explanation' in
+           tool.parameters_json_schema.get('required', []) for tool in info.function_tools):
+        return ModelResponse(parts=[ToolCallPart('update_plan', {
+            'steps': ['Inspecter les fichiers', 'Appliquer le changement', 'Vérifier'],
+            'explanation': 'Je poursuis le scénario de test avec les outils et contrôles de référence.'})])
+    return None
+
+
 def reference_model(fixture, *, dishonest=False):
     """Scripted tool trajectory exercises production tools; it is not model skill."""
     from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
@@ -237,6 +248,8 @@ def reference_model(fixture, *, dishonest=False):
     counter = 0
     def model(messages, info):
         nonlocal counter
+        if counter < len(steps) and (progress := reference_progress(info)) is not None:
+            return progress
         counter += 1
         if counter <= len(steps):
             tool, arguments = steps[counter-1]
@@ -286,7 +299,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
     original_edit = backend.edit_file
     def emit(event):
         original_emit(event)
-        if event.get('type') in {'workflow_action', 'execution_evidence', 'verification_check'}:
+        if event.get('type') in {'workflow_action', 'execution_evidence', 'verification_check', 'plan_updated'}:
             events.append(event)
     def read_file(path: str, start_line: int = 1, end_line: int = 400) -> str:
         """Read a fixture source through the production backend."""
@@ -422,11 +435,13 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                 rounds = 0
                 def resume(messages, info):
                     nonlocal rounds
-                    rounds += 1
                     sequence = [('verification_plan', {}), ('read_file', {'path': 'current.json'}),
                         ('read_file', {'path': 'app.py'}),
                         ('edit_file', {'path': 'app.py', 'old_text': 'PORT = 1', 'new_text': f'PORT = {fixture["port"]}'}),
                         ('verify_changes', {})]
+                    if rounds < len(sequence) and (progress := reference_progress(info)) is not None:
+                        return progress
+                    rounds += 1
                     if rounds <= len(sequence):
                         tool, arguments = sequence[rounds-1]
                         return ModelResponse(parts=[ToolCallPart(tool, arguments, tool_call_id=f'resume-{rounds}')])

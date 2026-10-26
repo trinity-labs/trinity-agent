@@ -22,7 +22,7 @@ from ovh_verification import ChangeGuard, VerificationError, run_check
 from ovh_execution import WorkflowController, RunDependencies, ExecutionCapability, READ_ONLY_TOOLS, read_only_policy, command_is_read_only
 from ovh_repository import repository_map
 from ovh_vision import run_reader_sync
-from ovh_process import run_process, command_is_destructive
+from ovh_process import run_process, command_is_destructive, command_argv
 from ovh_tools import ToolSelection
 import base64
 import binascii
@@ -496,7 +496,8 @@ def activity_progress(activity_id: str, elapsed_seconds: int, detail: str = "") 
         if activity_id not in run_dependencies().activity_started:
             return
     emit({"type": "tool_progress", "id": activity_id, "elapsed_seconds": int(elapsed_seconds),
-          "detail": (detail or "")[-600:]})
+          "detail": (detail or "")[-600:],
+          "commentary": not (run_dependencies().engine and run_dependencies().engine.commentary_silent)})
 
 
 def activity_end(activity_id: str, detail: str, success: bool = True) -> None:
@@ -1120,14 +1121,11 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
         if not request_approval("command", "Exécuter une commande", command):
             return command_not_executed("approval_denied", "Commande refusée par l’utilisateur.")
         activity_id = activity_start("command", "Commande dans le conteneur IDE", f"cwd={working_dir}\n{command}")
-        project_bins = os.pathsep.join(str(WORKSPACE / part) for part in
-                                      (".agent-tools/venv/bin", ".agent-tools/npm/node_modules/.bin"))
         # Process supervision bounds output and terminates ordinary descendants.
         # The optional workspace profile fails closed when namespaces are unavailable.
         execution_entered = True
         result = run_process(
-            diagnostic_argv if diagnostic else
-            ["sh", "-lc", "export PATH=" + shlex.quote(project_bins) + ':"$PATH"\n' + command],
+            diagnostic_argv if diagnostic else command_argv(command),
             working_dir, timeout=timeout, workspace=WORKSPACE,
             profile=os.environ.get("OVH_AGENT_COMMAND_PROFILE", "approved"),
             progress=lambda seconds, line: activity_progress(activity_id, seconds, line))
@@ -2897,6 +2895,20 @@ async def prepare_tools_for_request(ctx: RunContext[RunDependencies], definition
         visible = await prepare_tool_for_request(ctx, definition)
         if visible is not None:
             prepared.append(visible)
+    engine = ctx.deps.engine
+    if engine is not None:
+        engine.commentary_enabled = any(tool.name == 'update_plan' for tool in prepared)
+        engine.commentary_pending = engine.commentary_due()
+        if engine.commentary_pending:
+            for index, tool in enumerate(prepared):
+                if tool.name == 'update_plan':
+                    schema = tool.parameters_json_schema
+                    properties = schema.get('properties', {})
+                    explanation = {**properties.get('explanation', {}), 'minLength': 1}
+                    explanation.pop('default', None)
+                    prepared[index] = replace(tool, parameters_json_schema={**schema,
+                        'properties': {**properties, 'explanation': explanation},
+                        'required': list(dict.fromkeys([*schema.get('required', []), 'explanation']))})
     return prepared
 
 
@@ -3174,7 +3186,7 @@ def update_plan(steps: list[str], current_step: int = 0, explanation: str = "") 
         return "Erreur outil : explanation doit être un texte de 4000 caractères maximum."
     ensure_conversation()
     data = {"steps": [s.strip() for s in steps], "current_step": current_step, "updated_at": now_iso()}
-    if explanation.strip():
+    if explanation.strip() and not (run_dependencies().engine and run_dependencies().engine.commentary_silent):
         data["explanation"] = explanation.strip()
     atomic_write(conversation_dir() / "plan.json", json.dumps(data, ensure_ascii=False))
     emit({"type": "plan_updated", **data, "duration_ms": round((time.monotonic() - started) * 1000)})

@@ -32,6 +32,29 @@ _UNSAFE_ENV = {'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', '
                'CODE_SERVER_PARENT_PID'}
 
 
+def command_argv(command):
+    """Use exec for literal external commands; retain a shell for shell syntax.
+
+    Deliberately conservative: even quoted metacharacters take the shell path.
+    An exec failure then proves that the actual command never started, while
+    an error inside a shell/script retains its uncertain effects.
+    """
+    if isinstance(command, str) and not re.search(r'[\n\r\x00$`|&;<>()*?\[\]{}~#\\]', command):
+        try:
+            words = shlex.split(command)
+        except ValueError:
+            words = []
+        builtins = {'alias', 'bg', 'break', 'cd', 'command', 'continue', 'eval', 'exec', 'exit',
+                    'export', 'false', 'fg', 'getopts', 'hash', 'jobs', 'pwd', 'read', 'readonly',
+                    'return', 'set', 'shift', 'source', 'test', 'times', 'trap', 'true', 'type',
+                    'ulimit', 'umask', 'unalias', 'unset', 'wait', 'echo', 'printf', '.', ':',
+                    'if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'until', 'do', 'done',
+                    'case', 'esac', 'in', 'function', 'select', 'time', '!'}
+        if words and words[0] not in builtins and '=' not in words[0]:
+            return words
+    return ['sh', '-c', command]
+
+
 def command_is_destructive(command, _depth=0):
     """Recognize obvious destructive commands, not arbitrary shell semantics.
 
@@ -155,8 +178,11 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
     environment = sanitized_environment()
     environment['PYDANTIC_AI_NO_BANNER'] = '1'
     # Project-installed test tools must remain available without a login shell.
-    environment['PATH'] = os.pathsep.join((str(Path(cwd) / '.agent-tools/venv/bin'),
-        str(Path(cwd) / '.agent-tools/npm/node_modules/.bin'), environment.get('PATH', '')))
+    roots = dict.fromkeys(Path(root) for root in (workspace, cwd) if root is not None)
+    environment['PATH'] = os.pathsep.join([
+        *(str(root / part) for root in roots for part in
+          ('.agent-tools/venv/bin', '.agent-tools/npm/node_modules/.bin')),
+        environment.get('PATH', '')])
     # A mounted directory does not change which host executes the command.
     executable = str(Path(cwd) / argv[0]) if '/' in argv[0] and not os.path.isabs(argv[0]) else argv[0]
     resolved = shutil.which(executable, path=environment['PATH'])

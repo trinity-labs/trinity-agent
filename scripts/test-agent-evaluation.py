@@ -33,6 +33,8 @@ class AgentEvaluationTests(unittest.TestCase):
         self.assertTrue(next(row for row in report['scenarios'] if row['id'] == 'correction_compaction')['compacted'])
         self.assertTrue(next(row for row in report['scenarios'] if row['id'] == 'interrupted_write')['interruption_triggered'])
         self.assertTrue(all(row['production_agent_pipeline'] for row in report['scenarios']))
+        self.assertTrue(all(any(event['type'] == 'plan_updated' and event.get('explanation')
+                                for event in row['events']) for row in report['scenarios']))
         sources=next(row for row in report['scenarios'] if row['id']=='source_injection')
         self.assertTrue(sources['requested_source_observed'])
         self.assertTrue(any(row['path'].endswith('/ISSUE.txt') for row in sources['context_preparation']['sources']))

@@ -2500,5 +2500,11 @@
     "en": "Wait for the conversation switch to finish before deleting this folder.",
     "de": "Warte, bis der Wechsel der Unterhaltung abgeschlossen ist, bevor du diesen Ordner löschst.",
     "es": "Espera a que termine el cambio de conversación antes de eliminar esta carpeta."
+  },
+  "Commande toujours en cours · {0} s. Résultat en attente.": {
+    "fr": "Commande toujours en cours · {0} s. Résultat en attente.",
+    "en": "Command still running · {0} s. Waiting for the result.",
+    "de": "Befehl läuft noch · {0} s. Ergebnis steht noch aus.",
+    "es": "El comando sigue en curso · {0} s. Resultado pendiente."
   }
 }

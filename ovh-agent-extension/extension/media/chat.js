@@ -1567,6 +1567,7 @@ function updateRunSummary(run, state = "") {
 function finishRun(state = "done") {
   if (!currentRun) return;
   const run = currentRun;
+  run.article.querySelectorAll('.progress-waiting').forEach(node => node.remove());
   window.clearInterval(run.timer);
   for (const item of activityRows.values()) {
     if (item.row.closest('.message')!==run.article || !item.row.classList.contains('running')) continue;
@@ -1915,6 +1916,8 @@ function addActivity(data, updateCurrentAction = true) {
 function finishActivity(data) {
   const item = activityRows.get(data.id);
   if (!item) return;
+  item.progress?.remove();
+  item.progress = null;
   const wasRunning=item.row.classList.contains('running');
   item.row.classList.remove("running","stopped","success","failure");
   item.row.classList.add(data.success ? "success" : "failure");
@@ -2608,6 +2611,15 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "tool_progress") {
     // Elapsed time is already ticking; show what the command is doing now.
     const item = activityRows.get(data.id);
+    const elapsed = Math.max(0, Math.round(Number(data.elapsed_seconds) || 0));
+    if (item?.row.classList.contains('running') && currentRun && data.commentary === true && elapsed >= 30) {
+      if (!item.progress) {
+        item.progress = document.createElement('p');
+        item.progress.className = 'progress-update progress-waiting';
+        currentRun.content.before(item.progress);
+      }
+      item.progress.textContent = t('Commande toujours en cours · {0} s. Résultat en attente.', elapsed);
+    }
     if (item && typeof data.detail === "string" && data.detail.trim()) {
       item.detail.textContent = `${Math.max(0, Math.round(Number(data.elapsed_seconds) || 0))} s · ${data.detail.trim().slice(0, 400)}`;
     }

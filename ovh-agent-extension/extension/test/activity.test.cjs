@@ -66,6 +66,24 @@ test('progress explanations are restored from archived plan events', () => {
   } finally {dom.window.close();}
 });
 
+test('long command progress stays visible without accumulating notices or surviving completion', () => {
+  const {dom,document,emit} = browser();
+  try {
+    emit({type:'status',text:'Working'});
+    emit({type:'tool_start',id:'check',tool:'command',title:'Vérification',detail:'tests'});
+    emit({type:'tool_progress',id:'check',elapsed_seconds:40,commentary:false});
+    assert.equal(document.querySelector('.progress-waiting'),null);
+    emit({type:'tool_progress',id:'check',elapsed_seconds:40,commentary:true});
+    emit({type:'tool_progress',id:'check',elapsed_seconds:80,commentary:true});
+    assert.equal(document.querySelectorAll('.progress-waiting').length,1);
+    assert.match(document.querySelector('.progress-waiting').textContent,/80 s/);
+    emit({type:'tool_end',id:'check',success:true,detail:'Vérifié.'});
+    assert.equal(document.querySelector('.progress-waiting'),null);
+    emit({type:'tool_progress',id:'check',elapsed_seconds:90,commentary:true});
+    assert.equal(document.querySelector('.progress-waiting'),null);
+  } finally {dom.window.close();}
+});
+
 test('context, routing and usage stay in the journal without replacing the current tool', () => {
   const {dom,document,emit,advance} = browser();
   try {

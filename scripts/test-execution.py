@@ -33,6 +33,41 @@ class ExecutionTests(unittest.TestCase):
     def operations(self, engine=None):
         return (engine or self.engine).journal.snapshot()["operations"]
 
+    def test_real_backend_nonexecuted_script_retries_without_stale_incomplete_state(self):
+        with patch.object(sys, 'argv', ['test-execution', '--billing-status']):
+            spec = importlib.util.spec_from_file_location('literal_command_backend', ROOT/'ovh-agent.py')
+            backend = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(backend)
+        script = self.workspace/'install.sh'
+        script.write_text('#!/bin/sh\nprintf ran >> installed\n')
+        token = backend.RUN_CONTEXT.set(RunDependencies(engine=self.engine))
+        self.addCleanup(backend.RUN_CONTEXT.reset, token)
+        with patch.object(backend, 'WORKSPACE', self.workspace), patch.object(
+                backend, 'request_approval', return_value=True), patch.object(
+                backend, 'read_task_state', return_value={}), patch.object(
+                backend, 'emit', side_effect=lambda e: backend.run_dependencies().engine.observe_event(e)):
+            first = json.loads(self.engine.invoke(backend.run_command, str(script)))
+            self.assertFalse(first['executed'])
+            self.assertFalse((self.workspace/'installed').exists())
+            rejected, = self.operations()
+            self.assertEqual(rejected['status'], 'not_applied')
+            script.chmod(0o700)
+            restarted = WorkflowController(self.workspace, self.directory)
+            backend.run_dependencies().engine = restarted
+            result = json.loads(restarted.invoke(backend.run_command, str(script)))
+            self.assertTrue(result['passed'], result)
+            self.assertEqual((self.workspace/'installed').read_text(), 'ran')
+            self.assertFalse(restarted.final_status()['incomplete'])
+            self.assertFalse(restarted.journal.snapshot()['unresolved_mutations'])
+            script.write_text('#!/bin/sh\nprintf partial >> partial-effect\nexit 126\n')
+            failed = json.loads(restarted.invoke(backend.run_command, str(script)))
+            self.assertTrue(failed['executed'])
+            self.assertEqual(failed['exit_code'], 126)
+            blocked = json.loads(restarted.invoke(backend.run_command, str(script)))
+            self.assertEqual(blocked['category'], 'recovery_required')
+            self.assertEqual((self.workspace/'partial-effect').read_text(), 'partial')
+            self.assertTrue(restarted.final_status()['incomplete'])
+
     def test_sdk_tool_schema_retains_named_typed_arguments_and_real_execution(self):
         calls, rounds = [], []
 

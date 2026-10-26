@@ -312,4 +312,150 @@ class VerificationIntent(unittest.TestCase):
             self.assertEqual(self.a.validate_task_output(verdict),verdict)
 
 
+class ProgressContract(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        RecoveryDiscovery.setUpClass.__func__(cls)
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.a = self.backend
+        self.events, self.reads = [], []
+        self.engine = WorkflowController(self.root, self.root/'execution')
+        self.engine.focus('Inspecte les fichiers et vérifie leur contenu.')
+        self.deps = self.a.RunDependencies(engine=self.engine)
+        token = self.a.RUN_CONTEXT.set(self.deps)
+        self.addCleanup(self.a.RUN_CONTEXT.reset, token)
+        for name, value in {'WORKSPACE':self.root, 'conversation_dir':lambda *args:self.root,
+                            'ensure_conversation':lambda:None, 'emit':self.observe}.items():
+            patched = patch.object(self.a, name, value)
+            patched.start(); self.addCleanup(patched.stop)
+        (self.root/'fixture.txt').write_text('independent fixture')
+
+    def observe(self, event):
+        self.events.append(event)
+        self.engine.observe_event(event)
+
+    def agent(self, model, *, prepared=True):
+        from pydantic_ai.toolsets import FunctionToolset
+        def read_file(path: str) -> str:
+            """Read the requested fixture file."""
+            self.reads.append(path)
+            self.events.append({'type':'actual_read'})
+            return (self.root/path).read_text()
+        toolset = FunctionToolset([Tool(self.a.update_plan, sequential=True), Tool(read_file)])
+        if prepared:
+            toolset = toolset.prepared(self.a.prepare_tools_for_request)
+        return Agent(FunctionModel(model), deps_type=self.a.RunDependencies, toolsets=[toolset],
+                     capabilities=[self.a.ExecutionCapability(self.a.RUN_CONTEXT)], retries=2)
+
+    def test_progress_precedes_work_and_is_required_again_after_a_batch(self):
+        rounds = []
+        def model(messages, info):
+            names = {tool.name for tool in info.function_tools}; rounds.append(names)
+            if len(rounds) in (1, 3):
+                self.assertEqual(names, {'update_plan','read_file'})
+                schema = next(t for t in info.function_tools if t.name=='update_plan').parameters_json_schema
+                self.assertIn('explanation', schema['required'])
+                return ModelResponse(parts=[ToolCallPart('update_plan', {'steps':['Lire','Vérifier'],
+                    'explanation':'Je lis la configuration.' if len(rounds)==1 else
+                    'Les trois lectures concordent. Je contrôle le dernier fichier.'})])
+            if len(rounds) in (2, 4):
+                self.assertIn('read_file', names)
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'},
+                    tool_call_id=f'read-{len(rounds)}-{i}') for i in range(3 if len(rounds)==2 else 1)])
+            return ModelResponse(parts=[TextPart('{"verified":true}')])
+        result = self.agent(model).run_sync('Inspecte. Termine avec un JSON.', deps=self.deps)
+        self.assertEqual(result.output, '{"verified":true}')
+        significant = [e['type'] for e in self.events if e['type'] in {'plan_updated','actual_read'}]
+        self.assertEqual(significant, ['plan_updated', *['actual_read']*3, 'plan_updated', 'actual_read'])
+
+    def test_stale_tool_call_and_blank_comment_cannot_execute_silently(self):
+        self.engine.commentary_enabled = self.engine.commentary_pending = True
+        rounds = []
+        def model(messages, info):
+            rounds.append(1)
+            if len(rounds)==1:
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'})])
+            if len(rounds)==2:
+                self.assertEqual(self.reads, [])
+                return ModelResponse(parts=[ToolCallPart('update_plan', {'steps':['Lire'], 'explanation':'  '})])
+            if len(rounds)==3:
+                self.assertEqual(self.reads, [])
+                return ModelResponse(parts=[ToolCallPart('update_plan', {'steps':['Lire'], 'explanation':'Je vérifie le fichier.'})])
+            if len(rounds)==4:
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'})])
+            return ModelResponse(parts=[TextPart('Vérifié.')])
+        self.assertEqual(self.agent(model, prepared=False).run_sync('Vérifie', deps=self.deps).output, 'Vérifié.')
+        self.assertEqual(self.reads, ['fixture.txt'])
+        self.assertEqual(len(self.engine.journal.snapshot()['operations']), 2)
+
+    def test_silence_persists_across_continue_and_can_be_reversed(self):
+        self.engine.focus('Travaille sans commentaires. Termine avec un JSON.')
+        self.engine.focus('Continue.')
+        def model(messages, info):
+            self.assertIn('read_file', {tool.name for tool in info.function_tools})
+            return ModelResponse(parts=[TextPart('{"answer":4}')])
+        agent = self.agent(model)
+        self.assertEqual(agent.run_sync('Continue', deps=self.deps).output, '{"answer":4}')
+        self.a.update_plan(['Lire'], explanation='Commentaire à supprimer.')
+        self.assertNotIn('explanation', self.events[-1])
+        restarted = WorkflowController(self.root, self.root/'execution')
+        self.assertTrue(restarted.commentary_silent)
+        restarted.focus('Explique ce que tu fais pendant le travail.')
+        self.assertFalse(restarted.commentary_silent)
+
+    def test_parallel_calls_wait_for_one_comment_without_exhausting_retries(self):
+        rounds = []
+        def model(messages, info):
+            rounds.append(1)
+            if len(rounds)==1:
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'},
+                    tool_call_id=f'blocked-{i}') for i in range(5)])
+            if len(rounds)==2:
+                self.assertEqual(self.reads, [])
+                return ModelResponse(parts=[ToolCallPart('update_plan', {'steps':['Lire'],
+                    'explanation':'Je vérifie les fichiers demandés.'})])
+            if len(rounds)==3:
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'})])
+            return ModelResponse(parts=[TextPart('Vérifié.')])
+        self.assertEqual(self.agent(model).run_sync('Inspecte', deps=self.deps).output, 'Vérifié.')
+        self.assertEqual(self.reads, ['fixture.txt'])
+
+    def test_repeated_model_rounds_ignoring_progress_stop_before_any_action(self):
+        rounds = []
+        def model(messages, info):
+            rounds.append(1)
+            return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'})])
+        with self.assertRaisesRegex(RuntimeError, 'sans progrès'):
+            self.agent(model).run_sync('Inspecte', deps=self.deps)
+        self.assertEqual(len(rounds), 3)
+        self.assertEqual(self.reads, [])
+        self.assertEqual(self.engine.journal.snapshot()['operations'], [])
+
+    def test_simple_answer_does_not_force_a_plan_or_an_extra_model_request(self):
+        calls = []
+        def model(messages, info):
+            calls.append(1)
+            return ModelResponse(parts=[TextPart('4')])
+        self.assertEqual(self.agent(model).run_sync('Combien font 2 + 2 ?', deps=self.deps).output, '4')
+        self.assertEqual(calls, [1]); self.assertEqual(self.events, [])
+
+    def test_elapsed_time_and_steering_refresh_the_commentary_contract(self):
+        self.engine.commentary_enabled = True
+        self.a.update_plan(['Lire'], explanation='Je vérifie le fichier.')
+        self.assertFalse(self.engine.commentary_due())
+        with patch('ovh_execution.time.monotonic', return_value=self.engine.commentary_at+46):
+            self.assertTrue(self.engine.commentary_due())
+        self.engine.focus('Vérifie plutôt le second fichier.')
+        self.assertTrue(self.engine.commentary_due())
+        from ovh_request import commentary_silenced
+        for prompt in ('Termine uniquement avec un objet JSON.', 'Tu restes silencieux, corrige cela.',
+                       'Le modèle travaille sans commentaires. Corrige ce défaut.',
+                       'Le code contient `sans commentaires`. Explique le défaut.'):
+            self.assertFalse(commentary_silenced(prompt), prompt)
+
+
 if __name__=='__main__':unittest.main()

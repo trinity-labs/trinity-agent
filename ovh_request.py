@@ -60,6 +60,22 @@ def normalized(text):
     return ''.join(c for c in unicodedata.normalize('NFKD', str(text).casefold()) if not unicodedata.combining(c))
 
 
+def commentary_silenced(prompt, previous=False):
+    """Explicit work-silence preference; a format for the final answer is separate."""
+    text = normalized(re.sub(r'```[\s\S]*?```|`[^`\n]*`', '', str(prompt)))
+    start = r'(?:^|[.;!\n]|\b(?:et|puis|and|then)\s+)\s*(?:please\s+)?'
+    if re.search(start + r'(?:sans commentaires?|ne commente(?:z)? pas|reste(?:z)? silencieux|'
+                 r'travaille(?:z)? en silence|no progress (?:updates|commentary)|'
+                 r'(?:do not|don.t) (?:narrate|comment)|work silently|'
+                 r'(?:travaille|continue|analyse|corrige|verifie|execute|fais)[^.;!\n]{0,160}\bsans commentaires?)\b', text):
+        return True
+    if re.search(start + r'(?:commente(?:z)? (?:le|ton|votre)|explique(?:z)? (?:ce que|les etapes)|'
+                 r'(?:sois |je veux )?plus (?:de commentaires|verbose)|ne reste(?:z)? (?:pas|plus) silencieux|'
+                 r'(?:show|give|resume) progress updates)\b', text):
+        return False
+    return previous
+
+
 # "Lecture seule" names both a directive and the feature that enforces it.
 # A correction that names or refuses the mechanism must not arm the restriction.
 READ_ONLY_NAME = r'(?:lecture seule|read[ -]only)'
