@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.73
+
+- Keep correction tools available when a follow-up reports that no prior changes were applied, while preserving current prohibitions and inherited read-only restrictions.
+
 ## 1.17.72
 
 - Match the conversation loading message and its light background to the selected folder color, with readable text in light and dark themes and the default primary color outside folders.

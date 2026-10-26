@@ -745,5 +745,46 @@ class SourceEvidence(unittest.TestCase):
         self.assertEqual(fetch.call_count, 2)
 
 
+class HistoricalContext(unittest.TestCase):
+    def test_past_no_edit_report_is_context(self):
+        for prompt in [
+            "Reprends la correction. Aucune modification n’a été appliquée.",
+            "Reprends la correction. Aucune modification n'a encore été effectuée.",
+            "Corrige app.py. Aucune modification n’a été appliquée à la tentative précédente.",
+            "Fix app.py. No changes have been made.",
+        ]:
+            with self.subTest(prompt=prompt):
+                self.assertFalse(r.read_only_policy(prompt))
+
+    def test_history_does_not_grant_permission(self):
+        for prompt in [
+            "Aucune modification n’a été appliquée.",
+            "Continue. Aucune modification n’a été appliquée.",
+            "No changes have been made. Continue.",
+        ]:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(r.read_only_policy(prompt, True))
+
+    def test_current_and_future_prohibitions_remain(self):
+        for prompt in [
+            "Corrige app.py. Aucune modification.",
+            "Corrige app.py. Aucune modification ne doit être appliquée.",
+            "Aucune modification n’a été appliquée. Corrige app.py. Lecture seule.",
+            "Fix app.py. No changes should be made.",
+            "Corrige app.py. Aucune modification n’est autorisée.",
+        ]:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(r.read_only_policy(prompt))
+
+    def test_analysis_agrees_on_affirmative_edit(self):
+        for prompt in [
+            "Corrige app.py. Aucune modification n’a été appliquée.",
+            "Fix app.py. No changes have been made.",
+        ]:
+            with self.subTest(prompt=prompt):
+                self.assertEqual(r.analyze_request(prompt).intent, 'edit')
+                self.assertFalse(r.read_only_policy(prompt, True))
+
+
 if __name__ == '__main__':
     unittest.main()

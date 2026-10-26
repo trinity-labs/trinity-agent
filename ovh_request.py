@@ -71,16 +71,20 @@ READ_ONLY_REFUSAL = re.compile(
     r'(?:\s+\S+){0,4}\s+)' + READ_ONLY_NAME)
 
 
-def mask_read_only_naming(text):
-    """Drop mentions that name or refuse the read-only feature itself.
+def mask_read_only_mentions(text):
+    """Mask read-only feature mentions and reports of completed attempts.
 
-    "Je ne veux pas de mécanisme de lecture seule" or "retire le popup
-    d'aperçu en lecture seule" talks about the mechanism; it does not request
-    a read-only task. Only the feature name is removed, so real directives
-    ("lecture seule : audite le dépôt", "sans rien modifier", "aucune
-    modification") keep their meaning, the surrounding verb still counts as an
-    action, and the rest of the sentence still governs the request.
+    These describe the feature or past facts, not current restrictions. Leave
+    surrounding action verbs and real prohibitions intact; masking never grants
+    write access or clears an inherited restriction on its own.
     """
+    # A completed-attempt report describes facts, not a prohibition. Only
+    # completed passive forms are masked; present/future restrictions survive.
+    text = re.sub(
+        r"\b(?:aucune modification n['’]a(?: (?:encore|jamais))? ete "
+        r"(?:appliquee|effectuee|realisee)|"
+        r"no (?:changes|edits) (?:(?:have|had)(?: yet)? been|were) "
+        r"(?:made|applied|performed))\b", ' ', text)
     return READ_ONLY_REFUSAL.sub(r'\1', READ_ONLY_NAMING.sub(r'\1', text))
 
 
@@ -178,7 +182,7 @@ def read_only_policy(prompt, previous=False):
         r'["«“`\']?\s*(?:aucune modification(?: effectuee)?|no (?:edits|changes)(?: made)?)'
         r'(?=\s*(?:["»”`\']|[.!?,;:\n]|$))', '', text)
     # Naming or refusing the read-only feature is not a read-only instruction.
-    text = mask_read_only_naming(text)
+    text = mask_read_only_mentions(text)
     execution = execution_requested(text)
     if execution:
         # Preserving source files does not prohibit an explicitly requested
@@ -220,7 +224,7 @@ def read_only_policy(prompt, previous=False):
 
 def analyze_request(prompt, recent_prompts=(), image_count=0):
     # Naming or refusing the read-only feature is not a read-only instruction.
-    current = mask_read_only_naming(normalized(prompt))
+    current = mask_read_only_mentions(normalized(prompt))
     paths = explicit_paths(prompt)
     question = bool(re.match(r'\s*(?:pourquoi|comment|qu[\s’\']|quel\w*|est.ce|what|why|how|expliqu\w*|explain)\b', current))
     # Negated edits must not turn a read-only request into an edit or inherit one.
