@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.68
+
+- Keep interrupted-session regression tests independent of provider credentials and billing catalogues, so the same scenarios run offline in local and GitHub environments.
+
 ## 1.17.67
 
 - Resolve the latest stable Python, npm and container dependencies during updates and builds; refresh bundled browser libraries and test the resolved set before packaging.

@@ -102,6 +102,7 @@ class Sessions(unittest.TestCase):
                 'read_snapshot': {'return_value': None}, 'read_archive': {'return_value': []},
                 'load_selected_model': {'return_value': 'fixture-model'},
                 'refresh_billing_async': {}, 'current_budget_status': {'return_value': {}},
+                'record_model_usage': {'return_value': 0.0},
                 'publish_budget': {}, 'stdin_reader': {'side_effect': inputs},
                 'emit': {'side_effect': emit}, 'write_pointer': {}, 'list_archives': {'return_value': []},
                 'save_selected_model': {}, 'is_selectable_model': {'return_value': True},
