@@ -1270,7 +1270,15 @@ main.archive-loading { position: relative; overflow: hidden; min-height: 12rem; 
 @keyframes archive-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .archive-loading-spinner { animation: none; } }
 
-.archive-loading-overlay > span:last-child { padding: 8px 12px; border-radius: 8px; color: var(--ovh-primary-text); background: var(--ovh-primary-pastel); }
+.archive-loading-overlay > span:last-child {
+  --archive-loading-label-color: color-mix(in srgb, var(--archive-loading-color) 45%, var(--vscode-editor-foreground, #222));
+  padding: 8px 12px; border-radius: 8px;
+  color: var(--archive-loading-label-color, var(--ovh-primary-text));
+  background: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 7%, var(--vscode-sideBar-background));
+}
+body:is(.vscode-dark, .vscode-high-contrast) .archive-loading-overlay > span:last-child {
+  --archive-loading-label-color: color-mix(in srgb, var(--archive-loading-color) 55%, var(--vscode-editor-foreground, #fff));
+}
 body.vscode-dark .archive-loading-spinner,
 body.vscode-high-contrast .archive-loading-spinner {
   border-top-color: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 55%, var(--vscode-editor-foreground, #fff));

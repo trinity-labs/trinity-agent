@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.72
+
+- Match the conversation loading message and its light background to the selected folder color, with readable text in light and dark themes and the default primary color outside folders.
+
 ## 1.17.71
 
 - Solde du fournisseur sélectionné visible immédiatement depuis le cache et actualisé au démarrage.
