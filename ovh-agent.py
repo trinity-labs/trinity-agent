@@ -1082,7 +1082,7 @@ def command_not_executed(reason: str, detail: str) -> str:
                        "error": reason, "output": detail}, ensure_ascii=False)
 
 
-def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0, le=86400)] = 120) -> str:
+def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0, le=86400, description="Maximum duration in seconds, not milliseconds; 120 means two minutes.")] = 120) -> str:
     """Exécute dans le conteneur IDE. timeout est la durée maximale en secondes ; prévoir assez de temps pour les builds et suites longues. Les contrôles configurés gardent leur propre délai. Pour un service distant, utiliser run_host_command ; cwd ne change pas la machine."""
     execution_entered = False
     if type(timeout) is not int or not 0 < timeout <= 86400:
@@ -1155,7 +1155,7 @@ REMOTE_SSH_CONFIG = "/home/coder/TRINITY-DOCKER/root/.ssh/config"
 REMOTE_KNOWN_HOSTS = "/home/coder/TRINITY-DOCKER/root/.ssh/known_hosts"
 
 
-def run_host_command(host: str, command: str, cwd: str = "/", timeout: Annotated[int, Field(gt=0, le=86400)] = 120) -> str:
+def run_host_command(host: str, command: str, cwd: str = "/", timeout: Annotated[int, Field(gt=0, le=86400, description="Maximum duration in seconds, not milliseconds; 120 means two minutes.")] = 120) -> str:
     """Exécute par SSH sur une machine de l’infrastructure. cwd est absolu SUR LA CIBLE, sans préfixe SSHFS. timeout est la durée maximale en secondes ; l’expiration du client ne garantit pas l’arrêt distant."""
     if type(timeout) is not int or not 0 < timeout <= 86400:
         return command_not_executed("invalid_process_arguments", "timeout doit être un entier entre 1 et 86400 secondes.")

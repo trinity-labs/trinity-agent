@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.60
+
+- Share read-only intent classification between request analysis and execution; preserve scoped file restrictions without turning explicit execution requests into web research.
+- Clarify that command timeout arguments use seconds in the native tool schemas.
+
 ## 1.17.59
 
 - Pass typed run dependencies in the offline startup benchmark used by release CI.

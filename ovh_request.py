@@ -161,6 +161,61 @@ def execution_requested(text):
         r"redemarre[rz]?|restart|lance[rz]?|execute[rz]?|run)\b(?!\s+(?:pas|jamais|not)\b)", text))
 
 
+def read_only_policy(prompt, previous=False):
+    """Keep an explicit read-only instruction until an explicit write request.
+
+    A neutral continuation, tool discovery or stale schema cannot grant write
+    access. This parses a small set of user directives; it never consumes tool
+    output or generated review text as authorization.
+    """
+    text = ''.join(character for character in unicodedata.normalize('NFKD', str(prompt).casefold())
+                   if not unicodedata.combining(character))
+    # A requested no-op report is output text, not an authorization constraint.
+    # Mask only this bounded report phrase; other directives (including an
+    # earlier persistent read-only instruction) still govern the operation.
+    text = re.sub(
+        r'\b(?:indique|reponds?(?: avec)?|affiche|dis|say|report|respond(?: with)?|output)\s*[:=]?\s*'
+        r'["«“`\']?\s*(?:aucune modification(?: effectuee)?|no (?:edits|changes)(?: made)?)'
+        r'(?=\s*(?:["»”`\']|[.!?,;:\n]|$))', '', text)
+    # Naming or refusing the read-only feature is not a read-only instruction.
+    text = mask_read_only_naming(text)
+    execution = execution_requested(text)
+    if execution:
+        # Preserving source files does not prohibit an explicitly requested
+        # build/install. Global read-only prohibitions below still take priority.
+        text = re.sub(SOURCE_ONLY_PROHIBITION, '', text)
+    if re.search(r'\b(?:lecture seule|lis uniquement|aucune modification|sans rien modifier|read[ -]only|no (?:edits|changes))\b', text):
+        return True
+    # A global prohibition takes precedence over a positive verb concerning an
+    # explanation. A restriction on tests or named files does not cancel an
+    # explicit request to edit a different target.
+    prohibitions = list(re.finditer(r'\b(?:sans (?:(?:le|la|les) )?modifi\w*|ne (?:modifie|change|supprime|ecris) pas|do not (?:modify|edit|write|change)|without (?:modifying|editing|writing|changing))\b', text))
+    if prohibitions:
+        for prohibition in prohibitions:
+            target = re.split(r'[;!?\n]|\.(?=\s|$)', text[prohibition.end():], maxsplit=1)[0].strip()
+            target_paths = explicit_paths(target)
+            if set(target_paths) & set(explicit_paths(text[:prohibition.start()])):
+                return True
+            # Only an unqualified prohibition covers the entire task. Preserving
+            # a specific object must not hide every write tool for another target.
+            if re.fullmatch(r'(?:(?:les?|la|the|any|all(?: the)?|tous les|toutes les) )?'
+                            r'(?:fichiers?|files?|sources?|source code|code|projet|project|repository|depot|anything|rien)'
+                            r'(?: (?:existants?|actuels?|courant|existing|current))?',target) or not target:
+                return True
+    if execution:
+        return False
+    if re.match(
+        r"^\s*(?:(?:oui|ok|okay|yes|now|maintenant|please|d['’]accord|s['’]il te plait)[\s,!:.]+)*"
+        r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you)\s+(?:maintenant\s+)?)?"
+        r"(?:modifie|modifier|corrige|corriger|ecris|ecrire|cree|creer|supprime|supprimer|ajoute|ajouter|applique|appliquer|implemente|deploie|installe|publie|"
+        r"fais (?:la correction|les corrections|les modifications)|"
+        r"(?:tu peux|je t['’]autorise a) (?:modifier|corriger|ecrire|creer|supprimer|appliquer)|"
+        r"(?:you may|you can|i authorize you to|go ahead and) (?:edit|modify|write|fix|implement)|"
+        r"edit|modify|write|fix|implement|apply|deploy|install|publish)\b", text):
+        return False
+    return bool(prohibitions or previous)
+
+
 def analyze_request(prompt, recent_prompts=(), image_count=0):
     # Naming or refusing the read-only feature is not a read-only instruction.
     current = mask_read_only_naming(normalized(prompt))
@@ -168,7 +223,8 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     question = bool(re.match(r'\s*(?:pourquoi|comment|qu[\s’\']|quel\w*|est.ce|what|why|how|expliqu\w*|explain)\b', current))
     # Negated edits must not turn a read-only request into an edit or inherit one.
     execution_text = re.sub(SOURCE_ONLY_PROHIBITION, '', current) if execution_requested(current) else current
-    readonly = bool(re.search(r'\b(?:lecture seule|aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit)|read.only)\b', execution_text))
+    # Classification and tool authorization share the same scoped policy.
+    readonly = read_only_policy(current)
     actionable = re.sub(r'\b(?:aucune modification|sans (?:rien )?modifi\w*|ne modifie pas|do not (?:modify|edit))\b', '', execution_text)
     # Describing previous modifications is not a request to perform new ones.
     actionable = re.sub(r'\b(?:modifications?|changements?|creations?|suppressions?|ameliorations?|transformations?|optimisations?)\b', '', actionable)
@@ -207,8 +263,8 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
                      or re.search(r"\b(?:tu es|t['’]es|es.tu)\s+(?:bien |vraiment )?sur\b|\b(?:are you sure|is that (?:correct|true)|est.ce (?:vrai|normal)|tu (?:inventes|mens|confonds)|ce n['’]est pas vrai|c['’]est pas vrai|(?:tu as|t['’]as) vraiment (?:lu|verifie)|tu confirmes\s*\?)", current))
     error_report = bool(re.search(r'\b(?:erreurs?|errors?|bugs?|exception|traceback)\b', current))
     answer_challenge = bool(re.search(r'\b(?:ta reponse|ton (?:diagnostic|explication)|tes affirmations|your (?:answer|claim|response)|you (?:are|were)|tu (?:mens|inventes|confonds))\b', current))
-    fact_check = web_allowed and ((contested and (not action or question or answer_challenge))
-                                  or (error_report and (question or not action)))
+    fact_check = web_allowed and ((contested and (not (action or execution) or question or answer_challenge))
+                                  or (error_report and (question or not (action or execution))))
     followup = bool(re.search(r'\b(?:ca|cela|celle|celui|pareil|meme|reprends?|continue|aussi|encore|it|that|same)\b', current)
                     or re.match(r'\s*(?:et|ok|oui|non|and)\b', current) or fact_check)
     inspection = bool(re.search(r'\b(?:analys\w*|audit\w*|inspect\w*|review|passe en revue)\b', current))

@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 from ovh_memory import atomic_write
 from ovh_task_engine import TaskJournal, FailureTracker, classify_failure
 from ovh_acceptance import AcceptanceSuite
+from ovh_request import read_only_policy
 
 
 @dataclass
@@ -117,63 +118,6 @@ def command_is_read_only(command):
                     or arg.startswith('-') and not arg.startswith('--') and 'z' in arg[1:]):
                 return False
     return not (argv[0] == '[' and argv[-1] != ']')
-
-
-def read_only_policy(prompt, previous=False):
-    """Keep an explicit read-only instruction until an explicit write request.
-
-    A neutral continuation, tool discovery or stale schema cannot grant write
-    access. This parses a small set of user directives; it never consumes tool
-    output or generated review text as authorization.
-    """
-    text = ''.join(character for character in unicodedata.normalize('NFKD', str(prompt).casefold())
-                   if not unicodedata.combining(character))
-    # A requested no-op report is output text, not an authorization constraint.
-    # Mask only this bounded report phrase; other directives (including an
-    # earlier persistent read-only instruction) still govern the operation.
-    text = re.sub(
-        r'\b(?:indique|reponds?(?: avec)?|affiche|dis|say|report|respond(?: with)?|output)\s*[:=]?\s*'
-        r'["«“`\']?\s*(?:aucune modification(?: effectuee)?|no (?:edits|changes)(?: made)?)'
-        r'(?=\s*(?:["»”`\']|[.!?,;:\n]|$))', '', text)
-    from ovh_request import execution_requested, SOURCE_ONLY_PROHIBITION, mask_read_only_naming
-    # Naming or refusing the read-only feature is not a read-only instruction.
-    text = mask_read_only_naming(text)
-    execution = execution_requested(text)
-    if execution:
-        # Preserving source files does not prohibit an explicitly requested
-        # build/install. Global read-only prohibitions below still take priority.
-        text = re.sub(SOURCE_ONLY_PROHIBITION, '', text)
-    if re.search(r'\b(?:lecture seule|lis uniquement|aucune modification|sans rien modifier|read[ -]only|no (?:edits|changes))\b', text):
-        return True
-    # A global prohibition takes precedence over a positive verb concerning an
-    # explanation. A restriction on tests or named files does not cancel an
-    # explicit request to edit a different target.
-    prohibitions = list(re.finditer(r'\b(?:sans (?:(?:le|la|les) )?modifi\w*|ne (?:modifie|change|supprime|ecris) pas|do not (?:modify|edit|write|change)|without (?:modifying|editing|writing|changing))\b', text))
-    if prohibitions:
-        from ovh_request import explicit_paths
-        for prohibition in prohibitions:
-            target = re.split(r'[;!?\n]|\.(?=\s|$)', text[prohibition.end():], maxsplit=1)[0].strip()
-            target_paths = explicit_paths(target)
-            if set(target_paths) & set(explicit_paths(text[:prohibition.start()])):
-                return True
-            # Only an unqualified prohibition covers the entire task. Preserving
-            # a specific object must not hide every write tool for another target.
-            if re.fullmatch(r'(?:(?:les?|la|the|any|all(?: the)?|tous les|toutes les) )?'
-                            r'(?:fichiers?|files?|sources?|source code|code|projet|project|repository|depot|anything|rien)'
-                            r'(?: (?:existants?|actuels?|courant|existing|current))?',target) or not target:
-                return True
-    if execution:
-        return False
-    if re.match(
-        r"^\s*(?:(?:oui|ok|okay|yes|now|maintenant|please|d['’]accord|s['’]il te plait)[\s,!:.]+)*"
-        r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you)\s+(?:maintenant\s+)?)?"
-        r"(?:modifie|modifier|corrige|corriger|ecris|ecrire|cree|creer|supprime|supprimer|ajoute|ajouter|applique|appliquer|implemente|deploie|installe|publie|"
-        r"fais (?:la correction|les corrections|les modifications)|"
-        r"(?:tu peux|je t['’]autorise a) (?:modifier|corriger|ecrire|creer|supprimer|appliquer)|"
-        r"(?:you may|you can|i authorize you to|go ahead and) (?:edit|modify|write|fix|implement)|"
-        r"edit|modify|write|fix|implement|apply|deploy|install|publish)\b", text):
-        return False
-    return bool(prohibitions or previous)
 
 
 class WorkflowController:

@@ -477,6 +477,23 @@ class SourceEvidence(unittest.TestCase):
         self.assertFalse(analysis.fact_check or analysis.needs_web)
         self.assertEqual(analysis.intent, 'diagnose')
 
+    def test_execution_after_error_keeps_scoped_preservation_and_local_context(self):
+        for prompt in [
+            'Exécute Certbot sur TRINITY-SERVER après cette erreur. Ne modifie pas les autres fichiers pendant cette étape.',
+            'Run the deployment after this error without modifying the source files.',
+            'Exécute la commande prévue. Le faux certificat a été déplacé dans la sauvegarde.',
+        ]:
+            with self.subTest(prompt=prompt):
+                analysis = r.analyze_request(prompt)
+                self.assertEqual(analysis.intent, 'execute')
+                self.assertTrue(analysis.needs_workspace)
+                self.assertFalse(analysis.fact_check or analysis.needs_web)
+                self.assertFalse(r.read_only_policy(prompt))
+        for prompt in ['Exécute le déploiement. Lecture seule, aucune modification.',
+                       'Run the command. Do not modify any files.']:
+            self.assertTrue(r.read_only_policy(prompt))
+            self.assertNotEqual(r.analyze_request(prompt).intent, 'execute')
+
     def test_offline_request_and_ui_error_label_do_not_start_web_review(self):
         for prompt in ['Vérifie cette erreur sans internet', 'Tu es sûr ? Reste hors ligne.',
                        'Are you sure? Do not browse.', 'Ajoute un message erreur dans le bouton',
