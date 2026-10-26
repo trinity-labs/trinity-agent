@@ -32,6 +32,40 @@ function browser(env={}) {
     advance:ms=>{now+=ms;for (const tick of intervals.values()) tick();}};
 }
 
+test('progress explanations stay visible through tools, streaming and completion', () => {
+  const {dom,document,emit} = browser();
+  try {
+    const explanation='Je vérifie le port actif.\n<img src=x onerror=alert(1)>';
+    const plan={type:'plan_updated',steps:['Inspecter','Vérifier'],current_step:0,explanation};
+    emit({type:'status',text:'Working'});
+    emit(plan);
+    emit(plan);
+    assert.equal(document.querySelectorAll('.progress-update').length,1);
+    assert.equal(document.querySelector('.progress-update').textContent,explanation);
+    assert.equal(document.querySelector('.progress-update img'),null);
+    assert.equal(document.querySelector('.activity').open,false);
+    emit({type:'tool_start',id:'read',tool:'read',title:'Lecture',detail:'client.conf'});
+    emit({type:'delta',html:'<p>Résultat en cours.</p>'});
+    emit({...plan,current_step:1,explanation:'Le port diffère de celui du service. Je vérifie la correction.'});
+    emit({type:'response',html:'<p>Connexion vérifiée.</p>'});
+    assert.equal(document.querySelectorAll('.progress-update').length,2);
+    assert.match(document.querySelector('.content').textContent,/Connexion vérifiée/);
+  } finally {dom.window.close();}
+});
+
+test('progress explanations are restored from archived plan events', () => {
+  const {dom,document,emit} = browser();
+  try {
+    emit({type:'archive_loaded',id:'progress',messages:[
+      {type:'user',text:'Vérifie la connexion.'},
+      {type:'plan_updated',steps:['Vérifier'],current_step:0,explanation:'Je compare les ports du client et du service.'},
+      {type:'response',html:'<p>Vérifié.</p>'},
+    ]});
+    assert.equal(document.querySelectorAll('.progress-update').length,1);
+    assert.match(document.querySelector('.progress-update').textContent,/compare les ports/);
+  } finally {dom.window.close();}
+});
+
 test('context, routing and usage stay in the journal without replacing the current tool', () => {
   const {dom,document,emit,advance} = browser();
   try {

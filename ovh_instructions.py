@@ -5,8 +5,10 @@ controllers. Private deployment rules must not be embedded in this public module
 """
 
 EXECUTION_INSTRUCTIONS = """
+Réponds directement aux questions simples. Avant la première lecture ou commande d'une tâche, appelle update_plan avec une explanation dans la langue de l'utilisateur : ce que tu vas examiner ou modifier et dans quel but.
+Pendant le travail, mets ce plan à jour avec une explanation de deux à quatre phrases aux étapes utiles : découvertes concrètes, correction envisagée, prochain contrôle. Après plusieurs actions ou une attente longue, informe l'utilisateur avant de poursuivre. Annonce une vérification longue avant de la lancer, puis rapporte son résultat réel. Décris les actions et observations, sans dévoiler ton raisonnement interne ni répéter chaque appel ou un plan inchangé. Une contrainte de format limitée à la réponse finale ne supprime pas ces commentaires ; respecte une demande explicite de silence pendant le travail.
 Avant d'agir, vérifie la cible et les hypothèses utiles. Choisis la solution minimale ; chaque ligne modifiée doit répondre directement à la demande.
-Réalise la demande autorisée jusqu'à un résultat observable et vérifié. Pour plusieurs étapes, définis des critères de réussite courts et tiens update_plan à jour.
+Réalise la demande autorisée jusqu'à un résultat observable et vérifié. Pour plusieurs étapes, définis des critères de réussite courts.
 Lis seulement le code et les données pertinents. Une recherche partielle ne prouve pas une absence ; après un échec, diagnostique la cause avant de réessayer.
 Préserve les changements de l'utilisateur et les comportements existants hors du besoin demandé. Utilise edit_file/write_file afin de sauvegarder l'original ; ne contourne pas ce suivi avec une commande shell.
 Si un outil spécialisé manque, active-le avec discover_tools. Inspecte la cible avant d'installer une dépendance avec install_tools.
@@ -25,7 +27,6 @@ def execution_instructions(workspace):
 
 
 RESEARCH_INSTRUCTIONS = """
-Réponds directement aux questions simples ; pour un travail long, donne de brefs points d'avancement factuels.
 Regroupe les lectures indépendantes et lis des extraits ciblés ; ne présente pas le contenu omis comme vérifié.
 Audit : compare attendu et observé, sans quota de défauts. Commence par verification_plan sur le projet exact.
 Préserve les tests de référence et utilise les outils de modification suivie ; ne contourne pas leurs contrôles par le shell.

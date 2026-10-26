@@ -878,6 +878,7 @@ function renderArchiveMessages(items) {
       if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
       if (item.type === "tool_start") addActivity(item);
       if (item.type === "tool_end") finishActivity(item);
+      if (item.type === "plan_updated") showProgress(item.explanation);
       if (item.type === "partial_response") {
         setMarkdown(item.html || "");
         finishRun("stopped");
@@ -1473,6 +1474,19 @@ function createAssistantRun() {
 
 function ensureRun() {
   return currentRun || createAssistantRun();
+}
+
+function showProgress(text) {
+  if (typeof text !== "string" || !text.trim()) return;
+  const run = ensureRun();
+  if (run.lastProgress === text) return;
+  run.lastProgress = text;
+  const paragraph = document.createElement("p");
+  paragraph.className = "progress-update";
+  paragraph.textContent = text;
+  run.content.before(paragraph);
+  persist(true);
+  scrollToBottom();
 }
 
 function renderQuestionnaire(data) {
@@ -2644,6 +2658,7 @@ window.addEventListener("message", ({ data }) => {
     addCompletedActivity("route", t("Routage économique"), `${data.model} · ${data.reason || t("modèle compatible")}${cost}${pool}${history}${account}`, data);
   }
   if (data.type === "plan_updated") {
+    showProgress(data.explanation);
     const steps = Array.isArray(data.steps) ? data.steps : [];
     const current = Number(data.current_step) || 0;
     addCompletedActivity("context", t("Plan de la tâche"), steps.map((step, i) =>

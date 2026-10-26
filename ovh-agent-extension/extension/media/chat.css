@@ -297,6 +297,7 @@ main {
 }
 .message.user .label { display: none; }
 .content { overflow-wrap: anywhere; }
+.progress-update { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.58; margin: 0 0 .8em; }
 .message-images {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));

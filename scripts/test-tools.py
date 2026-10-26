@@ -229,6 +229,7 @@ class RecoveryDiscovery(unittest.TestCase):
         self.assertFalse(self.visible('execute_operation'))
         self.assertFalse(self.visible('reconcile_operation'))
         self.assertTrue(self.visible('workflow_status'))
+        self.assertTrue(self.visible('update_plan'))
         self.assertFalse(self.visible('run_host_command'))
         result = json.loads(self.a.run_dependencies().engine.invoke(self.a.execute_operation, 'install'))
         self.assertEqual(result['category'], 'read_only')

@@ -3163,15 +3163,19 @@ def compact_history(history: list, update_memory: bool = True) -> tuple[list, di
                      "dropped_turns": 0, "saved_percent": 0}
 
 
-def update_plan(steps: list[str], current_step: int = 0) -> str:
-    """Enregistre le plan de la tâche. Étapes dans l'ordre ; current_step est l'index (0 = première, len(steps) = fini)."""
+def update_plan(steps: list[str], current_step: int = 0, explanation: str = "") -> str:
+    """Enregistre le plan et affiche explanation à l'utilisateur pendant le travail : actions prévues, découvertes et vérifications. current_step est l'index (0 = première, len(steps) = fini)."""
     started = time.monotonic()
     if not 1 <= len(steps) <= 12 or any(not isinstance(s, str) or not s.strip() or len(s) > 500 for s in steps):
         return "Erreur outil : 1 à 12 étapes non vides, de 500 caractères maximum."
     if not 0 <= current_step <= len(steps):
         return "Erreur outil : current_step doit être compris entre 0 et le nombre d'étapes."
+    if not isinstance(explanation, str) or len(explanation) > 4000:
+        return "Erreur outil : explanation doit être un texte de 4000 caractères maximum."
     ensure_conversation()
     data = {"steps": [s.strip() for s in steps], "current_step": current_step, "updated_at": now_iso()}
+    if explanation.strip():
+        data["explanation"] = explanation.strip()
     atomic_write(conversation_dir() / "plan.json", json.dumps(data, ensure_ascii=False))
     emit({"type": "plan_updated", **data, "duration_ms": round((time.monotonic() - started) * 1000)})
     return json.dumps(data, ensure_ascii=False)
@@ -3490,7 +3494,7 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
                 items.append({key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose",
                               "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering") if key in event})
                 continue
-            if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "execution_evidence", "model_active", "model_changed", "tool_start", "tool_end"}:
+            if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "execution_evidence", "model_active", "model_changed", "tool_start", "tool_end", "plan_updated"}:
                 if event.get("type") == "user" and isinstance(event.get("images"), list):
                     restored_images: list[dict[str, str]] = []
                     base_folder = conversation_dir(conversation_id).resolve()

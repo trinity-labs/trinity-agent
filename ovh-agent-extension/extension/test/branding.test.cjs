@@ -5,6 +5,48 @@ const os = require('os');
 const path = require('path');
 const {applyManifest} = require('../../../ovh-branding.cjs');
 const {buildChatHtml} = require('../webview-html');
+test('packaged local icon matches the theme before installation; Marketplace stays purple', () => {
+  const filename = path.resolve(__dirname, '../scripts/package-vsix.cjs');
+  const originalRequire = require('node:module').createRequire(filename);
+  const code = fs.readFileSync(filename, 'utf8');
+  const savedTheme = process.env.OVH_AGENT_ICON_THEME;
+  const stopped = new Error('Stage inspected before npm installation');
+  try {
+    for (const [publisher, theme, expected] of [
+      ['trinity', 'dark', 'media/trinity-activity.png'],
+      ['trinity', 'light', 'media/trinity-icon.png'],
+      ['stopyz', 'dark', 'media/trinity-icon.png'],
+    ]) {
+      process.env.OVH_AGENT_ICON_THEME = theme;
+      let inspected = false;
+      const wrappedRequire = name => name === 'node:child_process' ? {
+        execFileSync(command, args, options) {
+          if (command !== 'npm') return; // Frontend compilation does not select icons.
+          const stage = options.cwd;
+          const manifest = JSON.parse(fs.readFileSync(path.join(stage, 'package.json')));
+          assert.equal(manifest.publisher, publisher);
+          assert.equal(manifest.icon, expected);
+          assert.deepEqual(fs.readFileSync(path.join(stage, manifest.icon)),
+            fs.readFileSync(path.resolve(__dirname, '..', expected)));
+          assert.equal(manifest.ovhAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
+          assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-activity.png');
+          inspected = true;
+          throw stopped;
+        },
+      } : originalRequire(name);
+      wrappedRequire.resolve = originalRequire.resolve;
+      assert.throws(() => require('node:vm').runInNewContext(code, {
+        require: wrappedRequire, __dirname: path.dirname(filename), console,
+        process: {execPath: process.execPath, env: {MARKETPLACE_PUBLISHER: publisher}},
+      }, {filename}), error => error === stopped);
+      assert.equal(inspected, true);
+    }
+  } finally {
+    if (savedTheme === undefined) delete process.env.OVH_AGENT_ICON_THEME;
+    else process.env.OVH_AGENT_ICON_THEME = savedTheme;
+  }
+});
+
 test('custom icons, safe SVG, cache refresh and default reset', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'branding-'));
   const saved = {...process.env};

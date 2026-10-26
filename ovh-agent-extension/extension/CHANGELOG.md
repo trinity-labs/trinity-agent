@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.74
+
+- Select the local extension icon for the active editor theme before installation caches its manifest. Keep the public Marketplace icon unchanged.
+
+- Explain planned actions, findings and checks during tool work through the existing task plan. Progress remains visible during execution and can be restored from conversation archives, including when a provider omits intermediate assistant text.
+
 ## 1.17.73
 
 - Keep correction tools available when a follow-up reports that no prior changes were applied, while preserving current prohibitions and inherited read-only restrictions.

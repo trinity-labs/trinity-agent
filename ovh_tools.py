@@ -10,7 +10,7 @@ import threading
 import unicodedata
 
 CORE = frozenset({'read_file','list_files','search_text','edit_file','write_file','discover_tools',
-                  'search_memory','read_memory','run_command','verification_plan','verify_changes'})
+                  'search_memory','read_memory','run_command','verification_plan','verify_changes','update_plan'})
 GROUPS = {
     'web': {'search_web','read_webpage'},
     'memory': {'search_memory','read_memory','search_project_memory','read_project_memory','remember_context','inspect_json','inspect_conversation_archives'},

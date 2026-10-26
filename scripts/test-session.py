@@ -53,6 +53,19 @@ class Sessions(unittest.TestCase):
             self.assertEqual([event['type'] for event in events], ['user', 'response'])
             self.assertEqual(a.ARCHIVE_READ_REVISIONS['conversation'], '')
 
+    def test_progress_is_archived_and_invalid_updates_preserve_the_plan(self):
+        with patch.object(a, 'emit', side_effect=a.archive_event) as emit:
+            result = json.loads(a.update_plan(['Inspect', 'Verify'], explanation='  Je vérifie le port actif.  '))
+            self.assertEqual(result['explanation'], 'Je vérifie le port actif.')
+            event = next(e for e in a.read_archive('conversation') if e['type'] == 'plan_updated')
+            self.assertEqual(event['explanation'], result['explanation'])
+            plan = (self.folder/'plan.json').read_bytes()
+            emit.reset_mock()
+            for invalid in ('x' * 4001, None):
+                self.assertIn('Erreur outil', a.update_plan(['Changed'], explanation=invalid))
+                self.assertEqual((self.folder/'plan.json').read_bytes(), plan)
+            emit.assert_not_called()
+
     def test_activity_finishes_once_and_does_not_replace_another_active_tool(self):
         with patch.object(a, 'emit') as emit, patch.object(a, 'read_task_state', return_value={'status':'running','last_tool':{'id':'another'}}), patch.object(a, 'save_task_state') as save:
             with a.run_dependencies().activity_lock:
