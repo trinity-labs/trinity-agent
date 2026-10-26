@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.63
+
+- Add a red Delete button to the project editor, with an accessible confirmation that explicitly includes all conversations inside the folder. Keep project files, manual notes and conversations assigned elsewhere. Perform deletion outside the extension host and report partial failures accurately.
+- Complete button hover and keyboard focus feedback in light and dark themes, preserve disabled states, and fix the action-collapse chevron hover.
+- Keep source observations intact while they fit the working context budget; archive older observations only when space is needed.
+
 ## 1.17.62
 
 - Treat plain version probes for known development tools as read-only diagnostics. A missing CLI no longer leaves an unresolved mutation that blocks task completion or resumption; shell composition and mutating commands retain their existing checks.

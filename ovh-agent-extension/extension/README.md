@@ -93,6 +93,12 @@ Opening an archived conversation restores its working directory; a new conversat
 starts in the initial VS Code workspace and does not inherit the previous directory.
 Selected colors are saved automatically and remain persistent.
 
+The project editor includes a red **Delete** button. Confirmation permanently deletes
+the history folder and all conversations assigned to it, including their attachments.
+Project files and manual notes are preserved, as are conversations assigned elsewhere.
+An active conversation is stopped before deletion; failures are reported without claiming
+that the entire folder was removed.
+
 The Markdown file list is collapsed by default and expands on demand. Project
 folders also show root Markdown paths and available memory views. `REGRESSIONS.md`
 stores sourced historical check results; rerun the tests to validate the current

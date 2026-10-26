@@ -123,6 +123,7 @@ class OvhAgentViewProvider {
       if (message.type === "listModels") await this.sendControl({ type: "list_models", refresh: Boolean(message.refresh) });
       if (message.type === "selectModel") await this.selectModel(String(message.model || ""), String(message.provider || ""));
       if (message.type === "deleteArchiveConfirmed") await this.deleteArchive(message.id, message.source);
+      if (message.type === "deleteProjectConfirmed") await this.deleteProject(message.project);
       if (message.type === "resumeArchive") await this.sendControl({
         type: "resume_archive", id: message.id, full_access: message.fullAccess, model: message.model,
       });
@@ -248,7 +249,7 @@ class OvhAgentViewProvider {
       vscode.window.showInformationMessage(t("Ouvre la fenêtre Agent active pour choisir un projet."));
       return;
     }
-    if (this.busy || this.switchingProject || this.startPromise) {
+    if (this.deleting || this.busy || this.switchingProject || this.startPromise) {
       vscode.window.showInformationMessage(t("Termine ou arrête la tâche avant de changer de projet."));
       return;
     }
@@ -372,7 +373,7 @@ class OvhAgentViewProvider {
   }
 
   async assignProject(message) {
-    if(!this.windowLock)return;
+    if(this.deleting || !this.windowLock)return;
     try {
       const projects=new ProjectStore(this.store.dataRoot);
       const source=projects.catalog().find(p=>p.id===message.source) || (message.source===this.store.session?projects.identity(this.workspace):undefined);
@@ -397,6 +398,7 @@ class OvhAgentViewProvider {
   }
 
   async updateProject(message) {
+    if(this.deleting)return;
     try {
       const project=new ProjectStore(this.store.dataRoot).update(message.project,message);
       if (project.id !== message.project) {
@@ -414,7 +416,7 @@ class OvhAgentViewProvider {
   }
 
   organizeArchives(message) {
-    if(!this.windowLock || !validMessage(message))return;
+    if(this.deleting || !this.windowLock || !validMessage(message))return;
     try {
       const projects=new ProjectStore(this.store.dataRoot);
       if(message.type==='moveProject')projects.reorder(message.source,message.target,message.position);
@@ -589,6 +591,50 @@ class OvhAgentViewProvider {
     return this.archivesPromise;
   }
 
+  async stopArchiveWriter() {
+    const agent=this.agent;
+    if(!agent)return;
+    await new Promise((resolve,reject)=>{
+      if(agent.exitCode!==null || agent.signalCode!==null)return resolve();
+      const exited=()=>{clearTimeout(timer);resolve();};
+      const timer=setTimeout(()=>{agent.removeListener('exit',exited);reject(new Error(t('L’agent ne s’est pas arrêté ; suppression annulée.')));},5000);
+      agent.once('exit',exited);agent.kill('SIGTERM');
+    });
+    if(this.agent===agent)this.agent=undefined;
+    this.busy=false;
+  }
+
+  async deleteProject(project) {
+    if(this.deleting || !this.windowLock || !validMessage({type:'deleteProjectConfirmed',project}))return;
+    if(this.switchingProject || this.clearingConversation) {
+      this.post({type:'project_delete_failed',project,text:t('Attends la fin du changement de conversation avant de supprimer ce dossier.')});return;
+    }
+    this.deleting=true;
+    this.post({type:'project_delete_pending',project});
+    try {
+      if(this.startPromise)await this.startPromise;
+      this.archiveReader ||= new ArchiveReader();
+      const writer=this.agent?{source:this.store.session,id:this.store.current()}:undefined;
+      const request={workspace:this.workspace,dataRoot:this.store.dataRoot,project,writer};
+      const plan=await this.archiveReader.read({...request,action:'prepareProjectDeletion'});
+      if(writer && plan.targets.some(item=>item.source===writer.source && item.id===writer.id))await this.stopArchiveWriter();
+      const result=await this.archiveReader.read({...request,action:'deleteProject',expected:plan.targets});
+      for(const item of result.deleted) {
+        const active=item.source===this.store.session;
+        this.post({type:'archive_deleted',...item,active,was_current:active && item.was_current});
+      }
+      if(result.error)throw new Error(result.error);
+      if(this.newConversationProject===project) {
+        this.newConversationProject=undefined;
+        await this.state?.update('ovhAgent.newConversationProject',undefined);
+      }
+      if(this.pendingConversationProject===project)this.pendingConversationProject=undefined;
+      this.post({type:'project_deleted',project});
+    } catch(error) {
+      this.post({type:'project_delete_failed',project,text:t('Suppression impossible : {0}',i18n.message(error.message))});
+    } finally {this.deleting=false;this.showArchives();}
+  }
+
   async deleteArchive(id, source = this.store.session) {
     if (this.deleting) return;
     this.deleting = true;
@@ -604,14 +650,7 @@ class OvhAgentViewProvider {
         if (archive.session !== source) throw new Error(t("Projet introuvable."));
       }
       if (active && archive.current() === id && this.agent) {
-        const agent = this.agent;
-        await new Promise((resolve, reject) => {
-          if (agent.exitCode !== null || agent.signalCode !== null) return resolve();
-          const timer = setTimeout(() => reject(new Error(t("L’agent ne s’est pas arrêté ; suppression annulée."))), 5000);
-          agent.once("exit", () => { clearTimeout(timer); resolve(); });
-          agent.kill("SIGTERM");
-        });
-        this.agent = undefined;
+        await this.stopArchiveWriter();
       }
       const wasCurrent = archive.remove(String(id || "")) && active;
       this.post({ type: "archive_deleted", id, source, active, was_current: wasCurrent });
@@ -862,7 +901,7 @@ class OvhAgentViewProvider {
   }
 
   async clearConversation() {
-    if (this.clearingConversation) return;
+    if (this.deleting || this.clearingConversation) return;
     this.clearingConversation = true;
     let sent = false;
     try {

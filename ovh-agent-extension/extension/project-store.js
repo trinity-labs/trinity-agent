@@ -208,6 +208,22 @@ class ProjectStore {
       return entries;
     } catch(error) {if(error.code==='ENOENT')return {};throw error;}
   }
+  remove(id) {
+    const entries=this.entries(),entry=entries.find(item=>item.id===id);
+    if(!entry || !/^[a-f0-9]{20}$/.test(id))throw new Error('Projet introuvable.');
+    // Only unregister the history folder. Its workspace and manual notes are
+    // user files, not conversation archives.
+    const assignments=this.assignments();
+    for(const key of Object.keys(assignments))if(assignments[key]===id)delete assignments[key];
+    const activeFile=path.join(this.dataRoot,'active-projects.json');
+    let active={};
+    try {active=JSON.parse(readStorageFile(activeFile,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+    if(!active || typeof active!=='object' || Array.isArray(active))throw new Error('Sélection de projet invalide.');
+    for(const key of Object.keys(active))if(active[key]===entry.root)delete active[key];
+    writeAtomic(path.join(this.dataRoot,'project-conversations.json'),JSON.stringify(assignments,null,2));
+    if(fs.existsSync(activeFile))writeAtomic(activeFile,JSON.stringify(active,null,2));
+    writeAtomic(this.file,JSON.stringify(entries.filter(item=>item.id!==id),null,2));
+  }
   assignedProject(source, conversation, assignments=this.assignments()) {
     const key=source.id+':'+conversation.id;
     if(Object.hasOwn(assignments,key))return assignments[key];

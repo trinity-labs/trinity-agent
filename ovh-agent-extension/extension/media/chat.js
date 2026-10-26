@@ -355,6 +355,8 @@ let hasModelPreference = saved?.hasModelPreference ?? Boolean(saved?.model);
 let backendReady = false;
 let creatingConversation = false;
 let selectedArchiveForDeletion = null;
+let selectedProjectDeletion = null;
+const pendingProjectDeletions = new Set();
 let snapshotTimer;
 let viewStateTimer;
 let restoringArchive = false;
@@ -978,6 +980,7 @@ const pendingProjectUpdates=new Map();
 let projectUpdateSequence=0;
 
 function updateProject(project, patch) {
+  if(pendingProjectDeletions.has(project))return;
   const message={type:'updateProject',project,...patch,requestId:`project-${++projectUpdateSequence}`};
   pendingProjectUpdates.set(project,message);
   if(patch.root!==undefined) {
@@ -1013,7 +1016,7 @@ function projectUpdateResult(data) {
   const pending=pendingProjectUpdates.get(id);
   if(!pending || pending.requestId!==data.requestId)return;
   pendingProjectUpdates.delete(id);
-  group?.querySelectorAll('.project-editor input,.project-editor button').forEach(control=>{control.disabled=false;});
+  group?.querySelectorAll('.project-editor input,.project-editor button').forEach(control=>{control.disabled=pendingProjectDeletions.has(id);});
   if(success && group) {
     group.dataset.projectId=data.project.id;
     group.querySelector('.project-folder-name').textContent=data.project.name;
@@ -1027,6 +1030,15 @@ function projectUpdateResult(data) {
 function archiveOrganizationNotice(text, severity = 'info') {
   const notice=document.getElementById('archive-notice');
   paintNotice(notice,text,severity);
+}
+
+function projectDeletionPending(project, pending) {
+  if(pending)pendingProjectDeletions.add(project);else pendingProjectDeletions.delete(project);
+  const group=[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===project);
+  if(!group)return;
+  group.classList.toggle('deleting',pending);
+  if(pending)group.setAttribute('aria-busy','true');else group.removeAttribute('aria-busy');
+  group.querySelectorAll('button,input').forEach(control=>{control.disabled=pending;});
 }
 function clearArchiveDropTargets() {
   archiveList.querySelectorAll('.archive-drop-target,.project-drop-before,.project-drop-after').forEach(element=>
@@ -1223,7 +1235,16 @@ function renderArchives(items, projects) {
     const pathInput=document.createElement('input');pathInput.type='text';pathInput.className='project-path-input';pathInput.value=project.root;pathInput.required=true;pathInput.maxLength=4096;pathInput.spellcheck=false;pathLabel.append(pathInput);
     const save=document.createElement('button');save.type='submit';save.textContent=t('Enregistrer');
     const cancel=document.createElement('button');cancel.type='button';cancel.textContent=t('Fermer');cancel.onclick=()=>closeProjectEditor(group);
-    editor.append(titleLabel,colorLabel,pathLabel,save,cancel);
+    const del=document.createElement('button');del.type='button';del.className='project-delete';del.textContent=t('Supprimer');
+    del.addEventListener('click',()=>{
+      if(pendingProjectDeletions.has(group.dataset.projectId))return;
+      selectedArchiveForDeletion=null;
+      selectedProjectDeletion=group.dataset.projectId;
+      document.getElementById('delete-title').textContent=t('Supprimer le projet « {0} » ?',group.dataset.projectName);
+      document.getElementById('delete-description').textContent=t('Ce dossier et toutes les conversations qu’il contient seront supprimés définitivement. Les fichiers du projet seront conservés. Cette action est irréversible.');
+      document.getElementById('delete-dialog').showModal();document.getElementById('delete-cancel').focus();
+    });
+    editor.append(titleLabel,colorLabel,pathLabel,save,cancel,del);
     edit.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();group.open=true;updateCaret();if(!editor.hidden)closeProjectEditor(group);else {editor.hidden=false;titleInput.focus();}});
     editor.addEventListener('submit',event=>{event.preventDefault();if(!titleInput.value.trim() || !pathInput.value.trim() || !hexInput.reportValidity())return;updateProject(project.id,{name:titleInput.value.trim(),color:colorInput.value,...(pathInput.value.trim()!==project.root?{root:pathInput.value.trim()}:{})});});
     contents.append(editor);
@@ -1245,6 +1266,7 @@ function renderArchives(items, projects) {
     }
     renderArchiveRows(project.items,contents,project);
     group.append(summary,contents);archiveList.append(group);
+    if(pendingProjectDeletions.has(project.id))projectDeletionPending(project.id,true);
   }
   archiveList.append(ungrouped);
   restoreOrganizationFocus();
@@ -1318,6 +1340,8 @@ function renderArchiveRows(items, container, project) {
     remove.addEventListener("click", () => {
       if (busy) { setStatus(t("Attends la fin de la réponse avant de supprimer une conversation."), "warning"); return; }
       selectedArchiveForDeletion = {id:item.id,source};
+      selectedProjectDeletion = null;
+      document.getElementById('delete-description').textContent=t('Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.');
       document.getElementById("delete-title").textContent = displayTitle;
       document.getElementById("delete-dialog").showModal();
       document.getElementById("delete-cancel").focus();
@@ -2707,6 +2731,22 @@ window.addEventListener("message", ({ data }) => {
     if (!pendingSubmission) setBusy(false, t("Tâche interrompue - clique sur ▶ pour la reprendre."));
     vscode.postMessage({type: "listArchives"});
   }
+  if (data.type === 'project_delete_pending') {
+    projectDeletionPending(data.project,true);
+    archiveOrganizationNotice(t('Suppression du dossier et de ses conversations…'));
+  }
+  if (data.type === 'project_delete_failed') {
+    projectDeletionPending(data.project,false);
+    archiveOrganizationNotice(OvhI18n.message(data.text || t('La suppression a échoué.')),'error');
+  }
+  if (data.type === 'project_deleted') {
+    pendingProjectDeletions.delete(data.project);pendingProjectUpdates.delete(data.project);
+    deferredArchives=null;
+    const group=[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===data.project);
+    group?.remove();
+    archiveOrganizationNotice(t('Dossier et conversations supprimés définitivement.'),'success');
+    document.getElementById('project-picker').focus();
+  }
   if (data.type === "archive_delete_pending") {
     paintNotice(document.getElementById("archive-notice"),t("Suppression définitive en cours…"),"warning");
     const row = Array.from(archiveList.querySelectorAll('.archive-item')).find(item => item.dataset.archiveId === data.id && (data.source ? item.dataset.archiveProject === data.source : item.dataset.archiveActive !== 'false'));
@@ -2911,12 +2951,19 @@ liveBalance.addEventListener("click", () => vscode.postMessage({type: "billing"}
 // Explicit confirmation in this webview, independent of native dialog return values.
 document.getElementById("delete-cancel").addEventListener("click", () => {
   selectedArchiveForDeletion = null;
+  selectedProjectDeletion = null;
   document.getElementById("delete-dialog").close();
 });
-document.getElementById("delete-dialog").addEventListener("cancel", () => { selectedArchiveForDeletion = null; });
+document.getElementById("delete-dialog").addEventListener("cancel", () => { selectedArchiveForDeletion = null; selectedProjectDeletion = null; });
 document.getElementById("delete-confirm").addEventListener("click", () => {
-  const selection = selectedArchiveForDeletion;
+  const archiveSelection = selectedArchiveForDeletion;
+  const projectSelection = selectedProjectDeletion;
   selectedArchiveForDeletion = null;
+  selectedProjectDeletion = null;
   document.getElementById("delete-dialog").close();
-  if (selection) vscode.postMessage({type: "deleteArchiveConfirmed", ...selection});
+  if (archiveSelection) vscode.postMessage({type: "deleteArchiveConfirmed", ...archiveSelection});
+  else if (projectSelection && !pendingProjectDeletions.has(projectSelection)) {
+    projectDeletionPending(projectSelection,true);
+    vscode.postMessage({type: "deleteProjectConfirmed", project: projectSelection});
+  }
 });

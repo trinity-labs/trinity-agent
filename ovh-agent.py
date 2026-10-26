@@ -3224,12 +3224,12 @@ async def manage_model_context(ctx: RunContext[RunDependencies], messages: list)
     # Current user inputs and the latest indivisible round may exceed the working
     # history target; preserve them rather than imposing a new prompt limit.
     unmasked_tokens = estimate_tokens(messages)
-    messages = mask_old_observations(messages, memory)
     pinned = [replace(m, parts=[p for p in m.parts if isinstance(p, (UserPromptPart, SystemPromptPart))])
               for m in messages if any(isinstance(p, (UserPromptPart, SystemPromptPart)) for p in m.parts)]
     units = split_units(messages)
     necessary = estimate_tokens(pinned) + estimate_tokens(units[-1] if units else [])
     history_budget = min(budget, max(32768, math.ceil((necessary + 2048) / .65)))
+    messages = mask_old_observations(messages, memory, history_budget)
     managed, stats = await compact_context(messages, memory, history_budget, summarize, limits=limits)
     stats['before_tokens'] = unmasked_tokens
     stats['provider_budget_tokens'] = budget

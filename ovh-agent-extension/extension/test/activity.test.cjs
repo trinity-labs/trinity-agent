@@ -661,3 +661,48 @@ test('action blocks collapse inside, outside and with the bottom control, preser
     activity.querySelector('summary').click();assert.equal(activity.open,true);
   } finally {dom.window.close();}
 });
+
+test('folder deletion requires confirmation, supports cancel/Escape and restores the conversation warning',()=>{
+ const {dom,document,emit,sent}=browser();
+ try {
+  const project={id:'a'.repeat(20),name:'Dossier <test>',root:'/demo',items:[{id:'saved',title:'Conversation',archive_project:'b'.repeat(20)}]};
+  emit({type:'archives',projects:[project],items:[]});document.querySelector('.project-edit').click();
+  const dialog=document.getElementById('delete-dialog');dialog.showModal=()=>dialog.open=true;dialog.close=()=>dialog.open=false;
+  const remove=document.querySelector('.project-editor .project-delete'),confirm=document.getElementById('delete-confirm');
+  assert.equal(remove.textContent,'Supprimer');sent.length=0;remove.click();
+  assert(dialog.open);assert.match(document.getElementById('delete-description').textContent,/toutes les conversations/);
+  assert.match(document.getElementById('delete-description').textContent,/fichiers du projet seront conservés/);
+  assert.equal(document.activeElement.id,'delete-cancel');assert.equal(dialog.getAttribute('aria-describedby'),'delete-description');
+  assert(document.getElementById('delete-title').textContent.includes('<test>'));assert(!document.getElementById('delete-title').querySelector('test'));
+  document.getElementById('delete-cancel').click();confirm.click();assert.equal(sent.length,0);
+  remove.click();dialog.dispatchEvent(new dom.window.Event('cancel'));confirm.click();assert.equal(sent.length,0);
+  document.querySelector('.archive-delete').click();
+  assert.match(document.getElementById('delete-description').textContent,/cette conversation/);
+  assert(!document.getElementById('delete-description').textContent.includes('toutes les conversations'));
+  confirm.click();assert.equal(sent.at(-1).type,'deleteArchiveConfirmed');
+ } finally {dom.window.close();}
+});
+test('folder deletion handles pending, failure, duplicate clicks, renamed IDs and stale history refreshes',()=>{
+ const {dom,document,emit,sent}=browser();
+ try {
+  const project={id:'a'.repeat(20),name:'Test',root:'/old',items:[]};
+  emit({type:'archives',projects:[project],items:[]});document.querySelector('.project-edit').click();
+  const dialog=document.getElementById('delete-dialog');dialog.showModal=()=>{};dialog.close=()=>{};
+  const editor=document.querySelector('.project-editor');editor.querySelector('.project-path-input').value='/new';
+  editor.dispatchEvent(new dom.window.Event('submit',{cancelable:true}));const save=sent.at(-1);
+  const updated={...project,id:'b'.repeat(20),root:'/new'};
+  emit({type:'project_updated',previousId:project.id,project:updated,requestId:save.requestId});
+  document.querySelector('.project-edit').click();document.querySelector('.project-delete').click();
+  const confirm=document.getElementById('delete-confirm');confirm.click();confirm.click();
+  assert.equal(sent.filter(m=>m.type==='deleteProjectConfirmed').length,1);assert.equal(sent.at(-1).project,updated.id);
+  assert(document.querySelector('.project-delete').disabled);assert.equal(document.querySelector('.archive-project').getAttribute('aria-busy'),'true');
+  emit({type:'project_delete_failed',project:updated.id,text:'Disque indisponible'});
+  assert(!document.querySelector('.project-delete').disabled);assert.match(document.querySelector('#archive-notice').textContent,/Disque indisponible/);
+  document.querySelector('.project-delete').click();confirm.click();
+  emit({type:'archives',projects:[updated],items:[]});
+  emit({type:'project_deleted',project:updated.id});
+  assert.equal(document.querySelector('.archive-project'),null);
+  dom.window.flushDeferredArchives();assert.equal(document.querySelector('.archive-project'),null);
+  assert.match(document.querySelector('#archive-notice').textContent,/supprimés définitivement/);
+ } finally {dom.window.close();}
+});

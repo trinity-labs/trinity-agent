@@ -12,16 +12,23 @@ body {
   background: var(--vscode-sideBar-background);
   font: 13px/1.5 var(--vscode-font-family);
 }
-button { font: inherit; }
+button { font: inherit; transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease; }
 .questionnaire { display: grid; gap: 12px; margin-top: 14px; }
 .questionnaire fieldset { display: grid; gap: 6px; min-width: 0; padding: 10px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; }
 .questionnaire legend { padding: 0 4px; font-weight: 600; }
 .questionnaire-option { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border-radius: 4px; cursor: pointer; }
-.questionnaire-option:hover { background: var(--vscode-list-hoverBackground); }
+.questionnaire-option:has(input:not(:disabled)):hover { background: var(--vscode-list-hoverBackground); }
 .questionnaire-option span { display: grid; gap: 2px; }
 .questionnaire-option small { color: var(--vscode-descriptionForeground); }
 .questionnaire-custom input[type="text"] { flex: 1; min-width: 0; padding: 5px 7px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); }
 .questionnaire > button { justify-self: start; padding: 6px 12px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 4px; cursor: pointer; }
+.questionnaire > button:hover:not(:disabled),
+.questionnaire > button:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--vscode-button-background) 82%, #000);
+}
+.questionnaire > button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--vscode-button-background) 68%, #000);
+}
 button:focus-visible, textarea:focus-visible, summary:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
@@ -54,7 +61,7 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   background: transparent;
   cursor: pointer;
 }
-#model-picker:hover { color: var(--vscode-foreground); }
+#model-picker:hover:not(:disabled) { color: var(--vscode-foreground); }
 #model-picker span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #model-picker svg {
   width: 13px;
@@ -161,14 +168,13 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   text-align: left;
   cursor: pointer;
 }
-.model-item:hover { border-color: color-mix(in srgb, var(--ovh-primary) 45%, transparent); background: transparent; }
+.model-item:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ovh-primary) 45%, transparent); background: transparent; }
 .model-item.selected {
   border-color: var(--vscode-focusBorder);
   color: var(--ovh-primary-text);
   background: var(--ovh-primary-selected);
 }
 .model-item:disabled { opacity: .68; cursor: default; }
-.model-item:disabled:hover { background: transparent; }
 .model-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .model-title strong { overflow-wrap: anywhere; font-size: 11px; font-weight: 600; }
 .model-title span {
@@ -218,7 +224,7 @@ footer .agent-disclaimer { margin: 6px 0 0; font-size: 8px; line-height: 1.25; }
   border-radius: 6px;
   background: transparent;
 }
-.icon:hover { background: var(--ovh-primary-pastel); }
+.icon:hover:not(:disabled) { background: var(--ovh-primary-pastel); }
 .billing { position: relative; }
 .billing-dot {
   position: absolute;
@@ -438,7 +444,7 @@ main {
   background: transparent;
   cursor: pointer;
 }
-.copy-diff:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
+.copy-diff:hover:not(:disabled) { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
 .diff-scroller {
   /* One shared column keeps short rows painted across the longest scrolled line. */
   display: grid;
@@ -511,9 +517,9 @@ main {
   font-size: 11px;
 }
 .approval-actions .deny { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-.approval-actions .deny:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.approval-actions .deny:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
 .approval-actions .allow { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-.approval-actions .allow:hover { background: var(--vscode-button-hoverBackground); }
+.approval-actions .allow:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
 .approval-actions button:disabled { cursor: default; opacity: .55; }
 .markdown { line-height: 1.58; }
 .markdown.streaming::after {
@@ -682,7 +688,7 @@ footer {
   font: 15px/16px var(--vscode-font-family);
   cursor: pointer;
 }
-.attachment-preview button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.attachment-preview button:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
 textarea {
   display: block;
   width: 100%;
@@ -711,7 +717,7 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
   color: var(--vscode-descriptionForeground);
   font-size: 10px;
 }
-.access:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+.access:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
 .access svg { width: 14px; height: 14px; }
 .access.full { color: #d97706; }
 .round {
@@ -724,11 +730,11 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 }
 .round svg { width: 16px; height: 16px; }
 .attach { color: var(--vscode-descriptionForeground); background: transparent; }
-.attach:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
+.attach:hover:not(:disabled) { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
 .send { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-.send:hover { background: var(--vscode-button-hoverBackground); }
+.send:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
 .stop { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
-.stop:hover { background: var(--vscode-list-hoverBackground); }
+.stop:hover:not(:disabled) { background: var(--vscode-list-hoverBackground); }
 button:disabled { cursor: default; opacity: .45; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 50% { opacity: 0; } }
@@ -769,7 +775,7 @@ button:disabled { cursor: default; opacity: .45; }
   box-shadow: 0 3px 12px #0003; font-size: 12px;
 }
 .selection-quote[hidden] { display: none; }
-.selection-quote:hover { background: var(--vscode-list-hoverBackground); }
+.selection-quote:hover:not(:disabled) { background: var(--vscode-list-hoverBackground); }
 
 #stop svg rect { fill: currentColor; stroke: none; }
 
@@ -802,13 +808,13 @@ header {
 .composer:focus-within { border-color: var(--ovh-primary); }
 .run-spinner { border-top-color: var(--ovh-primary); }
 .selection-quote { border-color: var(--ovh-primary); }
-.selection-quote:hover { color: #fff; background: var(--ovh-primary); }
+.selection-quote:hover:not(:disabled) { color: #fff; background: var(--ovh-primary); }
 body.vscode-dark .brand strong, body.vscode-high-contrast .brand strong,
 body.vscode-dark .back-history {
   color: color-mix(in srgb, var(--ovh-primary) 55%, #fff);
 }
 #live-balance { padding: 0; border: 0; background: transparent; cursor: pointer; }
-#live-balance:hover { text-decoration: underline; }
+#live-balance:hover:not(:disabled) { text-decoration: underline; }
 
 /* Keep the send control independent of injected VS Code theme variables. */
 #send, #send:hover, #send:active, #send:focus-visible {
@@ -835,7 +841,7 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 }
 .archive-item:hover .archive-action,
 .archive-item:has(:focus-visible) .archive-action { visibility: visible; }
-.archive-action:hover, .archive-action:focus-visible {
+.archive-action:hover:not(:disabled), .archive-action:focus-visible {
   color: var(--ovh-primary);
   opacity: 1;
   background: transparent;
@@ -903,6 +909,7 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
   82%, 100% { background-position: -15% 0; }
 }
 @media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
   .message.working .activity-summary-text { color: inherit; background: none; animation: none; }
 }
 @media (forced-colors: active) {
@@ -932,7 +939,7 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 }
 .activity-bottom-chevron .agent-icon { width: 12px; height: 12px; }
 .activity[open] .activity-bottom-chevron { display: flex; opacity: 0.5; }
-.activity-bottom-chevron:hover, .activity-bottom-chevron:focus-visible { opacity: 1; }
+.activity[open] .activity-bottom-chevron:hover:not(:disabled), .activity[open] .activity-bottom-chevron:focus-visible { opacity: 1; }
 .activity[open] .activity-bottom-chevron .agent-icon { transform: rotate(180deg); }
 .message.working > .label { display: none; }
 
@@ -942,11 +949,11 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
   transition: color 120ms ease, background-color 120ms ease;
 }
 .header-actions .icon, .project-edit, .project-caret { color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent); }
-.header-actions .icon:hover, .header-actions .icon:focus-visible,
-.project-edit:hover, .project-edit:focus-visible, .project-caret:hover, .project-caret:focus-visible {
+.header-actions .icon:hover:not(:disabled), .header-actions .icon:focus-visible,
+.project-edit:hover:not(:disabled), .project-edit:focus-visible, .project-caret:hover:not(:disabled), .project-caret:focus-visible {
   color: var(--ovh-primary-text);
 }
-.back-history:hover, .back-history:focus-visible {
+.back-history:hover:not(:disabled), .back-history:focus-visible {
   background: color-mix(in srgb, var(--ovh-primary) 16%, transparent);
 }
 #send {
@@ -961,6 +968,7 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
   background: color-mix(in srgb, var(--ovh-primary) 60%, #000);
 }
 @media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
   .header-actions .icon, .back-history, .project-edit, .project-caret, #send, .delete-dialog-actions button { transition: none; }
 }
 
@@ -1021,7 +1029,7 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 .followup-row { position: relative; cursor: grab; display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 4px; background: color-mix(in srgb, var(--ovh-primary) 8%, transparent); }
 .followup-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .followups button { color: var(--ovh-primary); border: 0; border-radius: 4px; padding: 6px; background: transparent; cursor: pointer; }
-.followups button:hover { background: color-mix(in srgb, var(--ovh-primary) 18%, transparent); }
+.followups button:hover:not(:disabled) { background: color-mix(in srgb, var(--ovh-primary) 18%, transparent); }
 .followups .agent-icon { width: 14px; height: 14px; }
 .verification-status {
   opacity: .5;
@@ -1043,7 +1051,7 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 
 /* Only explicitly selected conversations appear in project folders. */
 .archive-project { margin-bottom: 4px; --project-color: var(--ovh-primary); }
-.archive-item .icon, .archive-item .icon:hover, .archive-item .icon:focus-visible {
+.archive-item .icon, .archive-item .icon:hover:not(:disabled), .archive-item .icon:focus-visible {
   color: var(--project-color, var(--ovh-primary));
   outline-color: var(--project-color, var(--ovh-primary));
 }
@@ -1064,7 +1072,7 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 .archive-project[open] > summary .project-caret .agent-icon { transform: rotate(0); }
 .project-caret, .project-edit { flex-shrink: 0; width: 22px; height: 22px; padding: 4px; box-sizing: border-box; }
 .project-caret svg.agent-icon, .project-edit svg.agent-icon { width: 11px; height: 11px; opacity: .45; }
-.project-caret:hover svg.agent-icon, .project-edit:hover svg.agent-icon,
+.project-caret:hover:not(:disabled) svg.agent-icon, .project-edit:hover:not(:disabled) svg.agent-icon,
 .project-caret:focus-visible svg.agent-icon, .project-edit:focus-visible svg.agent-icon { opacity: .65; }
 .project-conversations {
   --ovh-primary-pastel: color-mix(in srgb, var(--project-color) 7%, var(--vscode-sideBar-background));
@@ -1079,6 +1087,26 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 .project-editor input, .project-editor button { min-height: 28px; border: 1px solid var(--vscode-input-border, #8885); border-radius: 4px; background: var(--vscode-input-background, #222); color: var(--vscode-input-foreground, inherit); padding: 4px 6px; }
 .project-editor input[type=color] { width: 42px; padding: 2px; cursor: pointer; }
 .project-editor button { cursor: pointer; }
+.project-editor button:not(.project-delete):is(:hover, :focus-visible):not(:disabled) {
+  background: var(--ovh-primary-pastel);
+  border-color: var(--ovh-primary);
+}
+.project-editor input[type=color]:is(:hover, :focus-visible):not(:disabled) { border-color: var(--ovh-primary); }
+.questionnaire > button:is(:hover, :focus-visible):not(:disabled) { background: var(--vscode-button-hoverBackground); }
+.questionnaire-option:has(input:disabled) { cursor: default; }
+.project-editor button:disabled { cursor: default; }
+.project-editor button.project-delete {
+  --dialog-button-color: #dc2626;
+  background: var(--dialog-button-color);
+  color: #fff;
+}
+.project-editor button.project-delete:hover:not(:disabled),
+.project-editor button.project-delete:focus-visible {
+  background: color-mix(in srgb, var(--dialog-button-color) 82%, #000);
+}
+.project-editor button.project-delete:active:not(:disabled) {
+  background: color-mix(in srgb, var(--dialog-button-color) 68%, #000);
+}
 
 .project-folder-path { margin: 2px 10px 8px; font-size: 10px; opacity: .5; overflow-wrap: anywhere; }
 
@@ -1112,7 +1140,7 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
 .project-documents:not([open]) > summary > .summary-chevron { transform: rotate(-90deg); }
 .project-documents > summary > .summary-chevron { margin-left: 0; width: 9px; height: 9px; }
 .project-document { display: block; width: 100%; padding: 6px 8px; text-align: left; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
-.project-document:hover, .project-document:focus-visible { background: var(--ovh-primary-pastel); }
+.project-document:hover:not(:disabled), .project-document:focus-visible { background: var(--ovh-primary-pastel); }
 .project-document strong, .project-document span { display: block; }
 .project-document span { font-size: 10px; opacity: .5; overflow-wrap: anywhere; }
 
@@ -1159,10 +1187,10 @@ body.vscode-dark #send:active:not(:disabled), body.vscode-high-contrast #send:ac
 
 /* Drag handles stay neutral in dark themes, independent of folder accents. */
 body.vscode-dark .conversation-drag-handle,
-body.vscode-dark .conversation-drag-handle:hover,
+body.vscode-dark .conversation-drag-handle:hover:not(:disabled),
 body.vscode-dark .conversation-drag-handle:focus-visible,
 body.vscode-high-contrast .conversation-drag-handle,
-body.vscode-high-contrast .conversation-drag-handle:hover,
+body.vscode-high-contrast .conversation-drag-handle:hover:not(:disabled),
 body.vscode-high-contrast .conversation-drag-handle:focus-visible {
   color: var(--vscode-foreground);
   outline-color: var(--vscode-foreground);
@@ -1173,13 +1201,13 @@ body:is(.vscode-dark, .vscode-high-contrast) .archive-item {
   --ovh-icon-accent: color-mix(in srgb, var(--project-color, var(--ovh-primary)) 40%, #fff);
 }
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action,
-body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover,
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover:not(:disabled),
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:focus-visible {
   color: var(--ovh-icon-accent);
   outline-color: var(--ovh-icon-accent);
   opacity: .85;
 }
-body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover,
+body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover:not(:disabled),
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:focus-visible {
   opacity: 1;
 }

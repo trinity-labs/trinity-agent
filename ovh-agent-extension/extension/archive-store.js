@@ -161,7 +161,7 @@ class ArchiveStore {
       } catch { return []; }
     }).sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
   }
-  remove(id) {
+  removal(id) {
     if (!/^[0-9A-Za-z_-]+$/.test(id)) throw new Error(t("Identifiant de conversation invalide."));
     const target=path.join(this.root,id);
     assertStoragePath(target);
@@ -171,9 +171,15 @@ class ArchiveStore {
     const legacy=path.join(this.dataRoot,'sessions',this.session+'.json');
     const messages=path.join(target,'messages.json');
     assertStoragePath(legacy);assertStoragePath(messages);
+    assertStoragePath(path.join(this.root,'current'));
+    assertStoragePath(path.join(this.dataRoot,'memory/projects',this.session));
+    return {target,wasCurrent,legacy,messages};
+  }
+  remove(id) {
+    const {target,wasCurrent,legacy,messages}=this.removal(id);
     if (fs.existsSync(legacy)&&fs.existsSync(messages)&&readStorageFile(legacy).equals(readStorageFile(messages))) fs.unlinkSync(legacy);
-    fs.rmSync(target,{recursive:true,force:false});
     invalidateProjectMemory(this.dataRoot,this.session);
+    fs.rmSync(target,{recursive:true,force:false});
     this.cache.clear(); this.cacheBytes = 0;
     if (fs.existsSync(target)) throw new Error(t("Le dossier existe encore après suppression."));
     if (wasCurrent) fs.unlinkSync(path.join(this.root,'current'));
@@ -261,6 +267,50 @@ if(!isMainThread && workerData?.archiveCatalog) {
       }
       const newest=(a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||''));
       items.sort(newest);for(const project of projects)project.items.sort(newest);
+      if(['prepareProjectDeletion','deleteProject'].includes(request.action)) {
+        const project=groups.get(request.project);
+        if(!project)throw new Error('Projet introuvable.');
+        const targets=project.items.map(item=>({source:item.archive_project,id:item.id}));
+        const signature=items=>JSON.stringify(items.map(item=>item.source+':'+item.id).sort());
+        if(request.action==='deleteProject' && signature(targets)!==signature(request.expected || [])) {
+          throw new Error('Le contenu du dossier a changé. Vérifie les conversations puis confirme à nouveau.');
+        }
+        const archives=new Map([[store.session,store],...projectArchives]);
+        // Validate the entire selection before removing its first archive.
+        // Never resolve deletion from the workspace path supplied by a webview.
+        for(const target of targets) {
+          let archive=archives.get(target.source);
+          if(!archive) {
+            const source=entries.find(entry=>entry.id===target.source);
+            archive=new ArchiveStore(source.root,dataRoot);archives.set(target.source,archive);
+          }
+          const {target:folder}=archive.removal(target.id);
+          let task;
+          try {task=JSON.parse(readStorageFile(path.join(folder,'task-state.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+          if(task?.status==='running' && !(request.writer?.source===target.source && request.writer?.id===target.id)) {
+            throw new Error('Une conversation du dossier est en cours dans un autre agent. Arrête-la avant de supprimer ce dossier.');
+          }
+        }
+        if(request.action==='prepareProjectDeletion') {
+          parentPort.postMessage({id,result:{project:project.id,targets}});return;
+        }
+        const deleted=[];let error;
+        try {
+          for(const target of targets) {
+            const archive=archives.get(target.source),wasCurrent=archive.current()===target.id;
+            try {archive.remove(target.id);}
+            catch(failure) {
+              // An error updating the current pointer after rm must still clear
+              // the deleted conversation in the UI, and remain a reported error.
+              if(!fs.existsSync(path.join(archive.root,target.id)))deleted.push({...target,was_current:wasCurrent});
+              throw failure;
+            }
+            deleted.push({...target,was_current:wasCurrent});
+          }
+          registry.remove(project.id);
+        } catch(failure) {error=String(failure.message);}
+        parentPort.postMessage({id,result:{project:project.id,deleted,...(error?{error}:{})}});return;
+      }
       parentPort.postMessage({id,result:{type:'archives',items,projects,archive_root:store.root}});
     } catch(error) {parentPort.postMessage({id,error:String(error.message)});}
   });

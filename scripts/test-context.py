@@ -362,6 +362,27 @@ print('PASS: contaminated cross-model history removed, exact protocol archived, 
 from ovh_context import mask_old_observations
 with tempfile.TemporaryDirectory() as folder:
     memory = ConversationMemory(Path(folder))
+    history = [ModelRequest(parts=[UserPromptPart('Edit the project form and deletion handler')])]
+    for i in range(8):
+        history += [ModelResponse(parts=[ToolCallPart('read_file', {'path': f'file{i}'}, tool_call_id=f'fit{i}')]),
+                    ModelRequest(parts=[ToolReturnPart('read_file', f'source-{i}\n' + 'code ' * 400, tool_call_id=f'fit{i}')])]
+    exact = ModelMessagesTypeAdapter.dump_json(history)
+    assert estimate_tokens(history) < 32768
+    assert ModelMessagesTypeAdapter.dump_json(mask_old_observations(history, memory)) == exact
+    # Under pressure, archive only as much as necessary, retaining later reads
+    # byte-for-byte and all original results in retrievable local storage.
+    budget = estimate_tokens(history) - 500
+    masked = mask_old_observations(history, memory, budget)
+    validate_protocol(masked)
+    returns = [p for m in masked for p in m.parts if isinstance(p, ToolReturnPart)]
+    assert 'Observation archivée' in returns[0].content
+    assert all(p.content == f'source-{i}\n' + 'code ' * 400 for i, p in enumerate(returns) if i > 0)
+    assert estimate_tokens(masked) <= budget
+    assert any(p.read_text() == 'source-0\n' + 'code ' * 400 for p in memory.docs.glob('*.md'))
+print('PASS: fitting multi-file reads survive tool rounds; masking stops at the working budget')
+
+with tempfile.TemporaryDirectory() as folder:
+    memory = ConversationMemory(Path(folder))
     history = [ModelRequest(parts=[UserPromptPart('font-weight:500, never font-size:500px')])]
     for i in range(40):
         history += [ModelResponse(parts=[ToolCallPart('read_file', {'path':f'file{i}'}, tool_call_id=f'r{i}')]),

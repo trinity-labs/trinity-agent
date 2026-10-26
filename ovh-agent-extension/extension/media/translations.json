@@ -72,10 +72,10 @@
     "es": "no verificados"
   },
   "Aucune modification à restaurer": {
-      "fr": "Aucune modification à restaurer",
-      "en": "No changes to restore",
-      "de": "Keine Änderungen wiederherzustellen",
-      "es": "No hay cambios que restaurar"
+    "fr": "Aucune modification à restaurer",
+    "en": "No changes to restore",
+    "de": "Keine Änderungen wiederherzustellen",
+    "es": "No hay cambios que restaurar"
   },
   "Chemin du projet": {
     "fr": "Chemin du projet",
@@ -2458,5 +2458,47 @@
     "en": "Preparing images…",
     "de": "Bilder werden vorbereitet…",
     "es": "Preparando imágenes…"
+  },
+  "Supprimer le projet « {0} » ?": {
+    "fr": "Supprimer le projet « {0} » ?",
+    "en": "Delete project “{0}”?",
+    "de": "Projekt „{0}“ löschen?",
+    "es": "¿Eliminar el proyecto «{0}»?"
+  },
+  "Ce dossier et toutes les conversations qu’il contient seront supprimés définitivement. Les fichiers du projet seront conservés. Cette action est irréversible.": {
+    "fr": "Ce dossier et toutes les conversations qu’il contient seront supprimés définitivement. Les fichiers du projet seront conservés. Cette action est irréversible.",
+    "en": "This folder and all conversations inside it will be permanently deleted. Project files will be kept. This action cannot be undone.",
+    "de": "Dieser Ordner und alle darin enthaltenen Unterhaltungen werden endgültig gelöscht. Die Projektdateien bleiben erhalten. Diese Aktion kann nicht rückgängig gemacht werden.",
+    "es": "Esta carpeta y todas sus conversaciones se eliminarán permanentemente. Se conservarán los archivos del proyecto. Esta acción no se puede deshacer."
+  },
+  "Suppression du dossier et de ses conversations…": {
+    "fr": "Suppression du dossier et de ses conversations…",
+    "en": "Deleting the folder and its conversations…",
+    "de": "Ordner und Unterhaltungen werden gelöscht…",
+    "es": "Eliminando la carpeta y sus conversaciones…"
+  },
+  "Dossier et conversations supprimés définitivement.": {
+    "fr": "Dossier et conversations supprimés définitivement.",
+    "en": "Folder and conversations permanently deleted.",
+    "de": "Ordner und Unterhaltungen endgültig gelöscht.",
+    "es": "Carpeta y conversaciones eliminadas permanentemente."
+  },
+  "Le contenu du dossier a changé. Vérifie les conversations puis confirme à nouveau.": {
+    "fr": "Le contenu du dossier a changé. Vérifie les conversations puis confirme à nouveau.",
+    "en": "The folder contents changed. Review the conversations and confirm again.",
+    "de": "Der Ordnerinhalt hat sich geändert. Prüfe die Unterhaltungen und bestätige erneut.",
+    "es": "El contenido de la carpeta ha cambiado. Revisa las conversaciones y confirma de nuevo."
+  },
+  "Une conversation du dossier est en cours dans un autre agent. Arrête-la avant de supprimer ce dossier.": {
+    "fr": "Une conversation du dossier est en cours dans un autre agent. Arrête-la avant de supprimer ce dossier.",
+    "en": "A conversation in this folder is running in another agent. Stop it before deleting this folder.",
+    "de": "Eine Unterhaltung in diesem Ordner läuft in einem anderen Agenten. Halte sie vor dem Löschen an.",
+    "es": "Una conversación de esta carpeta está en curso en otro agente. Detenla antes de eliminar la carpeta."
+  },
+  "Attends la fin du changement de conversation avant de supprimer ce dossier.": {
+    "fr": "Attends la fin du changement de conversation avant de supprimer ce dossier.",
+    "en": "Wait for the conversation switch to finish before deleting this folder.",
+    "de": "Warte, bis der Wechsel der Unterhaltung abgeschlossen ist, bevor du diesen Ordner löschst.",
+    "es": "Espera a que termine el cambio de conversación antes de eliminar esta carpeta."
   }
 }

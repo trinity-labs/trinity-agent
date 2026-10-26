@@ -104,12 +104,16 @@ def bound_tool_outputs(messages, memory, limit=None):
     return bounded
 
 
-def mask_old_observations(messages, memory):
-    """Keep recent evidence verbatim; archive older verbose observations locally.
+def mask_old_observations(messages, memory, budget=32768):
+    """Archive the oldest verbose observations only under working-budget pressure.
 
-    This runs even below the model window. User/system instructions, tool IDs,
+    Keep source reads available while they fit: masking every fourth tool round
+    made multi-file tasks repeatedly read the same files. Instructions, tool IDs,
     arguments, retries and the newest four protocol units remain untouched.
     """
+    remaining = estimate_tokens(messages)
+    if remaining <= budget:
+        return messages
     units = split_units(messages)
     if len(units) <= 4:
         return messages
@@ -124,11 +128,13 @@ def mask_old_observations(messages, memory):
                 if isinstance(part, (ToolReturnPart, TextPart)):
                     content = part.content
                     text = content if isinstance(content, str) else json.dumps(content, default=str, ensure_ascii=False)
-                    if len(text) > 1024:
+                    if remaining > budget and len(text) > 1024:
                         reference = memory.put(text)
-                        part = replace(part, content=(text[:160] +
+                        shortened = (text[:160] +
                             f'\n[Observation archivée : read_memory("{reference}"). '
-                            'Extraits historiques, pas une nouvelle vérification.]\n' + text[-160:]))
+                            'Extraits historiques, pas une nouvelle vérification.]\n' + text[-160:])
+                        remaining -= text_tokens(text) - text_tokens(shortened)
+                        part = replace(part, content=shortened)
                 parts.append(part)
             result.append(replace(message, parts=parts))
     return result
