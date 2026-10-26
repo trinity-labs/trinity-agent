@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.70
+
+- Recognize affirmative edit requests after a comma while preserving global restrictions and scoped prohibitions.
+- Preserve verification phase markers and exclude completed pre-edit baseline failures from native file-tool outcomes, while retaining post-edit, incomplete-check and actual write failures.
+
 ## 1.17.69
 
 - Close abandoned tool calls with native history repair before a new user turn, preserving evidence without replaying earlier effects.

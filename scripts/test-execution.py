@@ -61,6 +61,50 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(calls, [("app.py", 3)])
         self.assertEqual(self.operations()[-1]["status"], "succeeded")
 
+    def test_native_file_outcome_distinguishes_baseline_from_write_failure(self):
+        cases = [
+            ('before', True, True, True, 'success'),
+            ('after', True, True, True, 'failed'),
+            ('before', False, True, True, 'failed'),
+            ('before', True, False, True, 'failed'),
+            ('before', True, True, False, 'failed'),
+        ]
+        for number, (phase, completed, write, edit_success, expected) in enumerate(cases):
+            with self.subTest(phase=phase, completed=completed, write=write, edit_success=edit_success):
+                target = self.workspace / f'case-{number}.txt'
+                target.write_text('before')
+                engine = WorkflowController(self.workspace, self.root / f'nested-{number}')
+                engine.focus('Apply the requested edit and verify it.')
+                edit_id, check_id = f'{number:032x}', f'{number + 20:032x}'
+                def edit_file(path: str, old_text: str, new_text: str) -> str:
+                    engine.observe_event({'type': 'tool_start', 'id': edit_id, 'tool': 'edit'})
+                    engine.observe_event({'type': 'verification_status', 'status': 'running', 'phase': phase, 'check': 'regression'})
+                    engine.observe_event({'type': 'tool_start', 'id': check_id, 'tool': 'command'})
+                    engine.observe_event({'type': 'tool_end', 'id': check_id, 'success': False})
+                    if completed:
+                        engine.observe_event({'type': 'verification_check', 'phase': phase, 'check': 'regression', 'passed': False, 'exit_code': 1})
+                    if write:
+                        target.write_text(target.read_text().replace(old_text, new_text))
+                    engine.observe_event({'type': 'tool_end', 'id': edit_id, 'success': edit_success})
+                    return 'Fichier modifié.'
+                def model(messages, info):
+                    returned = [part for message in messages for part in message.parts if isinstance(part, ToolReturnPart)]
+                    if not returned:
+                        return ModelResponse(parts=[ToolCallPart('edit_file', {'path': target.name, 'old_text': 'before', 'new_text': 'after'})])
+                    self.assertEqual(returned[-1].outcome, expected)
+                    return ModelResponse(parts=[TextPart('Observed tool outcome.')])
+                Agent(FunctionModel(model), deps_type=RunDependencies, tools=[Tool(edit_file)],
+                      capabilities=[ExecutionCapability(ContextVar('nested_check', default=None))]).run_sync(
+                          'Apply the edit.', deps=RunDependencies(engine=engine))
+                operation = engine.journal.snapshot()['operations'][-1]
+                self.assertEqual(target.read_text(), 'after' if write else 'before')
+                if expected == 'success':
+                    self.assertEqual(operation['execution_status'], 'succeeded')
+                    self.assertEqual(operation['verification_outcome'], 'applied')
+                    self.assertEqual(operation['failure_category'], 'none')
+                    self.assertEqual(engine.progress, 1)
+
+
     def test_read_file_contents_are_opaque_even_when_they_look_like_errors(self):
         for content in ('timeout', '{"status":"failed"}', 'Erreur: deliberately documented example', 'exit=1\nexample'):
             with self.subTest(content=content):

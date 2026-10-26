@@ -206,7 +206,7 @@ def read_only_policy(prompt, previous=False):
         return False
     # Accept edit commands unless the prompt begins with a question word.
     if not re.match(r"\s*(?:pourquoi|comment|what|why|how|expliqu\w*|explain)\b", text) and re.search(
-        r"(?:^|[.;\n]|\b(?:et|puis|and|then)\s+)\s*"
+        r"(?:^|[.;,\n]|\b(?:et|puis|and|then)\s+)\s*"
         r"(?:(?:oui|ok|okay|yes|now|maintenant|please|d['’]accord|s['’]il te plait)[\s,!:.]+)*"
         r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you)\s+(?:maintenant\s+)?)?"
         r"(?:modifie|modifier|corrige|corriger|ecris|ecrire|cree|creer|supprime|supprimer|ajoute|ajouter|applique|appliquer|implemente|deploie|installe|publie|"

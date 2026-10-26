@@ -232,6 +232,8 @@ class WorkflowController:
         rows = self.events.get()
         if rows is not None and event.get('type') in {'tool_start', 'tool_end', 'tool_error'}:
             rows.append(dict(event))
+        elif rows is not None and event.get('type') in {'verification_status', 'verification_check'}:
+            rows.append({key: event.get(key) for key in ('type', 'status', 'phase', 'check')})
 
     @staticmethod
     def _file_content(path):
@@ -398,7 +400,21 @@ class WorkflowController:
 
     @staticmethod
     def _outcome(name, result, events):
-        ended = [row for row in events if row.get('type') == 'tool_end']
+        # A completed baseline check describes the state before the write.
+        # Its nested command failures are not failures of the file operation.
+        baseline_start = None
+        baseline_events = set()
+        if name in FILE_TOOLS:
+            for index, row in enumerate(events):
+                if row.get('type') == 'verification_status' and row.get('status') == 'running':
+                    baseline_start = (index, row.get('check')) if row.get('phase') == 'before' else None
+                elif row.get('type') == 'verification_check':
+                    if (baseline_start is not None and row.get('phase') == 'before'
+                            and row.get('check') == baseline_start[1]):
+                        baseline_events.update(range(baseline_start[0], index))
+                    baseline_start = None
+        ended = [row for index, row in enumerate(events)
+                 if row.get('type') == 'tool_end' and index not in baseline_events]
         explicit_failure = any(row.get('success') is False for row in ended) or any(row.get('type') == 'tool_error' for row in events)
         text = str(result)
         # Only parse the command protocol prefix, never arbitrary source/file

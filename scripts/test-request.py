@@ -125,6 +125,28 @@ class Preparation(unittest.TestCase):
                     self.assertFalse(r.read_only_policy(prompt, previous))
                     self.assertEqual(r.analyze_request(prompt).intent, 'edit')
 
+    def test_comma_separated_edit_requests_keep_scoped_restrictions(self):
+        network_prompt = (
+            'Le client configuré dans client.conf ne rejoint pas notre service. '
+            'Audite les écoutes, le fichier client.conf et le vrai endpoint HTTP du laboratoire. '
+            'Identifie la cause avec des preuves, corrige client.conf et vérifie la connexion au bon port. '
+            "Ne désactive pas de pare-feu, ne modifie pas service.json et n'utilise pas Internet. "
+            'Termine avec un objet JSON contenant cause, old_port, new_port et verified.')
+        for prompt in [network_prompt,
+                       'Analyse la panne, corrige client.conf. Ne modifie pas service.json.',
+                       'Inspect the failure, fix client.conf. Do not modify service.json.']:
+            for previous in (False, True):
+                with self.subTest(prompt=prompt, previous=previous):
+                    self.assertFalse(r.read_only_policy(prompt, previous))
+                    self.assertEqual(r.analyze_request(prompt).intent, 'edit')
+        self.assertFalse(r.analyze_request(network_prompt).web_allowed)
+        for prompt in [network_prompt + ' Lecture seule.',
+                       'Analyse la panne, corrige client.conf. Ne modifie pas les fichiers.',
+                       'Explain the failure, fix client.conf. Do not modify files.']:
+            for previous in (False, True):
+                with self.subTest(prompt=prompt, previous=previous):
+                    self.assertTrue(r.read_only_policy(prompt, previous))
+
     def test_edit_mentions_and_global_refusals_do_not_grant_write_access(self):
         for prompt in [
             'Comment corriger app.py sans modifier les tests ?',
