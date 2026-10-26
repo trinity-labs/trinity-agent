@@ -24,6 +24,47 @@ class ProcessTests(unittest.TestCase):
     def run_python(self, source, **kwargs):
         return runner.run_process([sys.executable, '-c', source], self.root, **kwargs)
 
+    def test_preflight_invalid_shell_cannot_execute_earlier_commands(self):
+        command = "touch effect; echo 'unterminated"
+        self.assertIn('Syntaxe shell invalide', runner.command_preflight(command, self.root))
+        self.assertFalse((self.root/'effect').exists())
+        command = "printf '%s' \"$(touch effect)\" > redirected"
+        self.assertIsNone(runner.command_preflight(command, self.root))
+        self.assertFalse((self.root/'effect').exists())
+        self.assertFalse((self.root/'redirected').exists())
+
+    def test_preflight_missing_heredoc_cli_keeps_payload_literal(self):
+        command = "missing_fixture_apply_patch <<'PATCH'\n$(touch effect)\nPATCH\n"
+        self.assertIn('Exécutable absent', runner.command_preflight(command, self.root))
+        self.assertFalse((self.root/'effect').exists())
+        script = self.root/'apply_patch'
+        script.write_text('#!/bin/sh\ncat\n'); script.chmod(0o700)
+        valid = command.replace('missing_fixture_apply_patch', './apply_patch')
+        self.assertIsNone(runner.command_preflight(valid, self.root))
+        tools = self.root/'.agent-tools/npm/node_modules/.bin'
+        tools.mkdir(parents=True)
+        (tools/'fixture_patch').symlink_to(script)
+        child = self.root/'child'; child.mkdir()
+        installed = command.replace('missing_fixture_apply_patch', 'fixture_patch')
+        self.assertIsNone(runner.command_preflight(installed, child, self.root))
+        result = runner.run_process(runner.command_argv(installed), child, workspace=self.root)
+        self.assertTrue(result['passed'], result)
+        self.assertEqual(result['output'], '$(touch effect)\n')
+        # A genuine shell fallback is not a nonexistent single-tool invocation.
+        self.assertIsNone(runner.command_preflight('missing_fixture_executable || true', self.root))
+
+    def test_preflight_cargo_requires_manifest_but_preserves_explicit_targets(self):
+        with patch.object(runner.shutil, 'which', return_value='/usr/bin/cargo'):
+            self.assertIn('Cargo.toml absent', runner.command_preflight('cargo test --quiet', self.root))
+            self.assertIsNone(runner.command_preflight('cargo test --manifest-path /tmp/project/Cargo.toml', self.root))
+            self.assertIsNone(runner.command_preflight('cargo --config custom test', self.root))
+            self.assertIsNone(runner.command_preflight('cargo +nightly test', self.root))
+            (self.root/'Cargo.toml').write_text('[package]\nname="fixture"')
+            subdir=self.root/'src'; subdir.mkdir()
+            self.assertIsNone(runner.command_preflight('cargo test --quiet', subdir))
+        with patch.object(runner.shutil, 'which', return_value='/custom/bin/cargo'):
+            self.assertIsNone(runner.command_preflight('cargo test', self.root/'other'))
+
     def test_literal_script_start_failure_and_success_after_chmod(self):
         script = self.root / 'task with spaces.sh'
         marker = self.root / 'executed'

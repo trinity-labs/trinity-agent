@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.17.76
+
+- Une recherche documentaire interrompue ne relance plus un parcours illimité des montages ; les chemins complets déjà observés sont conservés.
+
+- Logos de la liste des extensions de code-server uniformisés à 36 px, centrés dans leur conteneur flex et affichés avec une opacité de 0,66 par le branding du déploiement.
+- Les sondes HTTP locales strictement reconnues restent des diagnostics même si la connexion est refusée ; les commandes avec effets potentiels conservent leur journal de mutation.
+
+- Vérification avant lancement des commandes shell mal formées, outils absents appelés par heredoc et commandes Cargo sans manifeste : le journal conserve une preuve de non-exécution et permet la correction de l’appel.
+- Les refus avant lancement ne sont plus comptés comme des commandes exécutées au résultat inconnu. Les opérations aux effets incertains conservent leur blocage et indiquent l’outil de réconciliation disponible.
+- Le point d’avancement requis est indiqué au modèle avant l’appel d’outil, sans masquer les outils ni forcer `tool_choice`. Le rappel est retiré dès qu’il est satisfait.
+
 ## 1.17.75
 
 - Require visible progress before tool work and at work checkpoints, respecting explicit silence requests. Keep long command status visible without accumulating notices.

@@ -58,13 +58,28 @@ class ExecutionTests(unittest.TestCase):
             self.assertTrue(result['passed'], result)
             self.assertEqual((self.workspace/'installed').read_text(), 'ran')
             self.assertFalse(restarted.final_status()['incomplete'])
+            self.assertEqual(restarted.final_status()['command_status'], 'passed')
             self.assertFalse(restarted.journal.snapshot()['unresolved_mutations'])
+            for bad in ("touch forbidden; echo 'unterminated",
+                        "missing_fixture_apply_patch <<'PATCH'\ncontent\nPATCH\n",
+                        'missing_fixture_recover operation-id'):
+                rejected = json.loads(restarted.invoke(backend.run_command, bad))
+                self.assertFalse(rejected['executed'], rejected)
+                self.assertFalse((self.workspace/'forbidden').exists())
+                self.assertFalse(restarted.journal.snapshot()['unresolved_mutations'])
+            result = json.loads(restarted.invoke(backend.run_command, 'true'))
+            self.assertTrue(result['passed'])
+            self.assertFalse(restarted.final_status()['incomplete'])
+            self.assertEqual(restarted.final_status()['command_status'], 'passed')
             script.write_text('#!/bin/sh\nprintf partial >> partial-effect\nexit 126\n')
             failed = json.loads(restarted.invoke(backend.run_command, str(script)))
             self.assertTrue(failed['executed'])
             self.assertEqual(failed['exit_code'], 126)
             blocked = json.loads(restarted.invoke(backend.run_command, str(script)))
             self.assertEqual(blocked['category'], 'recovery_required')
+            self.assertEqual(blocked['recovery']['tool'], 'reconcile_operation')
+            self.assertIn(blocked['recovery']['arguments']['operation_id'],
+                          restarted.journal.snapshot()['unresolved_mutations'])
             self.assertEqual((self.workspace/'partial-effect').read_text(), 'partial')
             self.assertTrue(restarted.final_status()['incomplete'])
 
@@ -364,6 +379,40 @@ engine.invoke(write_file, 'app.txt', 'after')
                         "rg --search-zip pattern .", "rg -z pattern .", "rg -niz pattern .",
                         "cat $(touch file)", "find . -delete", "python -c 'print(1)'", "env cat file"):
             self.assertFalse(command_is_read_only(command), command)
+
+    def test_local_http_probe_refusal_is_observation_and_disables_curl_config(self):
+        import socket
+        with patch.object(sys, 'argv', ['test-execution', '--billing-status']):
+            spec=importlib.util.spec_from_file_location('http_probe_backend', ROOT/'ovh-agent.py')
+            backend=importlib.util.module_from_spec(spec);spec.loader.exec_module(backend)
+        self.engine=WorkflowController(self.workspace,self.directory,trusted_diagnostics=True)
+        token=backend.RUN_CONTEXT.set(RunDependencies(engine=self.engine))
+        self.addCleanup(backend.RUN_CONTEXT.reset, token)
+        # Bound but not listening: the kernel refuses the connection reliably.
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
+            config=self.root/'.curlrc'
+            marker=self.root/'unexpected-output'
+            config.write_text('output = '+str(marker)+'\nurl = http://127.0.0.1:1/\n')
+            shadow=self.workspace/'.agent-tools/venv/bin';shadow.mkdir(parents=True)
+            (shadow/'curl').write_text('#!/bin/sh\ntouch '+str(marker)+'\n')
+            (shadow/'curl').chmod(0o700)
+            command=f'curl -s -o /dev/null -w "%{{http_code}}" --max-time 2 http://127.0.0.1:{port}/health'
+            self.assertTrue(command_is_read_only(command))
+            with patch.object(backend,'WORKSPACE',self.workspace), patch.object(backend,'request_approval',return_value=True), patch.object(backend,'read_task_state',return_value={}), patch.object(backend,'emit',side_effect=self.engine.observe_event), patch.dict('os.environ',{'CURL_HOME':str(self.root),'http_proxy':'http://127.0.0.1:1'}):
+                result=json.loads(self.engine.invoke(backend.run_command,command))
+            self.assertEqual(result['exit_code'],7,result)
+            self.assertTrue(result['executed'])
+            self.assertFalse(marker.exists())
+            self.assertEqual(self.operations()[-1]['status'],'failed')
+            self.assertFalse(self.engine.final_status()['incomplete'])
+            self.assertFalse(WorkflowController(self.workspace,self.directory).final_status()['incomplete'])
+        for command in ('curl -X POST http://127.0.0.1:80/', 'curl -d value http://127.0.0.1:80/',
+                        'curl -L http://127.0.0.1:80/', 'curl -o file http://127.0.0.1:80/',
+                        'curl --config file http://127.0.0.1:80/', 'curl http://example.org/',
+                        'curl -w "%output{file}" http://127.0.0.1:80/', 'curl http://127.0.0.1:80/ http://127.0.0.1:81/',
+                        'curl http://127.0.0.1:80/; touch file', 'curl http://127.0.0.1:{80,81}/'):
+            self.assertFalse(command_is_read_only(command),command)
 
     def test_missing_version_probe_does_not_leave_a_phantom_mutation_after_restart(self):
         from ovh_process import run_process

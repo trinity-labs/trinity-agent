@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from _thread import LockType
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import hashlib
 import inspect
@@ -23,9 +23,11 @@ import threading
 import time
 import unicodedata
 from typing import Any, TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from pydantic_ai import RunContext, ToolFailed
 from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.messages import InstructionPart
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage
@@ -75,6 +77,26 @@ class ExecutionCapability(AbstractCapability[RunDependencies]):
             return await handler()
         finally:
             self.context.reset(token)
+
+    async def before_model_request(self, ctx, request_context):
+        engine = ctx.deps.engine
+        if engine is not None and engine.commentary_pending:
+            parameters = request_context.model_request_parameters
+            # Request-scoped state, not another accumulated chat reminder. All
+            # tools stay visible and tool_choice remains provider-compatible.
+            notice = InstructionPart(content=(
+                "État d'exécution actuel : un point d'avancement est requis avant le prochain outil. "
+                "Appelle update_plan avec explanation : faits observés et prochaine action, dans la langue "
+                "de l'utilisateur. Les outils opérationnels attendent ce commentaire. "
+                "Si la tâche est terminée, réponds directement avec le résultat vérifié."), dynamic=True)
+            return replace(request_context, model_request_parameters=replace(parameters,
+                instruction_parts=[*(parameters.instruction_parts or []), notice]))
+        if engine is not None and request_context.model_request_parameters.instruction_parts is None:
+            # An empty prefix must withdraw the prior request's transient notice;
+            # None asks model adapters to fall back to historical instructions.
+            return replace(request_context, model_request_parameters=replace(
+                request_context.model_request_parameters, instruction_parts=[]))
+        return request_context
 
     async def wrap_tool_execute(self, ctx: RunContext[RunDependencies], *, call, tool_def, args, handler):
         engine = ctx.deps.engine
@@ -130,6 +152,38 @@ def command_is_read_only(command):
     if len(argv) == 2 and argv[1] == '--version' and argv[0] in {
             'git', 'gh', 'node', 'npm', 'bun', 'python', 'python3', 'docker', 'code-server'}:
         return True
+    if argv and argv[0] == 'curl':
+        # Literal local HTTP observations only. The executor disables curlrc and
+        # proxies and uses the system binary. No POST, file output, redirects,
+        # auth/config hooks, URL expansion, or write-out file directives.
+        urls, index = [], 1
+        while index < len(argv):
+            arg = argv[index]
+            if arg in {'-s', '-S', '-sS', '-I', '-i', '-f', '--silent', '--show-error', '--head', '--include', '--fail'}:
+                index += 1
+                continue
+            if arg in {'-o', '--output', '-w', '--write-out', '-m', '--max-time', '--connect-timeout'}:
+                if index + 1 == len(argv):
+                    return False
+                value = argv[index + 1]
+                if ((arg in {'-o', '--output'} and value != '/dev/null') or
+                    (arg in {'-w', '--write-out'} and value not in {'%{http_code}', '%{response_code}'}) or
+                    (arg in {'-m', '--max-time', '--connect-timeout'} and not re.fullmatch(r'\d+(?:\.\d+)?', value))):
+                    return False
+                index += 2
+                continue
+            try:
+                url = urlsplit(arg)
+                if (url.scheme != 'http' or url.hostname not in {'127.0.0.1', '::1'}
+                        or url.username is not None or url.password is not None or url.fragment
+                        or re.search(r'[{}\r\n]', arg)):
+                    return False
+                _ = url.port  # Reject malformed ports before classifying a probe.
+            except ValueError:
+                return False
+            urls.append(arg)
+            index += 1
+        return len(urls) == 1
     if not argv or argv[0] not in {'pwd', 'ls', 'stat', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'test', '['}:
         return False
     if argv[0] == 'rg':
@@ -548,8 +602,13 @@ class WorkflowController:
                                            scope=str(arguments.get('host') or self.workspace),
                                            requires_verification=name in FILE_TOOLS)
         except (ValueError, RuntimeError) as error:
-            yield ToolExecution(False, json.dumps({'status': 'blocked', 'category': 'recovery_required',
-                               'executed': False, 'message': str(error)}, ensure_ascii=False), failed=True)
+            recovery = getattr(error, 'operation', {})
+            detail = {'status': 'blocked', 'category': 'recovery_required',
+                      'executed': False, 'message': str(error)}
+            if recovery.get('id'):
+                detail['recovery'] = {'tool': 'reconcile_operation',
+                                      'arguments': {'operation_id': recovery['id']}}
+            yield ToolExecution(False, json.dumps(detail, ensure_ascii=False), failed=True)
             return
         proof = self._file_proof(name, arguments)
         if proof is not None:
@@ -584,7 +643,9 @@ class WorkflowController:
                     failed, category = True, 'incorrect_result'
                     result = json.dumps({'status': 'failed', 'category': category, 'operation_id': operation,
                         'executed': True, 'message': 'Le contenu réellement observé ne correspond pas à l’écriture annoncée. Relis le fichier avant correction.'}, ensure_ascii=False)
-            if command is not None:
+            if command is not None and (command_proof or {}).get('kind') != 'execution_not_started':
+                # A refusal is retained in the journal, but is not an executed
+                # command with an unknown exit code in the acceptance summary.
                 self.command_results = (self.command_results + [command])[-64:]
             self.failures.record(name, arguments,
                                  {'category': category} if failed else {'exit_code': 0},
@@ -698,7 +759,8 @@ class WorkflowController:
                 'natural_language_goal_verified': False, 'satisfaction_scope': 'configured_contract_only'},
             'recovery': {'unknown_count': len(pending), 'operations': [
                 {'journal': source, 'id': row['id'], 'tool': clip(row['tool'], 100), 'status': row['status']}
-                for source, row in pending[:4]], 'automatic_replay': False},
+                for source, row in pending[:4]], 'automatic_replay': False,
+                'tool': 'reconcile_operation' if pending else None},
             'evidence': {'freshness': 'not_rechecked_since_evaluation' if current else 'previous_process_unverified' if report else 'not_evaluated',
                 'evaluated_at': report.get('evaluated_at'),
                 'criteria_status': report.get('criteria_status') if current else 'unverified',

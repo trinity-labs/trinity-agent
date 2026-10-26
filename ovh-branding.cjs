@@ -144,6 +144,53 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
   for (const view of manifest.contributes?.views?.ovhAgent || []) view.name = name;
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 }
+function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server/lib/vscode/out/vs/code/browser/workbench/workbench.css') {
+  if (!fs.existsSync(file)) return false;
+  const start = '/* TRINITY extension list logos */';
+  const end = '/* End TRINITY extension list logos */';
+  const current = fs.readFileSync(file, 'utf8');
+  const original = current.replace(/\n?\/\* TRINITY extension list logos \*\/[\s\S]*?\/\* End TRINITY extension list logos \*\/\n?/g, '').trimEnd();
+  const css = `${start}
+.monaco-workbench .extension-list-item > .icon-container,
+.monaco-workbench .runtime-extensions-editor .extension > .icon-container {
+  display: flex;
+  align-items: center !important;
+  justify-content: center;
+  padding: 0 !important;
+  flex: 0 0 36px;
+  margin-right: 16px;
+}
+.monaco-workbench .extension-list-item > .icon-container > .extension-icon,
+.monaco-workbench .runtime-extensions-editor .extension > .icon-container > .extension-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+}
+.monaco-workbench .extension-list-item > .icon-container > .extension-icon .icon,
+.monaco-workbench .runtime-extensions-editor .extension > .icon-container > .extension-icon .icon {
+  display: block;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0.66 !important;
+}
+${end}`;
+  const updated = original + '\n' + css + '\n';
+  if (updated === current) return false;
+  if (!current.includes(start)) {
+    const digest = crypto.createHash('sha256').update(current).digest('hex').slice(0, 12);
+    const backup = file + '.trinity-' + digest + '.bak';
+    if (!fs.existsSync(backup)) fs.copyFileSync(file, backup, fs.constants.COPYFILE_EXCL);
+  }
+  fs.writeFileSync(file, updated);
+  return true;
+}
 if (require.main === module) {
   const extensions = path.join(require('os').homedir(), '.local/share/code-server/extensions');
   const registryFile = path.join(extensions, 'extensions.json');
@@ -160,5 +207,6 @@ if (require.main === module) {
   }
   fs.writeFileSync(registryFile + '.branding.tmp', JSON.stringify(registry));
   fs.renameSync(registryFile + '.branding.tmp', registryFile);
+  applyExtensionListStyle();
 }
-module.exports = { applyManifest, configuredDarkTheme };
+module.exports = { applyManifest, configuredDarkTheme, applyExtensionListStyle };

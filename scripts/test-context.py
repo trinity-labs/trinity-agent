@@ -330,6 +330,7 @@ with tempfile.TemporaryDirectory() as folder:
         assert kwargs.get('automatic') is True, 'Never retrieve raw transcripts automatically'
         return 'Préférence utilisateur déclarée : conserver le thème.'
     with patch.object(a, 'conversation_dir', return_value=location), \
+         patch.object(a, 'WORKSPACE', location), patch.object(a, 'DATA_ROOT', location/'data'), \
          patch.object(a.WorkspaceContext, 'search', side_effect=safe_context), \
          patch.object(a.ConversationMemory, 'search', side_effect=safe_context):
         clean = a.history_with_memory(polluted, 'Modernise la vue', include_excerpts=False)

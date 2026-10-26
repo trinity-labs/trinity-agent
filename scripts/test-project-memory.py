@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -25,6 +26,13 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.memory=ProjectMemory(self.data,self.ctx.id,self.work)
     def remember(self,text='Décision PostgreSQL choisie pour les transactions'):
         return self.ctx.remember('old',text,'project','declared','demande utilisateur')
+
+    def test_slow_mount_keeps_complete_partial_paths_without_rewalking(self):
+        source=self.work/'known.md';source.write_text('Observed local source')
+        with patch('ovh_project_memory.subprocess.run',side_effect=subprocess.TimeoutExpired(
+                ['rg'],2,output=b'known.md\ntruncated')), patch('ovh_project_memory.os.walk') as walk:
+            self.assertEqual(self.memory.root_documents(refresh=True),[source])
+            walk.assert_not_called()
     def test_registered_empty_project_does_not_abort_export(self):
         empty='a'*20
         (self.data/'projects.json').write_text(json.dumps([{'id':empty}]))

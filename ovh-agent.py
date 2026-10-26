@@ -22,7 +22,7 @@ from ovh_verification import ChangeGuard, VerificationError, run_check
 from ovh_execution import WorkflowController, RunDependencies, ExecutionCapability, READ_ONLY_TOOLS, read_only_policy, command_is_read_only
 from ovh_repository import repository_map
 from ovh_vision import run_reader_sync
-from ovh_process import run_process, command_is_destructive, command_argv
+from ovh_process import run_process, command_is_destructive, command_argv, command_preflight
 from ovh_tools import ToolSelection
 import base64
 import binascii
@@ -1091,6 +1091,9 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
         return command_not_executed("invalid_process_arguments", "timeout doit être un entier entre 1 et 86400 secondes.")
     try:
         working_dir = resolve_path(cwd)
+        preflight = command_preflight(command, working_dir, WORKSPACE)
+        if preflight:
+            return command_not_executed("invalid_command_target", preflight)
         if command_is_destructive(command):
             return command_not_executed("policy_denied", "Commande refusée car elle est potentiellement destructive.")
         dynamic_deletion = re.search(r'\bxargs\b[^\n]*\brm\b|\bfind\b[^\n]*\s-delete\b', command)
@@ -1107,7 +1110,9 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
             binary = shutil.which(words[0], path="/usr/bin:/bin")
             if binary is None:
                 return command_not_executed("invalid_command_target", "Outil de diagnostic système indisponible.")
-            diagnostic_argv = [binary, *(["--no-config"] if words[0] == "rg" else []), *words[1:]]
+            options = (["--no-config"] if words[0] == "rg" else
+                       ["-q", "--noproxy", "*", "--globoff"] if words[0] == "curl" else [])
+            diagnostic_argv = [binary, *options, *words[1:]]
         if run_dependencies().verification is not None and not diagnostic:
             # The configured runner may launch a check before a receipt write
             # fails. An exception from here onward cannot prove non-execution.

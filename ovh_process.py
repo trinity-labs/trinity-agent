@@ -118,6 +118,56 @@ def sanitized_environment(environment=None):
             and key.upper() not in _UNSAFE_ENV}
 
 
+def process_environment(cwd, workspace=None):
+    environment = sanitized_environment()
+    environment['PYDANTIC_AI_NO_BANNER'] = '1'
+    roots = dict.fromkeys(Path(root) for root in (workspace, cwd) if root is not None)
+    environment['PATH'] = os.pathsep.join([
+        *(str(root / part) for root in roots for part in
+          ('.agent-tools/venv/bin', '.agent-tools/npm/node_modules/.bin')),
+        environment.get('PATH', '')])
+    return environment
+
+
+def command_preflight(command, cwd, workspace=None):
+    """Reject provably invalid local launches before any command can mutate.
+
+    Do not infer safety from a failed program's output or rewrite shell quoting.
+    These checks deliberately leave compound commands and custom launchers alone.
+    """
+    argv = command_argv(command)
+    cwd = Path(cwd)
+    environment = process_environment(cwd, workspace)
+    if argv[:2] == ['sh', '-c']:
+        # -n parses without executing substitutions, redirections or commands.
+        try:
+            checked = subprocess.run(['/bin/sh', '-n', '-c', command], cwd=cwd,
+                                     env=environment, capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            return 'Validation de syntaxe shell interrompue ; aucune commande exécutée. Simplifie la commande.'
+        if checked.returncode:
+            return 'Syntaxe shell invalide ; aucune commande exécutée. ' + checked.stderr.decode(errors='replace')[-1500:]
+        # A single here-document is a common hallucinated CLI tool invocation.
+        # Do not reject fallback chains, functions or subsequent shell commands.
+        match = re.fullmatch(r'([A-Za-z0-9_./-]+)[ \t]+<<-?[ \t]*([\'"]?)([A-Za-z_][\w-]*)\2[ \t]*\n(.*?)\n\t*\3[ \t]*\n?', command, re.S)
+        executable = (str(cwd / match[1]) if match and '/' in match[1] else match[1] if match else '')
+        if (match and match[3] not in [line.lstrip('\t') for line in match[4].splitlines()]
+                and not shutil.which(executable, path=environment['PATH'])):
+            return (f'Exécutable absent : {match[1]}. Aucune commande exécutée. '
+                    'Utilise les outils natifs edit_file ou write_file pour modifier un fichier, '
+                    'ou discover_tools pour trouver un outil disponible.')
+    # Cargo's built-in project commands require a manifest in cwd or an ancestor.
+    # Explicit configuration/manifest paths and custom Cargo wrappers retain their
+    # own semantics. This is a precondition check, never a failed-test exemption.
+    elif (len(argv) >= 2 and argv[0] == 'cargo' and argv[1] in {'build', 'check', 'test', 'run', 'bench'}
+          and not any(arg.split('=', 1)[0] in {'--manifest-path', '--config'} for arg in argv[2:])
+          and shutil.which('cargo', path=environment['PATH']) in {'/usr/bin/cargo', '/bin/cargo'}
+          and not any((root / 'Cargo.toml').exists() for root in (cwd, *cwd.parents))):
+        return ('Cargo.toml absent du répertoire courant et de ses parents ; Cargo non exécuté. '
+                'Inspecte le projet et son mode de compilation avant de choisir la commande de test.')
+    return None
+
+
 def sandbox_argv(argv, cwd, workspace, binary):
     """Build only fixed read-only runtime mounts plus the authorized workspace."""
     if workspace is None:
@@ -175,14 +225,8 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
             or isinstance(output_limit, bool) or not isinstance(output_limit, int) or not 1 <= output_limit <= 1024 * 1024):
         result['error'] = 'invalid_process_arguments'
         return finish()
-    environment = sanitized_environment()
-    environment['PYDANTIC_AI_NO_BANNER'] = '1'
     # Project-installed test tools must remain available without a login shell.
-    roots = dict.fromkeys(Path(root) for root in (workspace, cwd) if root is not None)
-    environment['PATH'] = os.pathsep.join([
-        *(str(root / part) for root in roots for part in
-          ('.agent-tools/venv/bin', '.agent-tools/npm/node_modules/.bin')),
-        environment.get('PATH', '')])
+    environment = process_environment(cwd, workspace)
     # A mounted directory does not change which host executes the command.
     executable = str(Path(cwd) / argv[0]) if '/' in argv[0] and not os.path.isabs(argv[0]) else argv[0]
     resolved = shutil.which(executable, path=environment['PATH'])

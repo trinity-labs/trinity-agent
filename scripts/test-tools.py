@@ -356,6 +356,8 @@ class ProgressContract(unittest.TestCase):
         def model(messages, info):
             names = {tool.name for tool in info.function_tools}; rounds.append(names)
             if len(rounds) in (1, 3):
+                self.assertIn("un point d'avancement est requis", info.instructions)
+                self.assertEqual(info.instructions.count("État d'exécution actuel"), 1)
                 self.assertEqual(names, {'update_plan','read_file'})
                 schema = next(t for t in info.function_tools if t.name=='update_plan').parameters_json_schema
                 self.assertIn('explanation', schema['required'])
@@ -363,6 +365,7 @@ class ProgressContract(unittest.TestCase):
                     'explanation':'Je lis la configuration.' if len(rounds)==1 else
                     'Les trois lectures concordent. Je contrôle le dernier fichier.'})])
             if len(rounds) in (2, 4):
+                self.assertNotIn("État d'exécution actuel", info.instructions or '')
                 self.assertIn('read_file', names)
                 return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'},
                     tool_call_id=f'read-{len(rounds)}-{i}') for i in range(3 if len(rounds)==2 else 1)])
@@ -371,6 +374,27 @@ class ProgressContract(unittest.TestCase):
         self.assertEqual(result.output, '{"verified":true}')
         significant = [e['type'] for e in self.events if e['type'] in {'plan_updated','actual_read'}]
         self.assertEqual(significant, ['plan_updated', *['actual_read']*3, 'plan_updated', 'actual_read'])
+
+    def test_hallucinated_tool_recovers_through_native_sdk_without_mutation(self):
+        rounds = []
+        def model(messages, info):
+            rounds.append(1)
+            if len(rounds)==1:
+                return ModelResponse(parts=[ToolCallPart('update_plan', {'steps':['Lire'], 'explanation':'Je vérifie le fichier.'})])
+            if len(rounds)==2:
+                return ModelResponse(parts=[ToolCallPart('invented_apply_patch', {'path':'fixture.txt'})])
+            if len(rounds)==3:
+                self.assertIn('Unknown tool name', str(messages[-1].parts))
+                self.assertIn('read_file', str(messages[-1].parts))
+                self.assertEqual(self.reads, [])
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path':'fixture.txt'})])
+            return ModelResponse(parts=[TextPart('Vérifié.')])
+        result=self.agent(model).run_sync('Vérifie le fichier.', deps=self.deps)
+        self.assertEqual(result.output, 'Vérifié.')
+        self.assertEqual(self.reads, ['fixture.txt'])
+        self.assertFalse(self.engine.final_status()['incomplete'])
+        self.assertFalse(self.engine.journal.snapshot()['unresolved_mutations'])
+        self.assertFalse(any(row['tool']=='invented_apply_patch' for row in self.engine.journal.snapshot()['operations']))
 
     def test_stale_tool_call_and_blank_comment_cannot_execute_silently(self):
         self.engine.commentary_enabled = self.engine.commentary_pending = True

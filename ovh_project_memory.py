@@ -177,9 +177,20 @@ class ProjectMemory:
             completed=subprocess.run(command,cwd=root,text=True,stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL,timeout=2,check=False)
             relatives=completed.stdout.splitlines() if completed.returncode in (0,1) else []
-        except (OSError,subprocess.TimeoutExpired):
+        except subprocess.TimeoutExpired as error:
+            # A slow mounted tree must not trigger a second, unbounded walk.
+            # Preserve only complete paths already returned before the deadline.
+            partial=error.stdout or ''
+            if isinstance(partial,bytes): partial=partial.decode(errors='replace')
+            relatives=partial.splitlines()
+            if partial and not partial.endswith('\n'): relatives=relatives[:-1]
+        except OSError:
             relatives=[]
+            deadline=time.monotonic()+2
+            visited=0
             for directory,dirs,files in os.walk(root,topdown=True,followlinks=False):
+                visited+=1
+                if visited>2000 or time.monotonic()>deadline: break
                 dirs[:]=[name for name in dirs if name not in IGNORED_SOURCE_DIRS and
                          not (Path(directory)/name).is_symlink()]
                 for name in files:
