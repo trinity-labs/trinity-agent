@@ -111,3 +111,107 @@ test('catalogue and model costs use native currency with cent precision and no c
     assert.match(w.formatModelCost(1.23, 'USD'), /1,23\s*\$US/);
   } finally {dom.window.close();}
 });
+
+const os = require("node:os"), vm = require("node:vm");
+const {createRequire} = require('node:module');
+const root = path.join(__dirname, '..');
+const native = createRequire(path.join(root,'extension.js'));
+const tick = () => new Promise(resolve => setImmediate(resolve));
+function setupBillingProvider(t, providerName, cache) {
+ const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'trinity-billing-review-'));
+ const archives=native('./archive-store');
+ const settings={provider:providerName},calls=[],posts=[];
+ const fakeSecrets={DEEPSEEK_API_KEY:'test-deepseek-key',OVH_AI_API_KEY:'test-ovh-key',OVH_APPLICATION_KEY:'test-app-key',OVH_APPLICATION_SECRET:'test-app-secret',OVH_CONSUMER_KEY:'test-consumer-key',OVH_CLOUD_PROJECT:'project-a',OVH_API_BASE_URL:'https://example.invalid'};
+ const vscode={workspace:{workspaceFolders:[{uri:{fsPath:temporary}}],getConfiguration:()=>({get:(key,fallback)=>settings[key] ?? fallback})},env:{language:'fr'}};
+ const scope={require:name=>name==='vscode'?vscode:(name==='node:child_process'||name==='child_process')?{...native(name),execFile:(file,argv,options,done)=>calls.push({file,argv,options,done}),spawn:()=>{throw Error('Unexpected inference process startup');}}:name==='./archive-store'?{...archives,ArchiveStore:class extends archives.ArchiveStore{constructor(workspace){super(workspace,path.join(temporary,'data'));}}}:native(name),module:{exports:{}},process:{env:{OVH_AGENT_PROVIDER:'ovhcloud'}},console,setTimeout,clearTimeout,readFakeSecret:name=>fakeSecrets[name]||''};
+ vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nreadServerSecret=readFakeSecret;module.exports.Provider=OvhAgentViewProvider;',scope);
+ const provider=new scope.module.exports.Provider(root,{}, {get:()=>undefined});
+ provider.view={webview:{postMessage:message=>posts.push(message)}};
+ fs.mkdirSync(provider.store.root,{recursive:true});
+ if(cache)fs.writeFileSync(path.join(provider.store.root,providerName==='deepseek'?'billing-deepseek.json':'billing.json'),JSON.stringify(cache));
+ t.after(()=>{provider.billingChannel.cancel();fs.rmSync(temporary,{recursive:true,force:true});});
+ return {provider,settings,calls,posts,done:(index,result)=>calls[index].done(null,JSON.stringify(result))};
+}
+const deepCache={provider:'deepseek',configured:true,available:true,currency:'USD',credit_available:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
+const ovhCache={schema_version:2,configured:true,available:true,project:'project-a',currency:'EUR',credit_currency:'EUR',credit_available:100,current_usage:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
+test('cached DeepSeek balance is sent before the upstream response and refresh uses selected provider',async t=>{
+ const h=setupBillingProvider(t,'deepseek',deepCache);let ovhCalls=0;h.provider.billingCredentials=async()=>{ovhCalls++;return undefined;};
+ const pending=h.provider.refreshBilling(false);await tick();
+ assert(h.posts.some(p=>p.provider==='deepseek'&&p.available&&p.credit_available===12.34),'No immediate cached DeepSeek balance');
+ assert.equal(ovhCalls,0);assert.equal(h.calls.length,1);assert.equal(h.calls[0].options.env.OVH_AGENT_PROVIDER,'deepseek');
+ h.done(0,{...deepCache,credit_available:13});await pending;assert.equal(h.posts.at(-1).credit_available,13);
+});
+test('OVH cached estimate is derived without waiting for API and never uses another project',async t=>{
+ const h=setupBillingProvider(t,'ovhcloud',ovhCache);const pending=h.provider.refreshBilling(false);await tick();
+ const cached=h.posts.find(p=>p.available&&p.balance_estimated);assert(cached,'No immediate OVH cached estimate');assert.equal(cached.credit_remaining,87.66);
+ assert.equal(h.calls[0].options.env.OVH_AGENT_PROVIDER,'ovhcloud');h.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await pending;
+ const wrong=setupBillingProvider(t,'ovhcloud',{...ovhCache,project:'another-project',credit_available:999});const next=wrong.provider.refreshBilling(false);await tick();
+ assert(!wrong.posts.some(p=>p.available),'Balance from another OVH project was displayed');wrong.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await next;
+});
+test('late standalone OVH response cannot overwrite selected DeepSeek balance or clear its pending request',async t=>{
+ const h=setupBillingProvider(t,'ovhcloud');const old=h.provider.refreshBilling(false);await tick();assert.equal(h.calls.length,1);
+ h.settings.provider='deepseek';const boundary=h.posts.length;
+ const fresh=h.provider.refreshBilling(false);await tick();assert.equal(h.calls.length,2,'New provider reused old provider request');
+ h.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await old;await tick();
+ assert(!h.posts.slice(boundary).some(p=>p.provider==='ovhcloud'&&p.available),'Old provider response leaked after switch');
+ const duplicate=h.provider.refreshBilling(false);await tick();assert.equal(h.calls.length,2,'Old request cleared newer in-flight request');
+ h.done(1,{...deepCache,credit_available:15});await Promise.all([fresh,duplicate]);assert.equal(h.posts.at(-1).provider,'deepseek');assert.equal(h.posts.at(-1).credit_available,15);
+});
+
+test('DeepSeek without cache or OVH credentials fetches its configured provider balance', async t => {
+  const h = setupBillingProvider(t, 'deepseek');
+  h.provider.billingCredentials = async () => assert.fail('DeepSeek must not consult OVH credentials');
+  const pending = h.provider.refreshBilling(false); await tick();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].options.env.OVH_AGENT_PROVIDER, 'deepseek');
+  assert(h.posts.every(p => p.provider === 'deepseek'));
+  h.done(0, {...deepCache, credit_available: 20}); await pending;
+  assert.equal(h.posts.at(-1).credit_available, 20);
+});
+
+test('pending refresh preserves the displayed balance and a provider switch rejects a late balance', () => {
+  for (const provider of ['ovhcloud', 'deepseek']) {
+    const dom = billingView(), w = dom.window;
+    try {
+      w.document.body.dataset.provider = provider;
+      w.applyBillingStatus({provider, configured:true, available:true, currency:provider === 'deepseek' ? 'USD' : 'EUR', credit_available:12.34});
+      const before = w.liveBalance.textContent;
+      w.applyBillingStatus({provider, pending:true, configured:true, available:false}, false);
+      assert.equal(w.liveBalance.textContent, before);
+      w.document.body.dataset.provider = provider === 'deepseek' ? 'ovhcloud' : 'deepseek';
+      w.applyBillingStatus({provider:w.document.body.dataset.provider, pending:true}, false);
+      const switching = w.liveBalance.textContent;
+      w.applyBillingStatus({provider, configured:true, available:true, currency:'EUR', credit_available:999}, false);
+      assert.equal(w.liveBalance.textContent, switching);
+      assert.doesNotMatch(switching, /12,34|999/);
+      if (w.document.body.dataset.provider === 'deepseek') assert.doesNotMatch(w.billing.title, /OVH/);
+    } finally { dom.window.close(); }
+  }
+});
+
+
+test('a running OVH task cannot supply the selected DeepSeek balance', async t => {
+  const h = setupBillingProvider(t, 'deepseek');
+  h.provider.agent = {provider:'ovhcloud', stdin:{writable:true, write:() => assert.fail('Wrong provider backend used')}};
+  const pending = h.provider.refreshBilling(false); await tick();
+  assert.equal(h.calls.length, 1);
+  h.provider.consumeOutput(JSON.stringify({type:'billing_status', configured:true, available:true, credit_available:999})+'\n');
+  assert(!h.posts.some(p => p.credit_available === 999));
+  h.done(0, {...deepCache, credit_available:20}); await pending;
+  assert.equal(h.posts.at(-1).credit_available, 20);
+});
+
+test('expired cached balance remains visible and is marked stale if refresh fails', async t => {
+  const h = setupBillingProvider(t, 'deepseek', {...deepCache, cached_at:1});
+  const pending = h.provider.refreshBilling(false); await tick();
+  assert(h.posts[0].available && h.posts[0].stale);
+  h.calls[0].done(new Error('upstream unavailable')); await pending;
+  assert.equal(h.posts.at(-1).credit_available, 12.34);
+  assert(h.posts.at(-1).stale);
+  const dom = billingView(), w = dom.window;
+  try {
+    w.applyBillingStatus(h.posts.at(-1), false);
+    assert.match(w.liveBalance.textContent, /12,34.*non actualisé/);
+    assert(w.billing.classList.contains('failed'));
+  } finally { dom.window.close(); }
+});

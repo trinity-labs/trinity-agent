@@ -2001,20 +2001,27 @@ function formatMoney(value, currency = "EUR") {
 }
 
 function applyBillingStatus(data, announce = true) {
-  if (Number.isFinite(data.refresh_seconds) && data.refresh_seconds > 0) scheduleBillingRefresh(data.refresh_seconds);
-  if (data.provider === "deepseek") {
-    liveBalance.textContent = data.available ? `DeepSeek · ${formatMoney(data.credit_available, data.currency)}` : "DeepSeek · —";
-    billing.title = liveBalance.title = data.available ? `DeepSeek · ${data.last_update}` : (data.error || "DeepSeek");
-    billing.classList.toggle("connected", Boolean(data.available));
-    billing.classList.toggle("failed", !data.available);
-    if (announce && data.error) setStatus(data.error, true);
+  const provider = data.provider === "deepseek" ? "deepseek" : "ovhcloud";
+  if (document.body.dataset.provider && document.body.dataset.provider !== provider) return;
+  billing.setAttribute("aria-label", provider === "deepseek" ? "DeepSeek" : t("Solde OVHcloud"));
+  if (data.pending) {
+    if (liveBalance.dataset.provider === provider && liveBalance.dataset.available === "true") return;
+    liveBalance.dataset.provider = provider;
+    liveBalance.dataset.available = "false";
+    billing.classList.remove("connected", "failed");
+    billing.title = liveBalance.title = provider === "deepseek" ? "DeepSeek" : t("Vérification de la connexion OVHcloud…");
+    liveBalance.textContent = provider === "deepseek" ? "DeepSeek · …" : t("Solde : vérification…");
     return;
   }
-  if (data.pending) {
-    billing.classList.remove("connected");
-    billing.classList.add("failed");
-    billing.title = t("Vérification de la connexion OVHcloud…");
-    liveBalance.textContent = t("Solde : vérification…");
+  liveBalance.dataset.provider = provider;
+  liveBalance.dataset.available = String(Boolean(data.available));
+  if (Number.isFinite(data.refresh_seconds) && data.refresh_seconds > 0) scheduleBillingRefresh(data.refresh_seconds);
+  if (data.provider === "deepseek") {
+    liveBalance.textContent = data.available ? `DeepSeek · ${formatMoney(data.credit_available, data.currency)}${data.stale ? t(" (non actualisé)") : ""}` : "DeepSeek · —";
+    billing.title = liveBalance.title = data.available ? `DeepSeek · ${data.last_update}` : (data.error || "DeepSeek");
+    billing.classList.toggle("connected", Boolean(data.available && !data.stale));
+    billing.classList.toggle("failed", Boolean(!data.available || data.stale));
+    if (announce && data.error) setStatus(data.error, true);
     return;
   }
   if (!data.configured) liveBalance.textContent = t("Solde : à configurer");
@@ -2566,6 +2573,10 @@ window.addEventListener("message", ({ data }) => {
     setBusy(true, data.text);
   }
   if (data.type === "provider_switched") {
+    if (["ovhcloud", "deepseek"].includes(data.provider)) {
+      document.body.dataset.provider = data.provider;
+      applyBillingStatus({provider: data.provider, pending: true}, false);
+    }
     // A restart can accompany a model click; it must not discard that choice.
     setStatus(data.pending ? t("Fournisseur {0} · appliqué à la fin de la tâche", data.provider)
       : t("Fournisseur : {0}", data.provider));

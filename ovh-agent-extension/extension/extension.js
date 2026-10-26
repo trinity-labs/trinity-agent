@@ -50,7 +50,7 @@ function persistServerSecret(name, value) {
   return secret;
 }
 function inferenceProvider() {
-  return vscode.workspace.getConfiguration("ovhAgent").get("provider", process.env.OVH_AGENT_PROVIDER || "ovhcloud") === "deepseek" ? "deepseek" : "ovhcloud";
+  return vscode.workspace.getConfiguration?.("ovhAgent")?.get?.("provider", process.env.OVH_AGENT_PROVIDER || "ovhcloud") === "deepseek" ? "deepseek" : "ovhcloud";
 }
 function inferenceSecretName() { return inferenceProvider() === "deepseek" ? "DEEPSEEK_API_KEY" : "OVH_AI_API_KEY"; }
 function readPersistentKey() { return readServerSecret(inferenceSecretName()); }
@@ -519,42 +519,95 @@ class OvhAgentViewProvider {
     return true;
   }
 
-  refreshBilling(configureIfMissing = false) {
-    if (this.billingPromise) return this.billingPromise;
-    this.billingPromise = (async () => {
-      this.post({ type: "billing_status", configured: true, available: false, pending: true, silent: true });
-      try {
-        // An active backend owns current credentials and the provider cache.
-        // Polls must not spawn Python or force another upstream billing request.
-        const agent = this.agent;
-        if (agent && !agent.killed && agent.stdin.writable) {
-          const result = await this.billingChannel.request(payload => agent.stdin.write(JSON.stringify(payload)+"\n"), configureIfMissing);
-          this.post({...result,type:"billing_status",silent:!configureIfMissing});
-          if(!result.configured && configureIfMissing) await this.configureBilling();
-          return;
+  cachedBilling(provider) {
+    try {
+      const cache = this.store.readCached(path.join(this.store.root,
+        provider === "deepseek" ? "billing-deepseek.json" : "billing.json"));
+      if (!cache || Array.isArray(cache) || !cache.available || !Number.isFinite(cache.credit_available)) return;
+      const result = {...cache, provider};
+      if (provider === "deepseek") {
+        if (cache.provider !== provider || cache.currency !== "USD" || !readServerSecret("DEEPSEEK_API_KEY")) return;
+      } else {
+        const project = readServerSecret("OVH_CLOUD_PROJECT");
+        if (cache.schema_version !== 2 || !project || cache.project !== project ||
+            (cache.provider && cache.provider !== provider)) return;
+        if (!Object.values(BILLING_SECRETS).filter(name => name !== "OVH_API_BASE_URL").every(readServerSecret)) return;
+        delete result.credit_remaining;
+        delete result.credit_remaining_display;
+        delete result.balance_error;
+        result.balance_estimated = false;
+        const currency = String(cache.currency || "").toUpperCase();
+        const creditCurrency = String(cache.credit_currency || cache.currency || "").toUpperCase();
+        if (currency && currency === creditCurrency && Number.isFinite(cache.current_usage)) {
+          result.credit_remaining = cache.credit_available - cache.current_usage;
+          result.balance_estimated = true;
         }
-        const credentials = await this.billingCredentials();
-        if (!credentials) {
-          this.post({ type: "billing_status", configured: false, available: false, silent: true });
-          if (configureIfMissing) await this.configureBilling();
-          return;
-        }
-        const workspace = this.workspace;
-        const result = await new Promise((resolve, reject) => {
-          execFile(agentPath(), ["--billing-status"], {
-            cwd: workspace, timeout: 30000, maxBuffer: 1024 * 1024,
-            env: { ...process.env, OVH_AGENT_WORKSPACE: workspace },
-          }, (error, stdout) => {
-            if (error) return reject(new Error(t("L’API de facturation ne répond pas.")));
-            try { resolve(JSON.parse(stdout)); } catch { reject(new Error(t("Réponse de facturation illisible."))); }
-          });
-        });
-        this.post({ ...result, type: "billing_status", silent: !configureIfMissing });
-      } catch (error) {
-        this.post({ type: "billing_status", configured: true, available: false, error: error.message, silent: true });
       }
-    })().finally(() => { this.billingPromise = undefined; });
-    return this.billingPromise;
+      const age = Date.now() / 1000 - cache.cached_at;
+      if (!Number.isFinite(age) || age < 0) return;
+      const ttl = Number(cache.refresh_seconds) || Number(process.env.OVH_AGENT_BILLING_CACHE_SECONDS) || 60;
+      result.stale = Boolean(cache.stale) || age >= Math.max(1, ttl);
+      return result;
+    } catch { /* A missing or invalid cache never prevents a live refresh. */ }
+  }
+
+  refreshBilling(configureIfMissing = false) {
+    const provider = inferenceProvider();
+    if (this.billingPromise && this.billingProvider === provider) return this.billingPromise;
+    this.billingProvider = provider;
+    const cached = this.cachedBilling(provider);
+    this.post({ ...(cached || {configured: true, available: false, pending: true}),
+      type: "billing_status", provider, silent: true });
+    let pending;
+    pending = (async () => {
+      // The yield also assigns the request identity before a synchronous failure.
+      await Promise.resolve();
+      const current = () => this.billingPromise === pending && inferenceProvider() === provider;
+      try {
+        const agent = this.agent;
+        let result;
+        if (agent && agent.provider === provider && !agent.killed && agent.stdin.writable) {
+          result = await this.billingChannel.request(payload => agent.stdin.write(JSON.stringify(payload)+"\n"), configureIfMissing);
+        } else {
+          const credentials = provider === "ovhcloud" ? await this.billingCredentials() : undefined;
+          const key = provider === "deepseek" ? readServerSecret("DEEPSEEK_API_KEY") : undefined;
+          if (provider === "deepseek" ? !key : !credentials) {
+            if (current()) {
+              this.post({type: "billing_status", provider, configured: false, available: false, silent: true});
+              if (configureIfMissing && provider === "ovhcloud") await this.configureBilling();
+            }
+            return;
+          }
+          const workspace = this.workspace;
+          result = await new Promise((resolve, reject) => {
+            execFile(agentPath(), ["--billing-status"], {
+              cwd: workspace, timeout: 30000, maxBuffer: 1024 * 1024,
+              env: {...process.env, OVH_AGENT_WORKSPACE: workspace, OVH_AGENT_PROVIDER: provider,
+                ...(provider === "deepseek" ? {DEEPSEEK_API_KEY: key} : {
+                  OVH_APPLICATION_KEY: credentials.applicationKey, OVH_APPLICATION_SECRET: credentials.applicationSecret,
+                  OVH_CONSUMER_KEY: credentials.consumerKey, OVH_CLOUD_PROJECT: credentials.project,
+                  OVH_API_BASE_URL: credentials.baseUrl,
+                })},
+            }, (error, stdout) => {
+              if (error) return reject(new Error(t("L’API de facturation ne répond pas.")));
+              try { resolve(JSON.parse(stdout)); } catch { reject(new Error(t("Réponse de facturation illisible."))); }
+            });
+          });
+        }
+        if (!current()) return;
+        if (!result || typeof result !== "object" || Array.isArray(result) ||
+            (result.provider && result.provider !== provider) || (provider === "deepseek" && result.provider !== provider)) {
+          throw new Error(t("Réponse de facturation illisible."));
+        }
+        this.post({...result, type: "billing_status", provider, silent: !configureIfMissing});
+        if (!result.configured && configureIfMissing && provider === "ovhcloud") await this.configureBilling();
+      } catch (error) {
+        if (current()) this.post({...(cached ? {...cached, stale: true} : {configured: true, available: false}),
+          type: "billing_status", provider, error: error.message, silent: true});
+      }
+    })().finally(() => { if (this.billingPromise === pending) this.billingPromise = undefined; });
+    this.billingPromise = pending;
+    return pending;
   }
 
   requestArchivesRefresh() {
@@ -700,12 +753,14 @@ class OvhAgentViewProvider {
       this.post({ type: "error", text: t("Serveur TRINITY absent : configure ovhAgent.backendPath. Consulte le guide d’installation de l’extension.") });
       return false;
     }
+    const provider = inferenceProvider();
+    const secretName = provider === "deepseek" ? "DEEPSEEK_API_KEY" : "OVH_AI_API_KEY";
     let apiKey;
     try {
-      apiKey = readPersistentKey();
+      apiKey = readServerSecret(secretName);
       if (!apiKey) {
-        try { apiKey = await this.secrets.get(inferenceProvider() === "deepseek" ? "ovhAgent.deepseekApiKey" : "ovhAgent.apiKey"); } catch {}
-        if (apiKey) persistKey(apiKey);
+        try { apiKey = await this.secrets.get(provider === "deepseek" ? "ovhAgent.deepseekApiKey" : "ovhAgent.apiKey"); } catch {}
+        if (apiKey) persistServerSecret(secretName, apiKey);
       }
     } catch {
       this.post({ type: "error", text: t("Impossible de lire ou conserver la clé API sur le serveur.") });
@@ -717,11 +772,11 @@ class OvhAgentViewProvider {
         this.post({ type: "error", text: t("Aucune clé API n’est configurée pour ce fournisseur.") });
         return false;
       }
-      apiKey = readPersistentKey();
+      apiKey = readServerSecret(secretName);
     }
     const workspace = this.workspace;
-    const billing = inferenceProvider() === "deepseek" ? null : await this.billingCredentials();
-    if (!this.windowLock || this.windowClosing) return false;
+    const billing = provider === "deepseek" ? null : await this.billingCredentials();
+    if (!this.windowLock || this.windowClosing || inferenceProvider() !== provider) return false;
     this.decoder.reset();
     const agent = spawn(agentPath(), ["--json-lines"], {
       cwd: workspace,
@@ -729,8 +784,8 @@ class OvhAgentViewProvider {
         ...process.env,
         OVH_AGENT_WORKSPACE: workspace,
         OVH_AGENT_PERFORMANCE_MODE: this.performanceMode(),
-        OVH_AGENT_PROVIDER: inferenceProvider(),
-        ...(inferenceProvider() === "deepseek" ? { DEEPSEEK_API_KEY: apiKey } : {
+        OVH_AGENT_PROVIDER: provider,
+        ...(provider === "deepseek" ? { DEEPSEEK_API_KEY: apiKey } : {
           OVH_AI_API_KEY: apiKey, OVHCLOUD_API_KEY: apiKey,
         }),
         ...(billing ? {
@@ -743,6 +798,7 @@ class OvhAgentViewProvider {
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
+    agent.provider = provider;
     this.agent = agent;
     const pendingModel = this.pendingModel;
     if (pendingModel && pendingModel.provider === inferenceProvider() && pendingModel.model) {
@@ -807,6 +863,8 @@ class OvhAgentViewProvider {
           const received=this.billingChannel.receive(message);
           // Late correlated replies must not overwrite the newer displayed balance.
           if(received || message.request_id) continue;
+          message.provider ||= this.agent?.provider || "ovhcloud";
+          if (message.provider !== inferenceProvider()) continue;
         }
         // A final response already contains all text: emitting the pending delta
         // first would parse, sanitize and rebuild the same DOM twice.
@@ -957,12 +1015,14 @@ class OvhAgentViewProvider {
     if (this.busy || this.clearingConversation) {
       this.providerRestartPending = true;
       this.post({ type: "provider_switched", provider, pending: true });
+      void this.refreshBilling(false);
       return;
     }
     this.providerRestartPending = false;
     await this.stopAgent(false);
     // The next message starts the backend with the newly selected provider.
     this.post({ type: "provider_switched", provider });
+    void this.refreshBilling(false);
   }
 
   async selectProvider() {
@@ -1031,7 +1091,7 @@ class OvhAgentViewProvider {
 
   getHtml(webview) {
     return buildChatHtml({extensionUri:this.extensionUri, brand:BRAND_NAME,
-      performanceMode:this.performanceMode(), env:process.env, joinPath:vscode.Uri.joinPath}, webview);
+      performanceMode:this.performanceMode(), env:{...process.env, OVH_AGENT_PROVIDER:inferenceProvider()}, joinPath:vscode.Uri.joinPath}, webview);
   }
 }
 

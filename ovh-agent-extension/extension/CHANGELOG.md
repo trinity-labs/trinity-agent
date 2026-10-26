@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.71
+
+- Solde du fournisseur sélectionné visible immédiatement depuis le cache et actualisé au démarrage.
+- Réponses de l’ancien fournisseur ignorées.
+- Message de chargement avec texte primaire et fond primaire léger.
+
 ## 1.17.70
 
 - Recognize affirmative edit requests after a comma while preserving global restrictions and scoped prohibitions.

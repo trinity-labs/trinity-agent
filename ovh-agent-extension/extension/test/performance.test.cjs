@@ -18,7 +18,7 @@ function setup(settings={},env={}) {
     return process;
   };
   const sandbox={require:name=>name==='vscode'?vscode:name==='child_process'?{...native(name),spawn}:native(name),module:{exports:{}},process:{env:{OVH_AGENT_LANG:'fr',...env}},console,setTimeout,clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider; readPersistentKey=()=>"test-only-key";',sandbox);
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider; readServerSecret=()=>"test-only-key";',sandbox);
   const provider=new sandbox.module.exports.Provider(root,{});
   const posted=[];provider.post=value=>posted.push(JSON.parse(JSON.stringify(value)));
   return {provider,posted,config,settings,updates,spawned,sent,executed};
@@ -35,7 +35,7 @@ test('performance choice persists without starting an idle backend and updates a
   await provider.setPerformance('max');
   assert.equal(settings.performanceMode,'max');assert.equal(spawned.length,0);
   assert.deepEqual(posted.at(-1),{type:'performance_status',mode:'max'});
-  provider.agent={stdin:{writable:true,write:line=>sent.push(JSON.parse(line))}};provider.busy=true;
+  provider.agent={provider:"ovhcloud",stdin:{writable:true,write:line=>sent.push(JSON.parse(line))}};provider.busy=true;
   await provider.setPerformance('auto');
   assert.deepEqual(sent,[{type:'set_performance',mode:'auto'}]);assert.equal(provider.busy,true);
   config.update=async()=>{throw Error('Cannot save preferences');};
@@ -148,17 +148,18 @@ test('final response replaces pending delta instead of rendering twice',()=>{
 
 test('billing uses the existing backend, coalesces polls and does not flush streaming',async()=>{
   const {provider,posted,spawned}=setup();const sent=[];
-  provider.agent={stdin:{writable:true,write:line=>sent.push(JSON.parse(line))}};
+  provider.agent={provider:"ovhcloud",stdin:{writable:true,write:line=>sent.push(JSON.parse(line))}};
   provider.billingCredentials=()=>assert.fail('running backend already owns credentials');
   provider.consumeOutput('{"type":"delta","text":"stream"}\n');
   const a=provider.refreshBilling(),b=provider.refreshBilling();
+  await Promise.resolve();
   assert.equal(a,b);assert.equal(sent.length,1);assert.equal(spawned.length,0);assert.equal(sent[0].refresh,false);
   provider.consumeOutput(JSON.stringify({type:'billing_status',request_id:sent[0].request_id,configured:true,available:true})+'\n');
   await a;
   assert.equal(posted.filter(p=>p.type==='delta').length,0);
   assert.equal(posted.filter(p=>p.type==='billing_status'&&p.available).length,1);
   provider.flushDelta();
-  const manual=provider.refreshBilling(true);assert.equal(sent[1].refresh,true);
+  const manual=provider.refreshBilling(true);await Promise.resolve();assert.equal(sent[1].refresh,true);
   provider.consumeOutput(JSON.stringify({type:'billing_status',request_id:sent[1].request_id,configured:true,available:true})+'\n');
   await manual;
 });
