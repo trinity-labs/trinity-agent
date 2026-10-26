@@ -998,10 +998,8 @@ function closeProjectEditor(group, restoreFocus = true) {
   group.querySelector('input[type=text]').value=group.dataset.projectName;
   group.querySelector('.project-path-input').value=group.dataset.projectRoot;
   group.querySelector('.project-color-hex').value=group.dataset.projectColor.toUpperCase();
-  if(!pendingProjectUpdates.has(group.dataset.projectId)) {
-    group.querySelector('input[type=color]').value=group.dataset.projectColor;
-    group.style.setProperty('--project-color',group.dataset.projectColor);
-  }
+  group.querySelector('input[type=color]').value=group.dataset.projectColor;
+  group.style.setProperty('--project-color',group.dataset.projectColor);
   flushDeferredArchives();
   if(restoreFocus)[...archiveList.querySelectorAll('.archive-project')].find(item=>item.dataset.projectId===group.dataset.projectId)?.querySelector('.project-edit').focus();
 }
@@ -1033,10 +1031,11 @@ function projectUpdateResult(data) {
   group?.querySelectorAll('.project-editor input,.project-editor button').forEach(control=>{control.disabled=pendingProjectDeletions.has(id);});
   if(success && group) {
     group.dataset.projectId=data.project.id;
+    group.style.setProperty('--project-color',group.dataset.projectColor);
     group.querySelector('.project-folder-name').textContent=data.project.name;
     group.querySelector('.project-folder-path').textContent=group.dataset.projectRoot;
-    // A color acknowledgement must not discard a title draft or close the picker.
-    if(pending.name!==undefined && group.querySelector('input[type=text]').value.trim()===pending.name && group.querySelector('input[type=color]').value===pending.color && (pending.root===undefined || group.querySelector('.project-path-input').value.trim()===pending.root))closeProjectEditor(group);
+    // Keep edits made after submission; an already closed editor must not take focus back.
+    if(!group.querySelector('.project-editor').hidden && pending.name!==undefined && group.querySelector('input[type=text]').value.trim()===pending.name && group.querySelector('input[type=color]').value===pending.color && (pending.root===undefined || group.querySelector('.project-path-input').value.trim()===pending.root))closeProjectEditor(group);
   }
   archiveOrganizationNotice(success?t(pending.name===undefined?'Couleur du dossier enregistrée.':'Projet enregistré.'):t('Enregistrement impossible : {0}',data.text || t('Erreur inconnue')),success?'success':'error');
 }
@@ -1182,7 +1181,7 @@ function renderArchives(items, projects) {
     const color=/^#[a-f0-9]{6}$/i.test(project.color||'')?project.color:primaryColor;
     group.dataset.projectName=project.name;group.dataset.projectColor=color;group.dataset.projectRoot=project.root;
     const displayedColor=pendingProjectUpdates.get(project.id)?.color || color;
-    group.style.setProperty('--project-color',displayedColor);
+    group.style.setProperty('--project-color',color);
     const summary=document.createElement('summary');
     summary.draggable=false;
     summary.addEventListener('click',event=>{
@@ -1224,27 +1223,23 @@ function renderArchives(items, projects) {
     hexInput.value=displayedColor.toUpperCase();hexInput.placeholder='#RRGGBB';hexInput.maxLength=7;
     hexInput.pattern='#?[0-9a-fA-F]{6}';hexInput.required=true;hexInput.spellcheck=false;
     hexInput.setAttribute('aria-label',t('Couleur du projet')+' (HEX)');
-    const colorInput=document.createElement('input');colorInput.type='color';colorInput.value=displayedColor;colorInput.title=t('Couleur enregistrée automatiquement.');
+    const colorInput=document.createElement('input');colorInput.type='color';colorInput.value=displayedColor;colorInput.title=t('Couleur du projet');
     colorInput.setAttribute('aria-label',t('Couleur du projet'));
     colorControls.append(hexInput,colorInput);colorLabel.append(colorControls);
     const hexColor=()=>/^#?[0-9a-f]{6}$/i.test(hexInput.value)?'#'+hexInput.value.replace(/^#/,'').toLowerCase():null;
     hexInput.addEventListener('input',()=>{
       const color=hexColor();if(!color)return;
-      colorInput.value=color;group.style.setProperty('--project-color',color);
+      colorInput.value=color;
     });
     hexInput.addEventListener('change',()=>{
       const color=hexColor();if(!color){hexInput.reportValidity();return;}
       hexInput.value=color.toUpperCase();colorInput.value=color;
-      group.style.setProperty('--project-color',color);updateProject(project.id,{color});
     });
-    const previewColor=()=>{
+    const syncColor=()=>{
       hexInput.value=colorInput.value.toUpperCase();
-      group.style.setProperty('--project-color',colorInput.value);
     };
-    colorInput.addEventListener('input',previewColor);
-    colorInput.addEventListener('change',()=>{
-      previewColor();updateProject(project.id,{color:colorInput.value});
-    });
+    colorInput.addEventListener('input',syncColor);
+    colorInput.addEventListener('change',syncColor);
     const pathLabel=document.createElement('label');pathLabel.className='project-path-label';pathLabel.textContent=t('Chemin du projet');
     const pathInput=document.createElement('input');pathInput.type='text';pathInput.className='project-path-input';pathInput.value=project.root;pathInput.required=true;pathInput.maxLength=4096;pathInput.spellcheck=false;pathLabel.append(pathInput);
     const save=document.createElement('button');save.type='submit';save.textContent=t('Enregistrer');

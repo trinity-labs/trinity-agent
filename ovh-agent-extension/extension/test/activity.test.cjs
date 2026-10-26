@@ -421,7 +421,7 @@ test('project color picker matches the primary or custom icon color, with explic
  }
 });
 
-test('choosing a folder color saves immediately, survives refreshes and reloads without saving a title draft',()=>{
+test('folder color drafts cancel cleanly and persist with the title only after Save',()=>{
  const {ProjectStore}=require('../project-store'),os=require('os');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'folder-color-ui-')),store=new ProjectStore(path.join(root,'data'),root);
  const saved=store.create(root,'Folder'),project={...saved,color:'#123456',items:[]};
@@ -429,26 +429,35 @@ test('choosing a folder color saves immediately, survives refreshes and reloads 
  const {dom,document,emit,sent}=browser();
  try {
   emit({type:'archives',items:[],projects:[project]});
-  const group=document.querySelector('.archive-project');group.querySelector('.project-edit').click();
+  let group=document.querySelector('.archive-project');group.querySelector('.project-edit').click();
   const editor=group.querySelector('.project-editor'),title=editor.querySelector('input[type=text]'),color=editor.querySelector('input[type=color]');
   title.value='Titre en cours';color.value='#aa22cc';color.focus();
   color.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
-  assert.equal(group.style.getPropertyValue('--project-color'),'#aa22cc');
   color.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
-  const message=sent.at(-1);assert.equal(message.type,'updateProject');assert.equal(message.project,project.id);
-  assert.equal(message.color,'#aa22cc');assert.equal(message.name,undefined);
-  // A late background snapshot must not replace the native picker or the title draft.
+  assert.equal(group.style.getPropertyValue('--project-color'),project.color);
+  assert.equal(sent.filter(m=>m.type==='updateProject').length,0);
+  assert.equal(store.list().find(p=>p.id===project.id).color,project.color);
   emit({type:'archives',items:[],projects:[{...project}]});
   assert.equal(document.querySelector('input[type=color]'),color);assert.equal(document.activeElement,color);
-  assert.equal(title.value,'Titre en cours');
+  assert.equal(title.value,'Titre en cours');assert.equal(color.value,'#aa22cc');
+  editor.querySelector('button[type=button]').click();
+  group=document.querySelector('.archive-project');
+  assert.equal(group.style.getPropertyValue('--project-color'),project.color);
+  assert.equal(group.querySelector('input[type=color]').value,project.color);
+  assert.equal(group.querySelector('.project-folder-name').textContent,'Folder');
+  assert.equal(sent.filter(m=>m.type==='updateProject').length,0);
+  group.querySelector('.project-edit').click();
+  const form=group.querySelector('.project-editor'),picker=form.querySelector('input[type=color]');
+  form.querySelector('input[type=text]').value='Titre validé';picker.value='#aa22cc';picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
+  form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
+  const message=sent.at(-1);assert.equal(message.type,'updateProject');assert.equal(message.project,project.id);
+  assert.equal(message.color,'#aa22cc');assert.equal(message.name,'Titre validé');
   const persisted=store.update(message.project,message);
   emit({type:'project_updated',project:persisted,requestId:message.requestId});
   emit({type:'archives',items:[],projects:[{...persisted,items:[]}]});
-  assert.equal(editor.hidden,false);assert.equal(title.value,'Titre en cours');assert.equal(color.value,'#aa22cc');
-  assert.match(document.getElementById('archive-notice').textContent,/Couleur du dossier enregistrée/);
-  editor.querySelector('button[type=button]').click();
+  assert.equal(document.querySelector('.project-editor').hidden,true);
   assert.equal(document.querySelector('.archive-project').style.getPropertyValue('--project-color'),'#aa22cc');
-  assert.equal(document.querySelector('.project-folder-name').textContent,'Folder');
+  assert.equal(document.querySelector('.project-folder-name').textContent,'Titre validé');
   const reloaded=browser();
   try {
    reloaded.emit({type:'archives',items:[],projects:new ProjectStore(store.dataRoot,root).list()});
@@ -458,23 +467,24 @@ test('choosing a folder color saves immediately, survives refreshes and reloads 
  } finally {dom.window.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('rapid color choices ignore old confirmations and a failed save stays retryable',()=>{
+test('later color drafts survive a save confirmation and a failed explicit save remains retryable',()=>{
  const {dom,document,emit,sent}=browser(),project={id:'a'.repeat(20),name:'Folder',root:'/project',color:'#123456',items:[]};
  try {
   emit({type:'archives',items:[],projects:[project]});
   const group=document.querySelector('.archive-project');group.querySelector('.project-edit').click();
   const editor=group.querySelector('.project-editor'),color=editor.querySelector('input[type=color]');
-  const choose=value=>{color.value=value;color.dispatchEvent(new dom.window.Event('change',{bubbles:true}));return sent.at(-1);};
-  const first=choose('#aa0000'),second=choose('#00bb00');
+  const choose=value=>{const count=sent.length;color.value=value;color.dispatchEvent(new dom.window.Event('change',{bubbles:true}));assert.equal(sent.length,count);};
+  const save=()=>{editor.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));return sent.at(-1);};
+  choose('#aa0000');const first=save();choose('#00bb00');
   emit({type:'project_updated',project:{...project,color:first.color},requestId:first.requestId});
-  assert.equal(color.value,second.color);assert.equal(group.style.getPropertyValue('--project-color'),second.color);
-  assert.equal(document.getElementById('archive-notice').textContent,'Enregistrement…');
+  assert.equal(editor.hidden,false);assert.equal(color.value,'#00bb00');
+  assert.equal(group.style.getPropertyValue('--project-color'),first.color);
+  const second=save();assert.equal(document.getElementById('archive-notice').textContent,'Enregistrement…');
   emit({type:'project_update_failed',project:project.id,requestId:second.requestId,text:'Disque plein'});
   emit({type:'archives',items:[],projects:[{...project,color:first.color}]});
   assert.equal(editor.hidden,false);assert.equal(color.value,second.color);
   assert.match(document.getElementById('archive-notice').textContent,/Enregistrement impossible.*Disque plein/);
-  editor.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
-  const retry=sent.at(-1);assert.equal(retry.color,second.color);assert.notEqual(retry.requestId,second.requestId);
+  const retry=save();assert.equal(retry.color,second.color);assert.notEqual(retry.requestId,second.requestId);
   emit({type:'project_updated',project:{...project,color:retry.color},requestId:retry.requestId});
   emit({type:'archives',items:[],projects:[{...project,color:retry.color}]});
   assert.equal(document.querySelector('.project-editor').hidden,true);
@@ -482,17 +492,20 @@ test('rapid color choices ignore old confirmations and a failed save stays retry
  } finally {dom.window.close();}
 });
 
-test('closing a folder editor while saving keeps the pending color through a background refresh',()=>{
+test('closing after Save applies the confirmed color without stealing focus',()=>{
  const {dom,document,emit,sent}=browser(),project={id:'a'.repeat(20),name:'Folder',root:'/project',color:'#123456',items:[]};
  try {
   emit({type:'archives',items:[],projects:[project]});
   document.querySelector('.project-edit').click();
   const color=document.querySelector('input[type=color]');color.value='#abcdef';color.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
+  document.querySelector('.project-editor').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
   const message=sent.at(-1);
   emit({type:'archives',items:[],projects:[project]});
   document.querySelector('.project-editor button[type=button]').click();
-  assert.equal(document.querySelector('.archive-project').style.getPropertyValue('--project-color'),'#abcdef');
+  assert.equal(document.querySelector('.archive-project').style.getPropertyValue('--project-color'),project.color);
+  const other=document.getElementById('model-picker');other.focus();
   emit({type:'project_updated',project:{...project,color:message.color},requestId:message.requestId});
+  assert.equal(document.activeElement,other);
   emit({type:'archives',items:[],projects:[{...project,color:message.color}]});
   assert.equal(document.querySelector('.archive-project').style.getPropertyValue('--project-color'),'#abcdef');
  } finally {dom.window.close();}
@@ -546,9 +559,10 @@ test('project colors expose HEX first and synchronize validated edits with the v
   assert.equal(hex.value,'#123ABC');assert.equal(hex.parentElement.firstElementChild,hex);
   hex.value='FF8800';hex.dispatchEvent(new dom.window.Event('input'));
   assert.equal(picker.value,'#ff8800');
-  hex.dispatchEvent(new dom.window.Event('change'));assert.equal(sent.at(-1).color,'#ff8800');assert.equal(hex.value,'#FF8800');
+  hex.dispatchEvent(new dom.window.Event('change'));assert.equal(sent.filter(m=>m.type==='updateProject').length,0);assert.equal(hex.value,'#FF8800');
   const count=sent.length;hex.value='#12';hex.dispatchEvent(new dom.window.Event('change'));assert.equal(sent.length,count);assert.equal(hex.checkValidity(),false);
   picker.value='#aabbcc';picker.dispatchEvent(new dom.window.Event('change'));assert.equal(hex.value,'#AABBCC');assert.equal(hex.checkValidity(),true);
+  assert.equal(sent.length,count);document.querySelector('.project-editor').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));assert.equal(sent.at(-1).color,'#aabbcc');
  } finally {dom.window.close();}
 });
 
@@ -559,6 +573,7 @@ test('notifications carry explicit semantic status for saving, success, warning 
   emit({type:'archives',projects:[project],items:[]});
   document.querySelector('.project-edit').click();
   const color=document.querySelector('input[type=color]');color.value='#abcdef';color.dispatchEvent(new dom.window.Event('change'));
+  document.querySelector('.project-editor').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
   const notice=document.getElementById('archive-notice'),status=document.getElementById('status');
   assert.equal(notice.dataset.status,'info');
   const request=sent.at(-1);emit({type:'project_updated',requestId:request.requestId,project:{...project,color:'#abcdef'}});

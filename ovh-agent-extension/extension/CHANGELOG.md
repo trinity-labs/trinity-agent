@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.66
+
+- Apply folder colors only after Save, together with the title and path. Keep color choices inside the form until confirmation and discard unsaved choices on Close or an outside click.
+
 ## 1.17.65
 
 - Close a folder editor when clicking outside its form, while preserving the clicked action, keyboard focus, other folder editors and pending history refreshes.

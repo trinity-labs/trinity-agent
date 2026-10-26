@@ -91,7 +91,8 @@ folder opens after the drop. Opening a conversation restores its workspace and
 context. Adding or reordering a folder does not change conversation context.
 Opening an archived conversation restores its working directory; a new conversation
 starts in the initial VS Code workspace and does not inherit the previous directory.
-Selected colors are saved automatically and remain persistent.
+Folder colors, titles and paths are applied only after **Save**. Closing the editor
+or clicking outside it discards unsaved changes; the folder keeps its saved color.
 
 The project editor includes a red **Delete** button. Confirmation permanently deletes
 the history folder and all conversations assigned to it, including their attachments.
