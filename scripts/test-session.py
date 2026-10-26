@@ -196,6 +196,47 @@ class Sessions(unittest.TestCase):
         self.assertEqual(result.output, 'Inspect before retrying.')
         self.assertEqual(calls, ['committed'])
 
+    def test_retry_exhaustion_allows_new_prompt_without_executing_abandoned_call(self):
+        from pydantic_ai import Agent
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
+        from pydantic_ai.models.function import FunctionModel
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
+        effects = []
+
+        def first(messages, info):
+            return ModelResponse(parts=[ToolCallPart('commit_once', {}, tool_call_id='abandoned')])
+
+        a.RUN_CONTEXT.set(a.RunDependencies())
+        with patch.object(a, 'get_agent', return_value=Agent(FunctionModel(first), retries=0)):
+            with self.assertRaises(UnexpectedModelBehavior):
+                a.run_model_attempt('fixture', 'Inspect before editing.', message_history=[], model_settings={})
+        history = a.interrupted_model_history([], 'Unknown tool exhausted native retries.')
+        # Exercise preparation too: it can discard Pydantic's empty interrupted
+        # tail while removing old task context before the next user turn.
+        with patch.object(a, 'AI_PROVIDER', 'ovhcloud'), \
+             patch.object(a, 'history_with_memory', side_effect=lambda history, *args, **kwargs: history), \
+             patch.object(a, 'prompt_component_profile', return_value={}), \
+             patch.object(a, 'prepare_request', return_value={'context': '', 'analysis': {'intent': 'edit'},
+                          'sources': [], 'files_scanned': 0, 'partial': False}):
+            history, _ = a.prepare_task_context(history, 'Continue with the correction.')
+
+        def commit_once() -> str:
+            """The formerly hidden tool must not execute on a new user turn."""
+            effects.append('committed')
+            return 'committed'
+
+        def continued(messages, info):
+            returns = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+            self.assertTrue(any(p.tool_call_id == 'abandoned' and p.outcome == 'interrupted' for p in returns))
+            self.assertEqual([p.content for m in messages for p in m.parts if isinstance(p, UserPromptPart)],
+                             ['Inspect before editing.', 'Continue with the correction.'])
+            return ModelResponse(parts=[TextPart('Ready to continue safely.')])
+
+        with patch.object(a, 'get_agent', return_value=Agent(FunctionModel(continued), tools=[commit_once])):
+            result = a.run_model_attempt('fixture', 'Continue with the correction.', message_history=history, model_settings={})
+        self.assertEqual(result.output, 'Ready to continue safely.')
+        self.assertEqual(effects, [])
+
     def test_model_handoff_keeps_evidence_without_replaying_pending_calls(self):
         from pydantic_ai import Agent
         from pydantic_ai.models.function import FunctionModel
@@ -333,6 +374,64 @@ class Sessions(unittest.TestCase):
         restored=[e for e in outputs if e['type']=='archive_loaded']
         self.assertEqual(len(restored),2)
         self.assertTrue(all(e['resumable'] for e in restored))
+
+    def test_rejected_archive_keeps_pointer_and_history_for_the_next_prompt(self):
+        from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart
+        initial_history = [ModelRequest(parts=[UserPromptPart('previous request')]),
+                           ModelResponse(parts=[TextPart('previous evidence')])]
+        broken = self.folder.parent / 'broken'
+        broken.mkdir()
+        pointer = self.root / 'current'
+        (self.folder / 'task-state.json').write_text('{"status":"completed"}')
+        for action in ('load_archive', 'resume_archive'):
+            for failure in ('invalid_state', 'recovery'):
+                with self.subTest(action=action, failure=failure):
+                    pointer.write_text('conversation')
+                    state = broken / 'task-state.json'
+                    state.write_text('{broken' if failure == 'invalid_state' else
+                                     '{"status":"interrupted","prompt":"old target task"}')
+                    before = state.read_bytes()
+                    events, prepared, recovered = [], [], []
+
+                    def inputs(requests):
+                        requests.put({'type': action, 'id': 'broken'})
+                        requests.put({'type': 'prompt', 'text': 'Continue.', 'model': 'fixture-model'})
+                        requests.put({'type': 'shutdown'})
+
+                    def recover():
+                        recovered.append(a.CONVERSATION_ID)
+                        if a.CONVERSATION_ID == 'broken':
+                            raise a.VerificationError('fixture recovery failed')
+
+                    def prepare(history):
+                        prepared.append((a.CONVERSATION_ID, history))
+                        raise ValueError('fixture preparation reached')
+
+                    with ExitStack() as stack:
+                        for name, value in {'CONVERSATION_ID': 'conversation', 'POINTER_FILE': pointer,
+                                            'JSON_MODE': False, 'FOLLOWUP_RUNNING': False}.items():
+                            stack.enter_context(patch.object(a, name, value))
+                        mocks = {
+                            'recover_verification': {'side_effect': recover},
+                            'load_history': {'return_value': initial_history},
+                            'read_snapshot': {'return_value': None}, 'read_archive': {'return_value': []},
+                            'load_selected_model': {'return_value': 'fixture-model'},
+                            'refresh_billing_async': {}, 'current_budget_status': {'return_value': {}},
+                            'publish_budget': {}, 'stdin_reader': {'side_effect': inputs},
+                            'emit': {'side_effect': events.append}, 'list_archives': {'return_value': []},
+                            'save_selected_model': {}, 'is_selectable_model': {'return_value': True},
+                            'update_metadata': {'return_value': False}, 'compact_history': {'side_effect': prepare},
+                        }
+                        for name, settings in mocks.items():
+                            stack.enter_context(patch.object(a, name, **settings))
+                        a.main_json_lines()
+                        self.assertEqual(a.CONVERSATION_ID, 'conversation')
+                    self.assertEqual(pointer.read_text(), 'conversation')
+                    self.assertEqual(state.read_bytes(), before)
+                    self.assertEqual(prepared, [('conversation', initial_history)])
+                    self.assertEqual(len([event for event in events if event['type'] == 'error']), 2)
+                    if failure == 'invalid_state':
+                        self.assertEqual(recovered, ['conversation'])
 
     def test_activity_durations_are_monotonic_and_paired_by_id(self):
         outputs = []

@@ -112,6 +112,32 @@ class Preparation(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 self.assertTrue(read_only_policy(prompt))
 
+    def test_edit_after_context_keeps_scoped_restrictions_scoped(self):
+        prompts = [
+            'Contexte : la reprise échoue.\nCorrige app.py sans modifier les tests.',
+            'Lis les journaux, puis corrige app.py. Ne modifie pas config.json.',
+            'Inspect the failure; fix app.py without modifying deployment.yaml.',
+            'Ok on continue l’analyse, puis applique la correction dans app.py. Ne modifie pas le routage.',
+        ]
+        for prompt in prompts:
+            for previous in (False, True):
+                with self.subTest(prompt=prompt, previous=previous):
+                    self.assertFalse(r.read_only_policy(prompt, previous))
+                    self.assertEqual(r.analyze_request(prompt).intent, 'edit')
+
+    def test_edit_mentions_and_global_refusals_do_not_grant_write_access(self):
+        for prompt in [
+            'Comment corriger app.py sans modifier les tests ?',
+            'Explique comment lire les journaux puis corriger app.py sans modifier les tests.',
+            'Analyse le message « corrige app.py » sans modifier les tests.',
+            'Contexte : incident. Corrige app.py. Lecture seule, aucune modification.',
+            'Inspect the failure; fix app.py. Do not modify files.',
+        ]:
+            for previous in (False, True):
+                with self.subTest(prompt=prompt, previous=previous):
+                    self.assertTrue(r.read_only_policy(prompt, previous))
+        self.assertTrue(r.read_only_policy('Lis le rapport. Ne corrige pas app.py.', True))
+
     def test_creating_release_metadata_is_execution_without_requiring_source_edits(self):
         for prompt in ('Installe et publie le paquet prêt. Crée le tag annoté v1.2.3 sur ce commit.',
                        'Publie la version : crée un tag Git et une release GitHub.',

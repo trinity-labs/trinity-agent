@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.69
+
+- Close abandoned tool calls with native history repair before a new user turn, preserving evidence without replaying earlier effects.
+- Keep the previous conversation, persisted pointer and history when an archive cannot be validated or recovered; read snapshots after recovery.
+- Recognize affirmative edit requests after introductory context while retaining scoped restrictions and explanatory questions.
+- Include instruction and tool-schema input in automatic routing cost estimates.
+
 ## 1.17.68
 
 - Keep interrupted-session regression tests independent of provider credentials and billing catalogues, so the same scenarios run offline in local and GitHub environments.

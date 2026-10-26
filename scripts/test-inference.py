@@ -186,6 +186,25 @@ guard = a.normalise_model({'id':'Qwen3Guard-Gen-8B','model_type':'moderation','c
 assert not guard['selectable'] and not a.model_capabilities('Qwen3Guard-Gen-8B')['tools']
 print('PASS: documented total/active parameters and weight-aware routing')
 
+# Real instruction/tool input can reverse which price mix is cheapest.
+# Keep the catalogue synthetic: this regression must not depend on live prices.
+mixed_prices = [a.normalise_model({'id': mid, 'context_length': 131072,
+    'pricing': {'currency_unit': 'EUR', 'prompt': incoming, 'completion': outgoing}})
+    for mid, incoming, outgoing in [('gpt-oss-20b', '0.000001', '0.000004'),
+                                    ('gpt-oss-120b', '0.000002', '0.000001')]]
+with patch.object(a, 'fetch_model_catalog', return_value=mixed_prices), \
+     patch.object(a, 'load_router_state', return_value={}), \
+     patch.object(a, 'routing_billing_status', return_value={}):
+    with patch.object(a, 'context_overhead', return_value=0):
+        short_model, short_route = a.choose_cost_effective_model('Bonjour', 0, 0)
+    with patch.object(a, 'context_overhead', return_value=8000):
+        full_model, full_route = a.choose_cost_effective_model('Bonjour', 0, 0)
+    assert short_model == 'gpt-oss-120b'
+    assert full_model == 'gpt-oss-20b', (full_model, full_route)
+    assert full_route['estimated_input_tokens'] >= 8000
+    assert full_route['projected_cost_eur'] > short_route['projected_cost_eur']
+print('PASS: routing includes instruction and tool input in mixed-price selection')
+
 # A short continuation carries task difficulty into both routing and generation.
 analysis = a.analyze_request('Continue', ['Refactorise notre architecture dans plusieurs fichiers'])
 from dataclasses import asdict

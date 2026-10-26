@@ -204,8 +204,10 @@ def read_only_policy(prompt, previous=False):
                 return True
     if execution:
         return False
-    if re.match(
-        r"^\s*(?:(?:oui|ok|okay|yes|now|maintenant|please|d['’]accord|s['’]il te plait)[\s,!:.]+)*"
+    # Accept edit commands unless the prompt begins with a question word.
+    if not re.match(r"\s*(?:pourquoi|comment|what|why|how|expliqu\w*|explain)\b", text) and re.search(
+        r"(?:^|[.;\n]|\b(?:et|puis|and|then)\s+)\s*"
+        r"(?:(?:oui|ok|okay|yes|now|maintenant|please|d['’]accord|s['’]il te plait)[\s,!:.]+)*"
         r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you)\s+(?:maintenant\s+)?)?"
         r"(?:modifie|modifier|corrige|corriger|ecris|ecrire|cree|creer|supprime|supprimer|ajoute|ajouter|applique|appliquer|implemente|deploie|installe|publie|"
         r"fais (?:la correction|les corrections|les modifications)|"
@@ -240,8 +242,9 @@ def analyze_request(prompt, recent_prompts=(), image_count=0):
     action = bool(re.search(r'\b(?:ajout\w*|modifi\w*|corrig\w*|supprim\w*|mets?|implement\w*|cre\w*|chang\w*|modernis\w*|stylis\w*|transform\w*|optimis\w*|amelior\w*|repar\w*|ajust\w*|redui\w*|diminu\w*|augment\w*|agrand\w*|elargi\w*|retreci\w*|fix|add|remove|refactor\w*)\b', actionable)) and not question
     # Applying a requested value is an edit. Keep this imperative bounded so
     # "l'application", "j'ai appliqué" and "comment appliquer" stay descriptive.
-    apply_action = bool(re.match(
-        r"\s*(?:(?:ok|oui|yes|maintenant|now|please|s['’]il te plait)[\s,!:.]+)*"
+    apply_action = bool(re.search(
+        r"(?:^|[.;\n]|\b(?:et|puis|and|then)\s+)\s*"
+        r"(?:(?:ok|oui|yes|maintenant|now|please|s['’]il te plait)[\s,!:.]+)*"
         r"(?:(?:peux[- ]tu|pourrais[- ]tu|can you|could you|veuillez)\s+)?"
         r"(?:applique(?:r|z|s)?|apply)\b", actionable))
     action = action or (apply_action and not question)

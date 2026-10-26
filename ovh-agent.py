@@ -2046,7 +2046,7 @@ def choose_cost_effective_model(
         limits = current_limits(item, complex_task=complex_task, overhead=overhead)
         output_budget, input_budget = limits.output_tokens, limits.context_tokens
         estimated_inputs[str(item['id'])] = max(256, min(context_chars // 3, input_budget)
-                                               + prompt_tokens + image_count * 8192)
+                                               + overhead + prompt_tokens + image_count * 8192)
         if output_budget >= 256 and input_budget >= prompt_tokens + image_count * 8192 + 256:
             eligible.append(item)
     candidates = eligible
@@ -3040,6 +3040,10 @@ def run_model_attempt(model_id, user_content, *, message_history, model_settings
         instructions = ('La tentative précédente n’a pas terminé la demande. '
                         'Reprends depuis les résultats observés ; corrige la cause de l’échec avant de réessayer.')
         user_content = None
+    elif user_content is not None and message_history:
+        # Preparation can remove an empty interrupted tail. Close abandoned
+        # calls before a new prompt, without executing their old effects.
+        message_history = repair_messages(message_history)
     deps.model_messages = None
     with capture_run_messages() as messages:
         try:
@@ -3910,14 +3914,20 @@ def main_json_lines() -> None:
             if not re.fullmatch(r"[0-9A-Za-z_-]+", candidate) or target.is_symlink() or target.resolve().parent != ARCHIVE_ROOT.resolve() or not target.is_dir():
                 emit({"type": "error", "text": "Archive introuvable."})
                 continue
-            CONVERSATION_ID = candidate
-            write_pointer()
+            previous_id = CONVERSATION_ID
             try:
+                # Set candidate as current ID to read and validate state.
+                CONVERSATION_ID = candidate
+                read_task_state()  # Validate before recovery can change receipts.
                 recover_verification()
+                task_status = read_task_state().get("status")
+                stored_snapshot = None if task_status in {"running", "interrupted"} else read_snapshot(candidate)
+                # All checks passed; persist the new conversation pointer.
+                write_pointer()
             except (VerificationError, OSError, ValueError) as error:
-                emit({"type": "error", "text": f"Récupération des fichiers non vérifiable : {error}"})
+                CONVERSATION_ID = previous_id
+                emit({"type": "error", "text": str(error)})
                 continue
-            stored_snapshot = None if read_task_state().get("status") in {"running", "interrupted"} else read_snapshot(candidate)
             if stored_snapshot:
                 emit({"type": "snapshot_loaded", "automatic": False, **stored_snapshot, "timeline": read_archive(candidate, timeline_only=True), "model": selected_model, "id": candidate, "resumable": read_task_state().get("status") in {"running", "interrupted"}})
                 # Display saved HTML before deserializing potentially large model
@@ -3943,15 +3953,16 @@ def main_json_lines() -> None:
                 continue
             previous_id = CONVERSATION_ID
             CONVERSATION_ID = candidate
-            task = read_task_state()
-            if task.get("status") not in {"running", "interrupted"} or not task.get("prompt"):
-                CONVERSATION_ID = previous_id
-                emit({"type": "error", "text": "Aucune tâche interrompue à reprendre."})
-                continue
-            write_pointer()
             try:
+                task = read_task_state()
+                if task.get("status") not in {"running", "interrupted"} or not task.get("prompt"):
+                    CONVERSATION_ID = previous_id
+                    emit({"type": "error", "text": "Aucune tâche interrompue à reprendre."})
+                    continue
                 recover_verification()
+                write_pointer()
             except (VerificationError, OSError, ValueError) as error:
+                CONVERSATION_ID = previous_id
                 emit({"type": "error", "text": f"Récupération des fichiers non vérifiable : {error}"})
                 continue
             history = load_history(candidate)
