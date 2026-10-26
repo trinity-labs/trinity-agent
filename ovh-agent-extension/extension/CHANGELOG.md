@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.61
+
+- Report pre-existing check failures at the first affected edit, including the actual local host, executable and termination signal; retain diagnostics in the verification plan without repeating them on every write.
+- Preserve existing test definitions when editing files, while allowing version changes, formatting, comments and restoration of the original check. Rewritten checks no longer certify their own replacement.
+- Add autonomy scenarios for runtime configuration repair and weakened-test detection, with independent file assertions.
+
 ## 1.17.60
 
 - Share read-only intent classification between request analysis and execution; preserve scoped file restrictions without turning explicit execution requests into web research.

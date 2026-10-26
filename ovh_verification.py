@@ -6,6 +6,7 @@ Original dirty working files are preserved; rollback never resets a repository.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import ast
 from datetime import datetime, timezone
 import fnmatch
 import glob
@@ -38,6 +39,32 @@ SYNTAX_UNAVAILABLE = "non disponible pour ce format"
 
 def digest(content: bytes | None) -> str | None:
     return hashlib.sha256(content).hexdigest() if content is not None else None
+
+
+def same_check_definition(path: Path, before: str | None, after: str) -> bool:
+    """Recognize metadata/comment-only changes without trusting a rewritten test."""
+    if before is None:
+        return False
+    try:
+        if path.name == 'package.json':
+            old, new = json.loads(before), json.loads(after)
+            return isinstance(old, dict) and isinstance(new, dict) and old.get('scripts') == new.get('scripts')
+        if path.suffix == '.py':
+            return ast.dump(ast.parse(before)) == ast.dump(ast.parse(after))
+        if path.suffix == '.json':
+            return json.loads(before) == json.loads(after)
+        if path.suffix in {'.js', '.cjs', '.mjs'}:
+            # Recognize appended whole-line comments without attempting to strip
+            # JavaScript comments from strings, templates or regular expressions.
+            for original, amended in ((before, after), (after, before)):
+                if amended.startswith(original):
+                    suffix = amended[len(original):]
+                    if suffix.startswith(('\n', '\r')) and all(
+                            not line.strip() or line.lstrip().startswith('//') for line in suffix.splitlines()):
+                        return True
+    except (SyntaxError, ValueError, TypeError):
+        pass
+    return before == after
 
 
 def contents(path: Path) -> bytes | None:
@@ -312,7 +339,16 @@ class ChangeGuard:
                     "checks": [{"name": check.name, "argv": check.argv, "cwd": str(check.root), "kind": check.kind,
                                 "paths": check.patterns, "protected": sorted(check.protected)}
                                for check in self.checks.values()],
+                    "baseline_failures": self.baseline_failures(),
                     "instruction": "Utilise les contrôles existants et préserve leurs références. Une politique explicite reste obligatoire. Sans suite configurée, les écritures conservent une sauvegarde et sont vérifiées par syntaxe disponible et contenu ; cela ne prouve pas leur comportement."}
+
+    def baseline_failures(self, keys=None) -> list[dict]:
+        """Expose initial failures to the model at the first edit, not only the UI."""
+        return [{key: receipt.get(key) for key in
+                 ('check', 'argv', 'cwd', 'exit_code', 'termination_signal', 'error', 'execution_context')}
+                | {'output': receipt.get('output', '')[-1500:]}
+                for key, receipt in self.state['baseline'].items()
+                if (keys is None or key in keys) and not receipt.get('passed')]
 
     def _requires_functional_coverage(self, path):
         if any(path.is_relative_to(root) for root in self.explicit_policies):
@@ -618,13 +654,17 @@ class ChangeGuard:
                       "output": "Contrôles de référence modifiés : " + ", ".join(altered), "duration_ms": 0}
         else:
             result = self.runner(check.argv, check.root, check.timeout)
-        changed = before != self._evidence_files(check)
+        after = self._evidence_files(check)
+        changed_paths = sorted(path for path in before.keys() | after.keys()
+                               if before.get(path) != after.get(path))
+        changed = bool(changed_paths)
         if changed:
             result = {**result, 'passed': False, 'output': result.get('output', '')
                 + '\nEntrées modifiées pendant le contrôle ; résultat non validé.'}
         receipt = {**result, **test_count(result), "id": uuid.uuid4().hex, "check": check.name, "key": key,
                    "phase": phase, "argv": check.argv, "cwd": str(check.root), "kind": check.kind,
                    "fingerprints": before, "changed_during_check": changed,
+                   "changed_paths": changed_paths,
                    "change_versions": {p: c["written"] for p, c in self.state["changes"].items()},
                    "timestamp": datetime.now(timezone.utc).isoformat()}
         self.state["receipts"].append(receipt)
@@ -658,10 +698,12 @@ class ChangeGuard:
                     # backup and the edit is validated by syntax and content.
                     self.publish({"type": "verification_status", "status": "uncovered", "path": str(path),
                                   "text": "Aucun test fonctionnel ne couvre ce fichier ; validation par syntaxe et contenu."})
+                previous_baselines = set(self.state['baseline'])
                 for check_key, check in applicable.items():
                     if check_key not in self.state["baseline"]:
                         self.state["baseline"][check_key] = self._execute(check_key, check, "before")
                 if any(digest(contents(Path(name))) != expected
+                       and not (name == key and digest(candidate) == expected)
                        for check in applicable.values() for name, expected in check.protected.items()):
                     raise VerificationError('Contrôles de référence modifiés pendant la vérification ; écriture refusée.')
                 # Tests may run arbitrary project code; check freshness again afterwards.
@@ -683,17 +725,28 @@ class ChangeGuard:
                 self.state["report"] = None
                 self._save()  # Recovery information precedes the filesystem mutation.
                 replace_checked(path, candidate, digest(original), mode)
-                if any(str(path) in check.protected for check in self.checks.values()):
-                    # An explicitly authorized reference edit refreshes the
-                    # recorded digest so later checks report real regressions,
-                    # not the intentional change itself.
+                references = [check for check in self.checks.values() if str(path) in check.protected]
+                preserved = bool(references) and same_check_definition(path, before, after) and all(
+                    check.protected[str(path)] == digest(original) for check in references)
+                if preserved:
+                    # Version bumps, JSON formatting and Python comments do not
+                    # replace the test contract. Executable changes do.
                     for check in self.checks.values():
                         if str(path) in check.protected:
                             check.protected[str(path)] = digest(candidate)
-                    self.publish({"type": "verification_status", "status": "reference_edited", "path": str(path)})
+                    self._save()  # Preserve the unchanged definition across task resumption.
+                if references:
+                    self.publish({"type": "verification_status", "status": "reference_edited", "path": str(path),
+                                  "definition_preserved": preserved})
                 self.publish({"type": "verification_status", "status": "pending", "files": list(self.state["changes"])})
-                return (f"Syntaxe {syntax}. Modification sauvegardée ; validation fonctionnelle encore requise."
-                        if applicable else f"Syntaxe {syntax}. Modification sauvegardée ; vérifier le contenu avec verify_changes. Aucun test fonctionnel configuré.")
+                result = (f"Syntaxe {syntax}. Modification sauvegardée ; validation fonctionnelle encore requise."
+                          if applicable else f"Syntaxe {syntax}. Modification sauvegardée ; vérifier le contenu avec verify_changes. Aucun test fonctionnel configuré.")
+                failures = self.baseline_failures(self.state['baseline'].keys() - previous_baselines)
+                if failures:
+                    result += '\nContrôles déjà en échec AVANT cette modification (ce ne sont pas des régressions démontrées) : ' + json.dumps(failures, ensure_ascii=False)
+                if references and not preserved:
+                    result += '\nDéfinition de contrôle modifiée : elle ne remplace pas la référence de cette tâche. Restaurer cette référence pour vérifier les modifications applicatives ; un test réécrit ne constitue pas une preuve indépendante.'
+                return result
             except VerificationError:
                 self.failures[failure_key] = self.failures.get(failure_key, 0) + 1
                 raise
@@ -771,6 +824,7 @@ class ChangeGuard:
                       "not_configured" if limited_audit and not problems else "failed")
             report = {"status": status, "files": list(changes),
                       "checks": receipts, "problems": problems, "fingerprints": actual,
+                      "baseline_failures": self.baseline_failures(),
                       "syntax_checks": syntax_checks,
                       "syntax_unavailable": [item["path"] for item in syntax_checks if not item["available"]],
                       "inspected_directories": sorted(str(path) for path in self.inspected_directories),
@@ -790,7 +844,11 @@ class ChangeGuard:
         if report["status"] == "failed":
             reasons = report["problems"] + [f"{item['check']} : {item['output'][-2000:]}"
                                             for item in report["checks"] if not item["passed"]]
-            raise VerificationError("Tâche non validée. Corrige les erreurs puis utilise verify_changes.\n" + "\n".join(reasons))
+            baseline = report.get('baseline_failures', [])
+            initial = ('\nÉtat initial déjà défaillant : ' + json.dumps(baseline, ensure_ascii=False)
+                       + '\nUn arrêt du processus de test ne prouve pas un défaut applicatif. Vérifie son hôte, son exécutable et son environnement avant de modifier le code ou les tests.'
+                       if baseline else '')
+            raise VerificationError("Tâche non validée. Diagnostique les contrôles ci-dessous puis utilise verify_changes.\n" + "\n".join(reasons) + initial)
         return report
 
     def rollback(self) -> dict:

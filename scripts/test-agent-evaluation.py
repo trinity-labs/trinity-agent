@@ -14,6 +14,14 @@ spec.loader.exec_module(evaluation)
 
 
 class AgentEvaluationTests(unittest.TestCase):
+    def test_runtime_can_be_repaired_and_weakened_test_cannot_certify_success(self):
+        report = evaluation.run_campaign(cases=('runtime_recovery', 'weakened_test'))
+        recovery, weakened = report['scenarios']
+        self.assertTrue(recovery['task_success_without_intervention'], recovery)
+        self.assertTrue(weakened['expected_rejection'], weakened)
+        self.assertFalse(weakened['controller_accepted'])
+        self.assertEqual(weakened['oracle']['mismatches'], ['check.py'])
+
     def test_production_fixture_suite_is_offline_and_seeded(self):
         report = evaluation.run_campaign(seed=271828)
         self.assertTrue(report['passed'], [(row['id'], row['oracle'], row['error'], row['acceptance'])

@@ -68,6 +68,22 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(result['output'].strip(), argument)
         self.assertFalse((self.root / 'DO_NOT_CREATE').exists())
 
+    def test_crash_reports_signal_and_actual_execution_context(self):
+        result = self.run_python('import os,signal,resource;resource.setrlimit(resource.RLIMIT_CORE,(0,0));os.kill(os.getpid(),signal.SIGILL)')
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['exit_code'], -signal.SIGILL)
+        self.assertEqual(result['termination_signal'], 'SIGILL')
+        self.assertEqual(result['execution_context']['cwd'], str(self.root.resolve()))
+        self.assertEqual(result['execution_context']['host'], os.uname().nodename)
+        self.assertEqual(Path(result['execution_context']['executable']).resolve(), Path(sys.executable).resolve())
+
+    def test_relative_runner_reports_binary_from_command_working_directory(self):
+        executable = self.root / 'python-fixture'
+        executable.symlink_to(sys.executable)
+        result = runner.run_process(['./python-fixture', '-c', 'print("ok")'], self.root)
+        self.assertTrue(result['passed'], result)
+        self.assertEqual(Path(result['execution_context']['executable']), Path(sys.executable).resolve())
+
     def test_inherited_credentials_are_not_passed_or_logged(self):
         names = ['OVH_AI_API_KEY', 'OVH_APPLICATION_KEY', 'OVH_CONSUMER_KEY', 'OPENAI_API_KEY',
                  'ANTHROPIC_API_KEY', 'GH_TOKEN', 'GITHUB_TOKEN', 'VSCE_PAT', 'NPM_TOKEN',

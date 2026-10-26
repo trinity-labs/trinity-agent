@@ -157,6 +157,13 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
     # Project-installed test tools must remain available without a login shell.
     environment['PATH'] = os.pathsep.join((str(Path(cwd) / '.agent-tools/venv/bin'),
         str(Path(cwd) / '.agent-tools/npm/node_modules/.bin'), environment.get('PATH', '')))
+    # A mounted directory does not change which host executes the command.
+    executable = str(Path(cwd) / argv[0]) if '/' in argv[0] and not os.path.isabs(argv[0]) else argv[0]
+    resolved = shutil.which(executable, path=environment['PATH'])
+    result['execution_context'] = {
+        'host': os.uname().nodename, 'cwd': str(Path(cwd).resolve()),
+        'executable': str(Path(resolved).resolve()) if resolved else None,
+    }
 
     command = list(argv)
     information = None
@@ -256,6 +263,11 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
                 result['executed'] = False
             information.close()
     result['exit_code'] = process.returncode
+    if process.returncode is not None and process.returncode < 0:
+        try:
+            result['termination_signal'] = signal.Signals(-process.returncode).name
+        except ValueError:
+            result['termination_signal'] = str(-process.returncode)
     result['output'] = tail.decode('utf-8', 'replace')
     result['output_bytes'] = received
     if profile == 'workspace' and not result['executed']:

@@ -477,6 +477,82 @@ class Verification(unittest.TestCase):
         with self.assertRaisesRegex(VerificationError, 'Contrôles de référence modifiés'):
             self.guard.require_verified()
 
+    def test_edit_tool_cannot_rebase_a_weakened_test_or_launder_it_with_a_comment(self):
+        self.edit(3)
+        original = self.check.read_text()
+        result = self.guard.write(self.check, original, "print('all good')\n")
+        self.assertIn('ne remplace pas la référence', result)
+        self.assertEqual(self.check.read_text(), "print('all good')\n")  # Editing remains available.
+        self.guard.write(self.check, self.check.read_text(), self.check.read_text() + '# cosmetic\n')
+        with self.assertRaisesRegex(VerificationError, 'Contrôles de référence modifiés'):
+            self.guard.require_verified()
+        self.guard.write(self.check, self.check.read_text(), original)
+        self.edit(2)
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+
+    def test_package_version_change_preserves_tests_but_nested_runner_replacement_does_not(self):
+        self.policy.unlink()
+        package = self.workspace / 'package.json'
+        package.write_text(json.dumps({'version': '1.0.0', 'scripts': {
+            'test': 'npm run test:unit', 'test:unit': 'node --test tests/*.test.js'}}))
+        self.guard.runner = lambda *args: {'passed': True, 'exit_code': 0, 'output': '', 'duration_ms': 1}
+        self.guard.observe(self.file)
+        before = package.read_text()
+        self.guard.write(package, before, before.replace('1.0.0', '1.0.1'))
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+        original = package.read_text()
+        weakened = json.loads(original)
+        weakened['scripts']['test:unit'] = 'node -e ""'
+        self.guard.write(package, original, json.dumps(weakened))
+        with self.assertRaisesRegex(VerificationError, 'Contrôles de référence modifiés'):
+            self.guard.require_verified()
+        # Restoring the actual original runner must remain possible through the same tool.
+        self.guard.write(package, package.read_text(), original)
+        self.assertEqual(self.guard.require_verified()['status'], 'passed')
+
+    def test_failed_baseline_is_visible_in_first_write_and_plan_before_final_validation(self):
+        failure = {'passed': False, 'exit_code': -4, 'termination_signal': 'SIGILL',
+                   'execution_context': {'host': 'ide', 'cwd': str(self.workspace), 'executable': '/bin/bun'},
+                   'output': 'runner crashed', 'duration_ms': 1}
+        self.guard.runner = lambda *args: failure.copy()
+        result = self.guard.write(self.file, self.file.read_text(), 'VALUE = 2\n')
+        self.assertIn('AVANT cette modification', result)
+        self.assertIn('SIGILL', result)
+        self.assertEqual(self.guard.plan()['baseline_failures'][0]['execution_context']['host'], 'ide')
+        second = self.guard.write(self.file, self.file.read_text(), 'VALUE = 3\n')
+        self.assertNotIn('AVANT cette modification', second)
+        self.assertEqual(len(self.guard.plan()['baseline_failures']), 1)
+        with self.assertRaisesRegex(VerificationError, 'État initial déjà défaillant'):
+            self.guard.require_verified()
+        self.assertEqual(self.guard.state['report']['status'], 'failed')
+
+    def test_javascript_reference_comment_is_preserved_but_executable_suffix_is_not(self):
+        from ovh_verification import same_check_definition
+        path = Path('check.test.cjs')
+        original = "require('node:assert/strict').equal(1, 1);"
+        self.assertTrue(same_check_definition(path, original, original + '\n// documented check\n'))
+        self.assertFalse(same_check_definition(path, original, original + '\n// comment\nprocess.exit(0)\n'))
+        self.assertFalse(same_check_definition(path, original, original + '\n// comment\u2028process.exit(0)\n'))
+
+    def test_comment_only_reference_digest_is_persisted_before_next_verification(self):
+        original = self.check.read_text()
+        self.guard.write(self.check, original, original + '\n# documentation\n')
+        journal = json.loads((self.guard.directory / 'journal.json').read_text())
+        from ovh_verification import digest
+        checks = journal['verification_context']['checks'].values()
+        self.assertTrue(any(check['protected'].get(str(self.check)) == digest(self.check.read_bytes()) for check in checks))
+
+    def test_changed_inputs_are_identified_in_receipt(self):
+        def runner(*args):
+            self.check.write_text('# changed concurrently\n')
+            return {'passed': True, 'exit_code': 0, 'output': '', 'duration_ms': 1}
+        self.guard.runner = runner
+        self.guard.observe(self.file)
+        key, check = next(iter(self.guard.checks.items()))
+        receipt = self.guard._execute(key, check, 'before')
+        self.assertFalse(receipt['passed'])
+        self.assertEqual(receipt['changed_paths'], [str(self.check)])
+
     def test_missing_suite_uses_limited_validation_but_missing_executable_is_not_success(self):
         self.policy.unlink()
         before = self.file.read_bytes()
