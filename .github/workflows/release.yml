@@ -21,13 +21,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '*'
           cache: npm
           cache-dependency-path: ovh-agent-extension/extension/package-lock.json
       - name: Install system search dependency
         run: sudo apt-get update && sudo apt-get install -y ripgrep
         working-directory: .
-      - run: npm ci --ignore-scripts
+      - run: npm run dependencies:latest
       - run: npm test
       - run: python3 ../../scripts/test-auto-update.py
       - run: python3 ../../scripts/test-export-public.py
@@ -36,7 +36,7 @@ jobs:
           PYDANTIC_AI_NO_BANNER: '1'
         run: |
           python3 -m venv "$RUNNER_TEMP/agent-verification"
-          "$RUNNER_TEMP/agent-verification/bin/pip" install 'pydantic-ai-slim[openai]==2.56.0'
+          "$RUNNER_TEMP/agent-verification/bin/pip" install --upgrade --upgrade-strategy eager 'pydantic-ai-slim[openai]'
           "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/check-backend.py
       - name: Evaluate independent autonomy scenarios without paid calls
         env:
@@ -73,6 +73,12 @@ jobs:
           MARKETPLACE_PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER }}
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: npm run package:vsix
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tested-dependency-resolution
+          path: ovh-agent-extension/extension/package-lock.json
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: extension-vsix
@@ -89,8 +95,12 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: '22'
-      - run: npm ci --ignore-scripts && npm run package:vsix
+          node-version: '*'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: tested-dependency-resolution
+          path: ovh-agent-extension/extension
+      - run: npm ci --ignore-scripts && npm run build:vendor && npm run package:vsix
         working-directory: ovh-agent-extension/extension
         env:
           MARKETPLACE_PUBLISHER: trinity
@@ -136,7 +146,7 @@ jobs:
     steps:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '*'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: extension-vsix
@@ -150,11 +160,11 @@ jobs:
           allow-no-subscriptions: true
       - name: Publish with federated Microsoft Entra identity
         if: vars.MARKETPLACE_AUTH_MODE != 'pat'
-        run: npx --yes @vscode/vsce@4.0.0 publish --packagePath dist/*.vsix --azure-credential --skip-duplicate
+        run: npx --yes @vscode/vsce@latest publish --packagePath dist/*.vsix --azure-credential --skip-duplicate
       - name: Publish with configured PAT (legacy alternative)
         if: vars.MARKETPLACE_AUTH_MODE == 'pat'
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           test -n "$VSCE_PAT" || { echo 'Missing VSCE_PAT repository secret'; exit 1; }
-          npx --yes @vscode/vsce@4.0.0 publish --packagePath dist/*.vsix --skip-duplicate
+          npx --yes @vscode/vsce@latest publish --packagePath dist/*.vsix --skip-duplicate

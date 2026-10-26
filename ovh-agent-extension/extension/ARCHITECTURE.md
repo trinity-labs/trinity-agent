@@ -84,7 +84,7 @@ Le frontend transmet `billingRefresh` pour le polling et `billing` pour l’acti
 ## Développement et minification
 
 ```sh
-npm ci
+npm run dependencies:latest
 npm test
 npm run build:frontend
 npm run package:vsix

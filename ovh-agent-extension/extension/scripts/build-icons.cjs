@@ -8,7 +8,7 @@ const names = {
   shield:'shield-check', stop:'stop', stopFilled:'stop-fill', send:'arrow-up', play:'play', trash:'trash2-fill',
   terminal:'terminal', list:'list-ul', read:'file-earmark-text', search:'search',
   edit:'pencil', context:'layers', project:'folder-plus', folder:'folder-fill', cost:'currency-dollar', model:'cpu',
-  copy:'copy', check:'check-lg', error:'exclamation-triangle', robot:'robot', wallet:'wallet2', grip:'grip-vertical',
+  copy:'copy', check:'check-lg', warning:'exclamation-triangle', error:'exclamation-diamond', robot:'robot', wallet:'wallet2', grip:'grip-vertical',
 };
 const bootstrapRoot = path.dirname(require.resolve('bootstrap-icons/package.json'));
 const icons = Object.fromEntries(Object.entries(names).map(([name, symbol]) => {
@@ -22,7 +22,7 @@ icons.nodes = [width,height,'<path d="'+data+'"/>'];
 const media = path.join(__dirname, '../media');
 const version = require('@fortawesome/free-solid-svg-icons/package.json').version;
 const notice = `/*! Bootstrap Icons (MIT), Font Awesome Free ${version} logo (CC BY 4.0). See BootstrapIcons.LICENSE.txt and FontAwesome.LICENSE.txt. */`;
-const source = `${notice}
+const source = `/*! See BootstrapIcons.LICENSE.txt and FontAwesome.LICENSE.txt. */
 (function(root){
   const icons=${JSON.stringify(icons)};
   function svg(name, classes='') {

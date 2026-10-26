@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.67
+
+- Resolve the latest stable Python, npm and container dependencies during updates and builds; refresh bundled browser libraries and test the resolved set before packaging.
+- Resolve Node compatibility from the latest code-server metadata during image builds, and stop immediately if installation fails.
+- Preserve distinct warning and error icons when rebuilding the bundled assets.
+- Report controller failures through Pydantic AI’s native tool-failure channel while preserving execution receipts and argument-validation retries.
+- Retain interrupted model messages and rollback evidence for the next conversation turn, and carry observations across automatic model handoffs without replaying unanswered tool calls.
+
 ## 1.17.66
 
 - Apply folder colors only after Save, together with the title and path. Keep color choices inside the form until confirmation and discard unsaved choices on Close or an outside click.

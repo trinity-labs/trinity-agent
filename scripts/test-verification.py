@@ -685,15 +685,19 @@ class Verification(unittest.TestCase):
     def test_actual_pydantic_loop_rejects_premature_answer_and_rechecks_repair(self):
         from pydantic_ai import Agent, ModelRetry
         from pydantic_ai.models.function import FunctionModel
-        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, RetryPromptPart
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
         self.edit(3)
         calls = []
+        validation_feedback = []
         def model(messages, info):
             calls.append(messages)
             if len(calls) == 1:
                 return ModelResponse(parts=[TextPart('Everything is fixed and verified.')])
             if len(calls) == 2:
-                self.assertTrue(any(isinstance(part, RetryPromptPart) for message in messages for part in message.parts))
+                self.assertTrue(validation_feedback)
+                feedback = '\n'.join(str(getattr(part, 'content', '')) for part in messages[-1].parts)
+                self.assertIn(validation_feedback[-1], feedback)
+                self.assertNotEqual(self.guard.state['status'], 'passed')
                 return ModelResponse(parts=[ToolCallPart('repair', {}, tool_call_id='repair')])
             return ModelResponse(parts=[TextPart('Actual checks passed.')])
         def repair() -> str:
@@ -706,6 +710,7 @@ class Verification(unittest.TestCase):
             try:
                 self.guard.require_verified()
             except VerificationError as error:
+                validation_feedback.append(str(error))
                 raise ModelRetry(str(error)) from error
             return output
         result = agent.run_sync('Fix the fixture')

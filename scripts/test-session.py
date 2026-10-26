@@ -71,7 +71,7 @@ class Sessions(unittest.TestCase):
         a.save_snapshot('🙂' * (5 * 1024 * 1024), False, a.AUTO_MODEL, a.archive_revision())
         self.assertEqual(snapshot.read_bytes(), before)
 
-    def run_failed_queue(self, initial, prepare=None):
+    def run_failed_queue(self, initial, prepare=None, *, model_agent=None, continue_once=False):
         """Drive the real dispatcher and disk queue without a model/provider."""
         outputs, calls, channels = [], [], {}
         def inputs(requests):
@@ -83,16 +83,19 @@ class Sessions(unittest.TestCase):
             if event['type'] == 'error':
                 # Existing stale wakeups remain ahead of shutdown and must be
                 # ignored; otherwise a second task runs before the test exits.
+                channels['requests'].put({'type': 'prompt', 'text': 'Continue after the error.', 'model': 'fixture-model'}
+                    if continue_once and sum(item['type'] == 'error' for item in outputs) == 1 else {'type': 'shutdown'})
+            elif continue_once and event['type'] == 'response':
                 channels['requests'].put({'type': 'shutdown'})
         def verification(*_):
-            a.run_dependencies().verification = SimpleNamespace(state={'status': 'passed'})
+            a.run_dependencies().verification = SimpleNamespace(state={'status': 'passed'}, require_verified=lambda: {'status': 'not_required'})
         def run_model(prompt, **kwargs):
             calls.append(prompt)
             raise RuntimeError('fixture model failure')
         def preparation(*args, **kwargs):
             if prepare:
                 prepare(channels['requests'])
-            return [], {}
+            return args[0], {}
         with ExitStack() as stack:
             mocks = {
                 'recover_verification': {}, 'load_history': {'return_value': []},
@@ -102,13 +105,13 @@ class Sessions(unittest.TestCase):
                 'publish_budget': {}, 'stdin_reader': {'side_effect': inputs},
                 'emit': {'side_effect': emit}, 'write_pointer': {}, 'list_archives': {'return_value': []},
                 'save_selected_model': {}, 'is_selectable_model': {'return_value': True},
-                'compact_history': {'return_value': ([], {'before_chars': 0})},
+                'compact_history': {'side_effect': lambda history: (history, {'before_chars': 0})},
                 'prepare_task_context': {'side_effect': preparation},
                 'begin_verification': {'side_effect': verification},
                 'model_supports_vision': {'return_value': True},
                 'generation_settings': {'return_value': {}},
                 'model_capabilities': {'return_value': {'stream': False}},
-                'get_agent': {'return_value': SimpleNamespace(run_sync=run_model)},
+                'get_agent': {'return_value': model_agent or SimpleNamespace(run_sync=run_model)},
                 'archive_event': {},
             }
             for name, settings in mocks.items():
@@ -120,6 +123,108 @@ class Sessions(unittest.TestCase):
             a.main_json_lines()
             self.assertFalse(a.FOLLOWUP_RUNNING)
         return calls, outputs
+
+    def test_next_user_turn_keeps_tool_evidence_from_a_failed_model_run(self):
+        from pydantic_ai import Agent
+        from pydantic_ai.models.function import FunctionModel
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
+        requests, reads = [], []
+
+        def read_fixture() -> str:
+            """Return independently identifiable evidence."""
+            reads.append(1)
+            return 'observed-value-8271'
+
+        def model(messages, info):
+            requests.append(messages)
+            if len(requests) == 1:
+                return ModelResponse(parts=[ToolCallPart('read_fixture', {})])
+            if len(requests) == 2:
+                raise RuntimeError('fixture provider disconnected')
+            evidence = [p.content for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+            self.assertIn('observed-value-8271', evidence)
+            prompts = [p.content for m in messages for p in m.parts if isinstance(p, UserPromptPart)]
+            self.assertEqual(prompts, ['Read the fixture.', 'Continue after the error.'])
+            self.assertIn('[TRINITY interrupted execution]', str(messages))
+            return ModelResponse(parts=[TextPart('Evidence retained; no duplicate read.')])
+
+        agent = Agent(FunctionModel(model), tools=[read_fixture])
+        _, events = self.run_failed_queue([{'type': 'prompt', 'text': 'Read the fixture.', 'model': 'fixture-model'}],
+                                         model_agent=agent, continue_once=True)
+        self.assertEqual(reads, [1])
+        self.assertEqual(len(requests), 3)
+        self.assertEqual(next(e['text'] for e in events if e['type'] == 'response'), 'Evidence retained; no duplicate read.')
+        self.assertIn('observed-value-8271', (self.folder/'messages.json').read_text())
+
+    def test_native_interrupted_tail_is_kept_and_not_replayed_on_continuation(self):
+        from pydantic_ai import Agent, Tool
+        from pydantic_ai.models.function import FunctionModel
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+        calls = []
+
+        def commit_once() -> str:
+            """Simulate a committed operation."""
+            calls.append('committed')
+            return 'operation committed'
+
+        def crash_after_commit() -> str:
+            """Simulate an unexpected worker failure."""
+            raise RuntimeError('worker interrupted')
+
+        def first(messages, info):
+            return ModelResponse(parts=[ToolCallPart('commit_once', {}, tool_call_id='committed'),
+                                        ToolCallPart('crash_after_commit', {}, tool_call_id='crashed')])
+
+        a.RUN_CONTEXT.set(a.RunDependencies())
+        agent = Agent(FunctionModel(first), tools=[Tool(commit_once, sequential=True), Tool(crash_after_commit, sequential=True)])
+        with patch.object(a, 'get_agent', return_value=agent):
+            with self.assertRaisesRegex(RuntimeError, 'worker interrupted'):
+                a.run_model_attempt('fixture', 'Execute once.', message_history=[], model_settings={})
+        history = a.interrupted_model_history([], 'Worker interrupted; committed effects must be checked.')
+        self.assertEqual(history[-1].state, 'interrupted')
+        self.assertEqual(calls, ['committed'])
+
+        def continued(messages, info):
+            returns = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+            self.assertTrue(any(p.tool_call_id == 'committed' and p.content == 'operation committed' for p in returns))
+            self.assertTrue(any(p.tool_call_id == 'crashed' and p.outcome == 'interrupted' for p in returns))
+            return ModelResponse(parts=[TextPart('Inspect before retrying.')])
+
+        with patch.object(a, 'get_agent', return_value=Agent(FunctionModel(continued), tools=[commit_once])):
+            result = a.run_model_attempt('fixture', 'Continue.', message_history=history, model_settings={})
+        self.assertEqual(result.output, 'Inspect before retrying.')
+        self.assertEqual(calls, ['committed'])
+
+    def test_model_handoff_keeps_evidence_without_replaying_pending_calls(self):
+        from pydantic_ai import Agent
+        from pydantic_ai.models.function import FunctionModel
+        from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
+        history = [ModelRequest(parts=[UserPromptPart('Fix the saved target.')]),
+                   ModelResponse(parts=[ToolCallPart('read_file', {'path': 'target'}, tool_call_id='read')]),
+                   ModelRequest(parts=[ToolReturnPart('read_file', 'observed target', tool_call_id='read')]),
+                   ModelResponse(parts=[ToolCallPart('commit_once', {}, tool_call_id='pending')], state='interrupted')]
+        a.RUN_CONTEXT.set(a.RunDependencies(model_messages=history))
+        calls = []
+
+        def commit_once() -> str:
+            """A pending action must not be replayed during model handoff."""
+            calls.append(1)
+            return 'committed'
+
+        def fallback(messages, info):
+            self.assertIn('Keep the original constraints.', info.instructions)
+            self.assertIn('Reprends depuis les résultats observés', info.instructions)
+            prompts = [p.content for m in messages for p in m.parts if isinstance(p, UserPromptPart)]
+            self.assertEqual(prompts, ['Fix the saved target.'])
+            returns = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+            self.assertTrue(any(p.content == 'observed target' for p in returns))
+            self.assertTrue(any(p.tool_call_id == 'pending' and p.outcome == 'interrupted' for p in returns))
+            return ModelResponse(parts=[TextPart('Continue from observed target.')])
+
+        with patch.object(a, 'get_agent', return_value=Agent(FunctionModel(fallback), tools=[commit_once], instructions='Keep the original constraints.')):
+            result = a.run_model_attempt('fallback', 'Fix the saved target.', message_history=[], model_settings={}, resume=True)
+        self.assertEqual(result.output, 'Continue from observed target.')
+        self.assertEqual(calls, [])
 
     def test_queued_wakeups_do_not_continue_after_first_model_failure(self):
         requests = [{'type': 'followup', 'action': 'add', 'conversation': 'conversation',

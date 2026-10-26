@@ -57,7 +57,7 @@ from pathlib import Path
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ovhcloud import OVHcloudProvider
 from pydantic_ai.providers.deepseek import DeepSeekProvider
-from pydantic_ai import Agent, ModelRetry, RunContext, Tool
+from pydantic_ai import Agent, ModelRetry, RunContext, Tool, capture_run_messages
 from pydantic_ai.usage import UsageLimits
 from pydantic_ai.toolsets import FunctionToolset
 from ovh_limits import limit_setting, resolve_limits
@@ -66,6 +66,7 @@ from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import (
     BinaryContent,
     ModelMessagesTypeAdapter,
+    repair_messages,
     ModelRequest,
     ModelResponse,
     SystemPromptPart,
@@ -3028,6 +3029,44 @@ def get_agent(model_id: str, *, output_validator=None) -> Agent[RunDependencies,
     return AGENTS[model_id]
 
 
+def run_model_attempt(model_id, user_content, *, message_history, model_settings, event_stream_handler=None, resume=False):
+    """Capture the native protocol even when a provider or tool interrupts the run."""
+    deps = run_dependencies()
+    instructions = None
+    if resume and deps.model_messages:
+        # Native repair records unanswered calls as interrupted, never replays
+        # their effects. Keep the original user request and all useful reads.
+        message_history = repair_messages(deps.model_messages)
+        instructions = ('La tentative précédente n’a pas terminé la demande. '
+                        'Reprends depuis les résultats observés ; corrige la cause de l’échec avant de réessayer.')
+        user_content = None
+    deps.model_messages = None
+    with capture_run_messages() as messages:
+        try:
+            return get_agent(model_id).run_sync(
+                user_content, message_history=message_history, deps=deps, instructions=instructions,
+                model_settings=model_settings, usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
+                event_stream_handler=event_stream_handler,
+            )
+        finally:
+            if messages:
+                deps.model_messages = list(messages)
+
+
+def interrupted_model_history(history, detail):
+    messages = run_dependencies().model_messages
+    if not messages:
+        return history
+    # Keep the SDK's interrupted tail last: Pydantic repairs dangling calls on
+    # the next user turn without executing the old tool calls again.
+    receipt = ModelRequest(parts=[SystemPromptPart(content=(
+        '[TRINITY interrupted execution]\n'
+        'Reçu du moteur : la tentative précédente a été interrompue. Les résultats d’outils '
+        'ci-dessous sont des observations datées ; une restauration peut les avoir invalidés. '
+        'Vérifie l’état actuel avant de poursuivre. Détail : ' + detail[:4000]))])
+    return [receipt, *messages]
+
+
 def load_history(conversation_id: str | None = None) -> list:
     if not (conversation_id or CONVERSATION_ID):
         return []
@@ -3619,9 +3658,8 @@ def main_terminal() -> None:
             request_history, preparation = prepare_task_context(history, prompt,
                 context_card=next((card for card in (MODEL_CATALOG or []) if card['id'] == selected_model), None))
             begin_verification(prompt, preparation.get("analysis", {}).get("fact_check"))
-            result = get_agent(selected_model).run_sync(prompt, message_history=request_history, deps=run_dependencies(),
-                                                        model_settings=generation_settings(selected_model, prompt, preparation.get('analysis')),
-                                                        usage_limits=UsageLimits(request_limit=REQUEST_LIMIT))
+            result = run_model_attempt(selected_model, prompt, message_history=request_history,
+                                       model_settings=generation_settings(selected_model, prompt, preparation.get('analysis')))
             run_dependencies().verification.require_verified()
             output = str(result.output)  # Already validated by the native output callback.
             print(f"\nOVH > {output}")
@@ -3630,12 +3668,19 @@ def main_terminal() -> None:
             archive_event({"type": "response", "text": output})
         except Exception as error:
             report_unreported_usage()
+            detail = task_error_message(error)
             if run_dependencies().verification is not None and run_dependencies().verification.state["status"] != "passed":
                 try:
-                    run_dependencies().verification.rollback()
+                    recovery = run_dependencies().verification.rollback()
+                    detail += "\nRésultat de restauration : " + json.dumps(recovery, ensure_ascii=False)
                 except (OSError, VerificationError) as recovery_error:
-                    print(f"\nRestauration à vérifier : {recovery_error}")
-            print(f"\nErreur OVH: {error}")
+                    detail += f"\nRestauration à vérifier : {recovery_error}"
+            history = interrupted_model_history(history, detail)
+            try:
+                save_history(history)
+            except OSError as history_error:
+                detail += f"\nHistorique conservé en mémoire, écriture impossible : {history_error}"
+            print(f"\nErreur OVH: {detail}")
         finally:
             run_dependencies().verification = None
             run_dependencies().engine = None
@@ -4056,10 +4101,9 @@ def main_json_lines() -> None:
             stream = ResponseStream()
             settings = generation_settings(active_model, prompt, preparation.get('analysis'))
             try:
-                result = get_agent(active_model).run_sync(
-                    user_content, message_history=request_history, deps=run_dependencies(),
+                result = run_model_attempt(active_model,
+                    user_content, message_history=request_history,
                     model_settings=settings,
-                    usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
                 )
             except Exception as primary_error:
@@ -4085,10 +4129,9 @@ def main_json_lines() -> None:
                       "text": f"{fallback_status} ; {active_model} reprend la demande…"})
                 stream = ResponseStream()
                 settings = generation_settings(active_model, prompt, preparation.get('analysis'))
-                result = get_agent(active_model).run_sync(
-                    user_content, message_history=request_history, deps=run_dependencies(),
-                    model_settings=settings,
-                    usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
+                result = run_model_attempt(active_model,
+                    user_content, message_history=request_history,
+                    model_settings=settings, resume=True,
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
                 )
             fallback_model = 'gpt-oss-120b'
@@ -4120,10 +4163,9 @@ def main_json_lines() -> None:
                       "text": f"{previous_model} a signalé un appel d’outil invalide ; {active_model} reprend la demande…"})
                 stream = ResponseStream()
                 settings = generation_settings(active_model, prompt, preparation.get('analysis'))
-                result = get_agent(active_model).run_sync(
-                    user_content, message_history=request_history, deps=run_dependencies(),
-                    model_settings=settings,
-                    usage_limits=UsageLimits(request_limit=REQUEST_LIMIT),
+                result = run_model_attempt(active_model,
+                    user_content, message_history=request_history,
+                    model_settings=settings, resume=True,
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
                 )
             usage = result.usage
@@ -4171,6 +4213,11 @@ def main_json_lines() -> None:
                         detail += "\nChangements extérieurs conservés ; restauration partielle : " + ", ".join(recovery["conflicts"])
                 except (VerificationError, OSError, ValueError) as recovery_error:
                     detail += f"\nRestauration à vérifier : {recovery_error}"
+            history = interrupted_model_history(history, detail)
+            try:
+                save_history(history)
+            except OSError as history_error:
+                detail += f"\nHistorique conservé en mémoire, écriture impossible : {history_error}"
             save_task_state(status="interrupted", error=detail[:4000])
             emit({"type": "error", "text": detail})
             emit({"type": "task_interrupted", "id": CONVERSATION_ID})

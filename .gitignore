@@ -44,6 +44,7 @@
 !/scripts/
 !/scripts/check-git-secrets.py
 !/scripts/export-public.py
+!/scripts/build-image.sh
 !/README.rst
 !/LICENSE
 !/docker-compose.example.yml
@@ -53,6 +54,7 @@
 !/ovh-agent-extension/extension/scripts/
 !/ovh-agent-extension/extension/scripts/build-icons.cjs
 !/ovh-agent-extension/extension/scripts/build-highlighting.cjs
+!/ovh-agent-extension/extension/scripts/build-vendor.cjs
 !/ovh-agent-extension/extension/media/highlight.min.js
 !/ovh-agent-extension/extension/media/monokai.min.css
 !/ovh-agent-extension/extension/media/HighlightJS.LICENSE

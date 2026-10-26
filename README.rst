@@ -53,8 +53,20 @@ is insufficient to install and register the extension in a fresh code-server.
 The production layout keeps source files under ``/var/docker/docker_ide`` on
 the Docker host and exposes them inside the IDE through its host-root mount.
 Install the extension from ``ovh-agent-extension/extension``; its production
-Node dependencies are installed with ``npm ci --omit=dev``. The image creates
-``/opt/ovh-agent`` and installs the pinned Pydantic AI dependency.
+Node dependencies follow the npm ``latest`` tag. Run ``npm run dependencies:latest``
+before testing and packaging to refresh the dependency resolution and bundled browser
+libraries. The lockfile records that tested resolution; packaging uses it so it does
+not silently resolve a different dependency set after the tests. CI refreshes it on
+every run and shares it between the Marketplace and local packages.
+The image creates ``/opt/ovh-agent`` and installs the latest stable Pydantic AI and
+compatible dependencies. Node, code-server and the optional research dependencies
+also follow their latest stable releases. Rebuild with ``sh scripts/build-image.sh``:
+it resolves the latest Node release accepted by ``code-server@latest`` from its npm
+metadata, pulls the matching Alpine image and refreshes Docker's cached layers.
+This avoids forcing an incompatible Node major or maintaining a numeric version pin.
+For an existing backend, run ``/opt/ovh-agent/bin/python -m pip install --upgrade
+--upgrade-strategy eager 'pydantic-ai-slim[openai]'``. Existing agent processes keep
+their loaded modules until they exit; the next process uses the updated runtime.
 Persistent data directories must exist before starting Docker bind mounts.
 
 The example retains powerful administration mounts, including the host root
@@ -107,7 +119,7 @@ Development checks
 
 From ``ovh-agent-extension/extension``::
 
-    npm ci
+    npm run dependencies:latest
     npm test
     npm audit --omit=dev
 
@@ -275,8 +287,7 @@ Native command icons have light/dark variants; the native status bar uses text.
 Rebuild the versioned assets with::
 
     cd ovh-agent-extension/extension
-    npm ci
-    npm run build:icons
+    npm run dependencies:latest
     npm test
 
 Bootstrap Icons, Font Awesome and Terser are development-only dependencies.
@@ -572,6 +583,17 @@ The general Docker deployment still requires container recreation to change its
 environment. Numeric execution deadlines, step limits and financial authorizations
 are separate policies; they do not represent hardware capacity.
 
+Tool failures use Pydantic AI's native ``ToolFailed`` outcome, retaining the
+controller's exact error evidence without consuming the argument-validation
+retry budget. Schema errors still use the SDK's normal retry handling.
+
+Each model attempt captures Pydantic AI messages, including interrupted calls.
+After an exception, the next conversation turn retains those observations and
+the rollback result. Automatic model handoffs reuse the same evidence and use
+native protocol repair to close unanswered calls instead of replaying them.
+This improves recovery; it does not prove arbitrary task completion or make
+uncertain external side effects safe to repeat.
+
 Histories already truncated by older versions cannot reconstruct tool protocol
 that was never saved; the existing text archives remain searchable.
 
@@ -798,7 +820,7 @@ Only a short technical suggestion can vary; source-file oracles, permissions and
 user requests remain fixed. Training and selection validation are separate from
 the final comparison cases. The JSON report preserves failed attempts and the
 reference/candidate results. Install its optional dependency in a laboratory
-virtual environment with ``pip install -r scripts/requirements-research.txt``.
+virtual environment with ``pip install --upgrade --upgrade-strategy eager -r scripts/requirements-research.txt``.
 It is not installed by the application or bundled in the VSIX.
 
 Run the offline GEPA integration and then, if desired, an explicitly paid comparison::

@@ -24,10 +24,11 @@ import time
 import unicodedata
 from typing import Any, TYPE_CHECKING
 
-from pydantic_ai import RunContext
+from pydantic_ai import RunContext, ToolFailed
 from pydantic_ai.capabilities import AbstractCapability
 
 if TYPE_CHECKING:
+    from pydantic_ai.messages import ModelMessage
     from ovh_verification import ChangeGuard
     from ovh_tools import ToolSelection
 
@@ -50,12 +51,14 @@ class RunDependencies:
     request_receipts: list[dict] = field(default_factory=list)
     usage_reported: dict[str, dict] = field(default_factory=dict)
     services: dict[str, Any] = field(default_factory=dict)
+    model_messages: list[ModelMessage] | None = None
 
 
 @dataclass
 class ToolExecution:
     execute: bool = True
     result: Any = None
+    failed: bool = False
 
 
 class ExecutionCapability(AbstractCapability[RunDependencies]):
@@ -82,6 +85,11 @@ class ExecutionCapability(AbstractCapability[RunDependencies]):
         with engine.execution(tool_def.name, args) as execution:
             if execution.execute:
                 execution.result = await handler(args)
+        # Preserve the exact evidence on Pydantic's failure channel without
+        # spending the argument-correction retry budget or duplicating receipts.
+        if execution.failed:
+            result = execution.result
+            raise ToolFailed(result if isinstance(result, str) else json.dumps(result, ensure_ascii=False))
         return execution.result
 
 MUTATIONS = frozenset({'edit_file', 'write_file', 'edit_file_batch', 'run_command',
@@ -462,13 +470,14 @@ class WorkflowController:
         # calls and private wrappers. Hiding a JSON schema is only a UI measure.
         if self.read_only and name not in READ_ONLY_TOOLS and not diagnostic:
             yield ToolExecution(False, json.dumps({'status': 'blocked', 'category': 'read_only', 'executed': False,
-                'tool': name, 'message': 'Consigne utilisateur de lecture seule active. Aucune action modificatrice exécutée.'}, ensure_ascii=False))
+                'tool': name, 'message': 'Consigne utilisateur de lecture seule active. Aucune action modificatrice exécutée.'}, ensure_ascii=False), failed=True)
             return
         if name in CONTROL:
             if name == 'execute_operation':
                 self.last_acceptance = None
             execution = ToolExecution()
             yield execution
+            execution.failed = self._outcome(name, execution.result, [])[0] != 'none'
             self.note_observation(name, arguments, execution.result)
             return
         revision = self._observation_revision(name, arguments)
@@ -476,7 +485,7 @@ class WorkflowController:
             result = json.dumps({'status': 'blocked', 'category': 'no_progress', 'executed': False,
                 'tool': name, 'message': 'Échecs répétés sans progrès vérifié. Inspecte la cause ou répare avant de répéter.'}, ensure_ascii=False)
             self.note_observation(name, arguments, result)
-            yield ToolExecution(False, result)
+            yield ToolExecution(False, result, failed=True)
             return
         mutation = name in MUTATIONS and not diagnostic
         if mutation:
@@ -489,7 +498,7 @@ class WorkflowController:
                                            requires_verification=name in FILE_TOOLS)
         except (ValueError, RuntimeError) as error:
             yield ToolExecution(False, json.dumps({'status': 'blocked', 'category': 'recovery_required',
-                               'executed': False, 'message': str(error)}, ensure_ascii=False))
+                               'executed': False, 'message': str(error)}, ensure_ascii=False), failed=True)
             return
         proof = self._file_proof(name, arguments)
         if proof is not None:
@@ -537,6 +546,7 @@ class WorkflowController:
             self.publish({'type': 'workflow_action', 'operation': operation, 'tool': name,
                           'status': status, 'category': category})
             execution.result = result
+            execution.failed = failed
         except BaseException as error:
             # Cancellation cannot prove that a remote command or write did not run.
             current = next(row for row in self.journal.snapshot()['operations'] if row['id'] == operation)

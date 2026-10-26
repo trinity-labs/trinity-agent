@@ -84,6 +84,7 @@ class NativeExecutionTests(unittest.IsolatedAsyncioTestCase):
         def model(messages, info):
             if len(messages) == 1:
                 return ModelResponse(parts=[ToolCallPart('write_file', {'path': 'created.txt', 'content': 'bad'})])
+            self.assertEqual(messages[-1].parts[0].outcome, 'failed')
             return ModelResponse(parts=[TextPart(str(messages[-1].parts[0].content))])
 
         result = await self.agent(model, [Tool(write_file, sequential=True)]).run('Inspect', deps=deps)
@@ -139,6 +140,49 @@ class NativeExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(attempts, ['wrong', 'correct'])
         rows = deps.engine.journal.snapshot()['operations']
         self.assertEqual([row['status'] for row in rows], ['failed', 'succeeded'])
+
+    async def test_recoverable_failures_use_native_failed_outcomes_without_spending_retries(self):
+        deps = self.deps('failed-outcome')
+        attempts = []
+
+        def read_file(path: str) -> str:
+            """Read a fixture, reporting missing paths as operational failures."""
+            attempts.append(path)
+            if path != 'actual.txt':
+                deps.engine.observe_event({'type': 'tool_error', 'error_type': 'FileNotFoundError'})
+                return 'Erreur outil : fichier introuvable. Lis actual.txt.'
+            return 'Contents include error and timeout as ordinary source text.'
+
+        def model(messages, info):
+            returns = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+            if returns:
+                self.assertEqual(returns[-1].outcome, 'success' if len(attempts) == 3 else 'failed')
+            if len(attempts) < 3:
+                return ModelResponse(parts=[ToolCallPart('read_file', {'path': ['wrong', 'also-wrong', 'actual.txt'][len(attempts)]})])
+            return ModelResponse(parts=[TextPart('Read the actual file.')])
+
+        result = await self.agent(model, [read_file]).run('Read', deps=deps, retries={'tools': 0})
+        self.assertEqual(result.output, 'Read the actual file.')
+        self.assertEqual(attempts, ['wrong', 'also-wrong', 'actual.txt'])
+        self.assertEqual([row['status'] for row in deps.engine.journal.snapshot()['operations']],
+                         ['failed', 'failed', 'succeeded'])
+
+    async def test_controller_failure_is_a_native_failed_result(self):
+        deps = self.deps('failed-control')
+
+        def verify_task_acceptance() -> str:
+            """Report a failed postcondition without claiming success."""
+            return '{"passed": false, "message": "Output still missing"}'
+
+        def model(messages, info):
+            returns = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+            if not returns:
+                return ModelResponse(parts=[ToolCallPart('verify_task_acceptance', {})])
+            self.assertEqual(returns[-1].outcome, 'failed')
+            self.assertIn('Output still missing', str(returns[-1].content))
+            return ModelResponse(parts=[TextPart('Incomplete.')])
+
+        await self.agent(model, [verify_task_acceptance]).run('Verify', deps=deps, retries={'tools': 0})
 
     async def test_iter_keeps_dependencies_out_of_tool_arguments(self):
         deps = self.deps('iter')

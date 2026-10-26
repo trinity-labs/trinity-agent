@@ -1,8 +1,5 @@
-ARG NODE_VERSION=24
-
-FROM node:${NODE_VERSION}-alpine
-
-ARG CODE_SERVER_VERSION=4.138.0
+ARG NODE_IMAGE=node:lts-alpine
+FROM ${NODE_IMAGE}
 
 ENV PYTHON=/usr/bin/python3 \
     GOBIN=/usr/local/bin \
@@ -14,7 +11,8 @@ ENV PYTHON=/usr/bin/python3 \
 # BASE SYSTEM
 # =============================================================================
 
-RUN apk add --no-cache \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache \
         bash \
         bash-completion \
         bind-tools \
@@ -77,7 +75,6 @@ RUN apk add --no-cache \
 # Alpine = musl.
 # Installation via npm afin de compiler les dépendances natives nécessaires.
 #
-# Version volontairement figée pour garantir un build reproductible.
 # =============================================================================
 
 RUN apk add --no-cache --virtual .code-server-build-deps \
@@ -85,11 +82,11 @@ RUN apk add --no-cache --virtual .code-server-build-deps \
         krb5-dev \
     \
     && echo "============================================================" \
-    && echo " Installing code-server ${CODE_SERVER_VERSION}" \
+    && echo " Installing code-server latest" \
     && echo "============================================================" \
     \
     && npm install -g \
-        "code-server@${CODE_SERVER_VERSION}" \
+        "code-server@latest" \
     \
     && echo \
     && echo "=== code-server ===" \
@@ -112,28 +109,6 @@ RUN apk add --no-cache --virtual .code-server-build-deps \
     && echo "=== code-server size ===" \
     && du -sh /usr/local/lib/node_modules/code-server \
     && du -sh /usr/local/lib/node_modules/code-server/lib/vscode \
-    \
-    && echo \
-    && echo "=== GitHub authentication extension ===" \
-    && find \
-        /usr/local/lib/node_modules/code-server/lib/vscode/extensions/github-authentication \
-        -maxdepth 5 \
-        -type f \
-        -print \
-        2>/dev/null \
-        | sort \
-        || true \
-    \
-    && echo \
-    && echo "=== VSDA ===" \
-    && find \
-        /usr/local/lib/node_modules/code-server/lib/vscode/node_modules/vsda \
-        -maxdepth 7 \
-        -type f \
-        -print \
-        2>/dev/null \
-        | sort \
-        || true \
     \
     && echo \
     && echo "=== Removing build dependencies ===" \
@@ -205,8 +180,8 @@ RUN echo "============================================================" \
 # =============================================================================
 
 RUN python3 -m venv /opt/ovh-agent \
-    && /opt/ovh-agent/bin/pip install --no-cache-dir \
-        'pydantic-ai-slim[openai]==2.56.0'
+    && /opt/ovh-agent/bin/pip install --upgrade --upgrade-strategy eager \
+        'pydantic-ai-slim[openai]'
 
 # =============================================================================
 # ENTRYPOINT

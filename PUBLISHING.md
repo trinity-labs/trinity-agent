@@ -33,9 +33,8 @@ then enable `MARKETPLACE_ENABLED`. Do not paste credentials into chat
 or repository files. Microsoft announces retirement of global PATs on December 1,
 2026, so federated Entra authentication is the durable choice.
 
-The current npm-published vsce 4.0.0 supports `--azure-credential`; its upstream
-main branch documents a direct `--oidc` option not yet present in that published
-CLI. This workflow deliberately uses the supported released interface.
+The publishing job resolves `@vscode/vsce@latest` and uses its released
+`--azure-credential` interface.
 
 The publisher identity becomes part of the extension ID: choose it before the
 first Marketplace release. No publisher account, trust policy or external account
@@ -54,7 +53,9 @@ manually against a version tag. Marketplace upload may still require Microsoft
 validation before the extension appears in searches.
 
 Packaging also requires the offline backend verification and EUR budget suites
-to pass, using the same pinned Pydantic AI dependency as the Docker backend.
+to pass against the latest stable Pydantic AI, matching the Docker installation
+policy. CI refreshes npm dependencies before testing and passes the resolved
+lockfile to both package jobs, so both VSIX files use the tested dependency set.
 Public exports include tracked files and new source paths explicitly allowed by
 the deny-by-default `.gitignore`; inspect the export before committing it.
 `.env`, `ovh-agent.local.sh`, live archives and the live Compose are excluded.
@@ -101,7 +102,7 @@ The Marketplace VSIX alone does not update the companion Python backend.
 
 ```sh
 cd ovh-agent-extension/extension
-npm ci --ignore-scripts
+npm run dependencies:latest
 npm test
 npm run package:vsix
 ```

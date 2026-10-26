@@ -12,7 +12,7 @@ test('Bootstrap outline subset and Font Awesome logo works offline in Node and b
   assert.ok(zlib.gzipSync(js).length<5000);
   const dom=new JSDOM('',{runScripts:'outside-only'});
   dom.window.eval(js);
-  for(const name of ['nodes','archive','back','chevron','database','key','plus','close','reload','image','shield','stop','stopFilled','send','play','trash','terminal','list','read','search','edit','context','project','folder','cost','model','copy','check','error','robot','wallet','grip']) {
+  for(const name of ['nodes','archive','back','chevron','database','key','plus','close','reload','image','shield','stop','stopFilled','send','play','trash','terminal','list','read','search','edit','context','project','folder','cost','model','copy','check','warning','error','robot','wallet','grip']) {
     const html=svg(name,'custom-class');
     assert.equal(dom.window.AgentIcons.svg(name,'custom-class'),html);
     dom.window.document.body.innerHTML=html;
@@ -25,6 +25,7 @@ test('Bootstrap outline subset and Font Awesome logo works offline in Node and b
   assert.match(svg('nodes'), /fa-icon/);
   assert.match(svg('key'), /bi-icon/);
   assert.match(svg('key'), /icon-key/);
+  assert.notEqual(svg('warning').replace('icon-warning', 'icon-error'), svg('error'));
   assert.throws(()=>svg('constructor'));
   assert.throws(()=>svg('key','" onload="alert(1)'));
   dom.window.close();
