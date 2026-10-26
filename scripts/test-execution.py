@@ -286,6 +286,21 @@ engine.invoke(write_file, 'app.txt', 'after')
                         "cat $(touch file)", "find . -delete", "python -c 'print(1)'", "env cat file"):
             self.assertFalse(command_is_read_only(command), command)
 
+    def test_missing_version_probe_does_not_leave_a_phantom_mutation_after_restart(self):
+        from ovh_process import run_process
+        self.engine = WorkflowController(self.workspace, self.directory, trusted_diagnostics=True)
+        def run_command(command: str) -> str:
+            return json.dumps(run_process(['/bin/sh', '-c', command], self.workspace))
+        with patch.dict('os.environ', {'PATH': str(self.workspace)}):
+            result = json.loads(self.engine.invoke(run_command, 'gh --version'))
+        self.assertEqual(result['exit_code'], 127)
+        self.assertEqual(self.operations()[-1]['status'], 'failed')
+        self.assertFalse(self.engine.journal.snapshot()['unresolved_mutations'])
+        self.assertFalse(WorkflowController(self.workspace, self.directory).final_status()['incomplete'])
+        for command in ('gh release create v1', 'gh --version; touch changed',
+                        'gh --version > changed', 'python3 -c "print(1)"', './unknown --version'):
+            self.assertFalse(command_is_read_only(command), command)
+
     def test_diagnostic_exemption_requires_explicit_trusted_executor_contract(self):
         calls = []
         def run_command(command: str) -> str:

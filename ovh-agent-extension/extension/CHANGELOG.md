@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.62
+
+- Treat plain version probes for known development tools as read-only diagnostics. A missing CLI no longer leaves an unresolved mutation that blocks task completion or resumption; shell composition and mutating commands retain their existing checks.
+
 ## 1.17.61
 
 - Report pre-existing check failures at the first affected edit, including the actual local host, executable and termination signal; retain diagnostics in the verification plan without repeating them on every write.

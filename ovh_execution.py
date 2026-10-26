@@ -108,6 +108,9 @@ def command_is_read_only(command):
         argv = shlex.split(command)
     except ValueError:
         return False
+    if len(argv) == 2 and argv[1] == '--version' and argv[0] in {
+            'git', 'gh', 'node', 'npm', 'bun', 'python', 'python3', 'docker', 'code-server'}:
+        return True
     if not argv or argv[0] not in {'pwd', 'ls', 'stat', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'test', '['}:
         return False
     if argv[0] == 'rg':
