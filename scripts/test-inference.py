@@ -447,3 +447,15 @@ with tempfile.TemporaryDirectory() as readonly_folder:
     engine.focus('Ne modifie pas les fichiers.')
     assert engine.read_only
 print('PASS: persistent read-only execution authorization, hidden/stale SDK tools and explicit write steering')
+
+from openai import APIConnectionError
+import httpx2 as httpx
+connection_failure = APIConnectionError(request=httpx.Request('POST', 'https://example.invalid'))
+wrapped_failure = RuntimeError('model wrapper')
+wrapped_failure.__cause__ = connection_failure
+assert a.automatic_fallback_reason('gpt-oss-120b', wrapped_failure, None, None)
+assert a.automatic_fallback_reason('Qwen3.6-27B', wrapped_failure, None, None)
+assert not a.automatic_fallback_reason('gpt-oss-120b', RuntimeError('connection error in prose'), None, None)
+with patch.object(a, 'no_mutation_started', return_value=False):
+    assert not a.automatic_fallback_reason('gpt-oss-120b', wrapped_failure, None, None)
+print('PASS: typed transport fallback covers primary model and blocks mutation replay')

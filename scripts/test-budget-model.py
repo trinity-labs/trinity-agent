@@ -272,3 +272,148 @@ with tempfile.TemporaryDirectory() as directory:
     saved=[json.loads(line) for line in (folder/'model-requests.jsonl').read_text().splitlines()]
     assert len(saved)==2 and saved[1]['request_id']=='1'
 print('PASS: request journal persists independently; interrupted costs are reported once without duplicate totals')
+
+# OVH's authenticated project/model rate limit must cover tools, summaries and
+# streams across processes, independently of financial budget reservations.
+from ovh_budget_model import OVHRateLimiter
+from pydantic_ai.exceptions import ModelHTTPError
+from unittest.mock import AsyncMock, patch
+from contextlib import asynccontextmanager
+from email.utils import format_datetime
+from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
+import subprocess
+
+async def rate_limit_regressions(root):
+    now = [1000.0]
+    async def advance(delay):
+        now[0] += delay
+    gate = OVHRateLimiter(root/'rate.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
+    other = OVHRateLimiter(root/'rate.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
+    assert gate._slot('model-a') == 0
+    assert abs(other._slot('model-a') - .15) < 1e-8
+    assert other._slot('model-b') == 0
+    assert OVHRateLimiter(root/'rate.sqlite3', 'project-b', clock=lambda: now[0])._slot('model-a') == 0
+    for _ in range(400):
+        await gate.wait('model-a')
+    assert now[0] >= 1059.999999  # 401 requests span at least one minute.
+
+    rejected = ModelHTTPError(429, 'test', {'error': 'rate limit'})
+    cause = RuntimeError('provider rejection')
+    cause.status_code = 429
+    class Response:
+        status_code = 429
+        headers = {'retry-after': '7'}
+    cause.response = Response()
+    rejected.__cause__ = cause
+    assert await gate.rejected('retry', rejected, 1)
+    assert abs(gate._slot('retry') - 7) < 1e-8
+    cause.response.headers = {'retry-after': format_datetime(datetime.fromtimestamp(now[0], timezone.utc) + timedelta(seconds=20))}
+    assert await gate.rejected('date', rejected, 1)
+    assert 19 <= gate._slot('date') <= 20
+    cause.response.headers = {'retry-after': '600'}
+    assert not await gate.rejected('long', rejected, 1)
+    assert abs(gate._slot('long') - 600) < 1e-8  # Persist, never shorten server cooldown.
+    cause.response.headers = {'retry-after': 'invalid'}
+    assert await gate.rejected('invalid', rejected, 1)
+    assert gate._slot('invalid') == 2
+    assert not await gate.rejected('plain-error', RuntimeError('HTTP 429 quota in prose'), 1)
+    assert not await gate.rejected('last-attempt', rejected, 3)
+
+    # Competing independent instances serialize their slots.
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        outcomes = list(workers.map(lambda _: other._slot('concurrent'), range(16)))
+    assert outcomes.count(0) == 1
+    command = [sys.executable, '-c',
+        'from ovh_budget_model import OVHRateLimiter; import sys; '
+        'print(OVHRateLimiter(sys.argv[1], "project-a", clock=lambda: 1000.0)._slot("cross-process"))',
+        str(root/'rate.sqlite3')]
+    first = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)
+    second = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)
+    results = [float(first.communicate()[0]), float(second.communicate()[0])]
+    assert first.returncode == second.returncode == 0 and results.count(0) == 1
+
+    ledger = BudgetLedger(root/'retry-budget.json', {'daily': 1})
+    records = []
+    response = ModelResponse(parts=[TextPart('ok')], usage=RequestUsage(input_tokens=100, output_tokens=20))
+    inner = FunctionModel(lambda messages, info: response)
+    limiter = OVHRateLimiter(root/'attempts.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
+    outer = BudgetedModel(inner, lambda: ledger, lambda _: card, lambda _: None,
+                          record=lambda event, response: records.append(event), rate_limiter=limiter)
+    no_header = ModelHTTPError(429, 'test', {})
+    with patch.object(inner, 'request', AsyncMock(side_effect=[no_header, no_header, response])) as request:
+        assert await outer.request([], settings, ModelRequestParameters()) == response
+        assert request.await_count == 3
+    assert len(records) == 3 and [r['completed'] for r in records] == [False, False, True]
+    assert not records[0]['usage_known'] and not records[1]['usage_known']
+    assert ledger.status()['periods']['daily']['reserved'] == 0
+    assert abs(ledger.status()['periods']['daily']['spent'] - .00224) < 1e-9
+    with patch.object(inner, 'request', AsyncMock(side_effect=RuntimeError('transport'))) as request:
+        try:
+            await outer.request([], settings, ModelRequestParameters())
+            raise AssertionError('transport error swallowed')
+        except RuntimeError as error:
+            assert str(error) == 'transport'
+        assert request.await_count == 1
+
+    from openai import APIConnectionError
+    import httpx2 as httpx
+    disconnected = APIConnectionError(request=httpx.Request('POST', 'https://example.invalid'))
+    with patch.object(inner, 'request', AsyncMock(side_effect=[disconnected, disconnected, response])) as request:
+        assert await outer.request([], settings, ModelRequestParameters()) == response
+        assert request.await_count == 3
+    with patch.object(inner, 'request', AsyncMock(side_effect=disconnected)) as request:
+        try:
+            await outer.request([], settings, ModelRequestParameters())
+            raise AssertionError('unbounded transport retry')
+        except APIConnectionError:
+            pass
+        assert request.await_count == 3
+
+    class Stream:
+        def get(self): return response
+    stream_calls = []
+    @asynccontextmanager
+    async def opening(*args):
+        stream_calls.append(1)
+        if len(stream_calls) == 1:
+            raise no_header
+        yield Stream()
+    with patch.object(inner, 'request_stream', opening):
+        async with outer.request_stream([], settings, ModelRequestParameters()) as stream:
+            assert stream.get() == response
+    assert len(stream_calls) == 2
+    @asynccontextmanager
+    async def opened(*args):
+        stream_calls.append(1)
+        yield Stream()
+    before = len(stream_calls)
+    with patch.object(inner, 'request_stream', opened):
+        try:
+            async with outer.request_stream([], settings, ModelRequestParameters()):
+                raise disconnected  # No replay once the stream has reached its consumer.
+        except APIConnectionError:
+            pass
+    assert len(stream_calls) == before + 1
+
+    waiting = asyncio.Event()
+    async def blocked_sleep(delay):
+        waiting.set()
+        await asyncio.Event().wait()
+    blocked = OVHRateLimiter(root/'cancel.sqlite3', 'project-a', clock=lambda: now[0], sleep=blocked_sleep)
+    blocked._slot(inner.model_name, 60)
+    untouched = BudgetLedger(root/'cancel-budget.json', {'daily': 1})
+    cancellable = BudgetedModel(inner, lambda: untouched, lambda _: card, lambda _: None, rate_limiter=blocked)
+    task = asyncio.create_task(cancellable.request([], settings, ModelRequestParameters()))
+    await waiting.wait()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    assert untouched.status()['periods']['daily']['spent'] == 0
+    assert untouched.status()['periods']['daily']['reserved'] == 0
+
+with tempfile.TemporaryDirectory() as directory:
+    asyncio.run(rate_limit_regressions(Path(directory)))
+print('OVH pacing, cross-process sharing, 429/Retry-After, bounded retries, streams and cancellation: OK')

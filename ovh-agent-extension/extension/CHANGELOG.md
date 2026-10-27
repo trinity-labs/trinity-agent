@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.77
+
+- Retry interrupted OVH connections before exposing a response, with a separate budget reservation for each bounded attempt. Automatic routing can switch away from GPT-OSS after connection failure, without replaying mutations or started streams.
+
+- Régulation OVH partagée entre processus à 400 requêtes par minute, par projet et modèle, avec attente visible avant les appels.
+- Reprise bornée des refus HTTP 429 en respectant `Retry-After`, sans rejouer un flux déjà commencé ni contourner les réservations de budget.
+
 ## 1.17.76
 
 - Une recherche documentaire interrompue ne relance plus un parcours illimité des montages ; les chemins complets déjà observés sont conservés.

@@ -13,7 +13,7 @@ from ovh_resources import resource_profile, set_performance_mode
 from dataclasses import asdict, replace
 from ovh_request import prepare_request, strip_prepared_context, analyze_request, recent_context, SourceReview, REVIEW_INSTRUCTIONS, refresh_reader_limits
 from ovh_budget import BudgetLedger, OvhBalanceLedger
-from ovh_budget_model import BudgetedModel
+from ovh_budget_model import BudgetedModel, OVHRateLimiter, transport_failure
 from ovh_vision import read_images, parse_reading, visual_context, without_historical_images, is_image_generation_request
 from ovh_evaluation import load_evidence, routing_domain, prefer_evaluated, measured_latency, measured_settings, routing_price_factor
 from typing import Annotated, Literal
@@ -2004,7 +2004,11 @@ def tool_protocol_failure(value) -> bool:
 
 def automatic_fallback_reason(model_id, failure, controller=None, guard=None) -> str:
     """Return a bounded fallback reason when replay cannot duplicate effects."""
-    if AI_PROVIDER == 'deepseek' or model_id == 'gpt-oss-120b' or not no_mutation_started(controller, guard):
+    if AI_PROVIDER == 'deepseek' or not no_mutation_started(controller, guard):
+        return ""
+    if transport_failure(failure):
+        return "connexion modèle interrompue sans mutation ; changement de modèle"
+    if model_id == 'gpt-oss-120b':
         return ""
     if isinstance(failure, BaseException) and qwen_timeout_fallback_allowed(model_id, failure, controller):
         return "timeout Qwen sans mutation ; reprise automatique fiable"
@@ -2956,7 +2960,12 @@ def get_budgeted_model(model_id):
                          "supports_json_object_output": "json_object" in model_capabilities(model_id).get("response_formats", [])},
             ), ledger=budget_ledger,
                 catalog_card=lambda name: next((c for c in fetch_model_catalog() if c["id"] == name), {}),
-                publish=publish_budget, record=record_provider_request)
+                publish=publish_budget, record=record_provider_request,
+                rate_limiter=OVHRateLimiter(
+                    DATA_ROOT / 'ovh-rate-limits.sqlite3',
+                    AI_API_BASE_URL + ':' + (os.environ.get('OVH_CLOUD_PROJECT') or provider_api_key('ovhcloud')),
+                    notify=lambda model, delay: emit({'type': 'status', 'text':
+                        f'Limite OVH : attente de {delay:.1f} s avant la prochaine requête {model}.'})))
 
 
 def vision_reader_model() -> str:
@@ -4139,7 +4148,7 @@ def main_json_lines() -> None:
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
                 )
             except Exception as primary_error:
-                fallback_model = 'gpt-oss-120b'
+                fallback_model = 'gpt-oss-120b' if active_model != 'gpt-oss-120b' else 'Qwen3.6-27B'
                 fallback_reason = automatic_fallback_reason(
                     active_model, primary_error, run_dependencies().engine, run_dependencies().verification)
                 if (selected_model != AUTO_MODEL
@@ -4156,6 +4165,7 @@ def main_json_lines() -> None:
                       "fallback": True, "duration_ms": 0})
                 fallback_status = (f"{previous_model} a expiré"
                                    if fallback_reason.startswith("timeout")
+                                   else f"{previous_model} a perdu la connexion" if transport_failure(primary_error)
                                    else f"{previous_model} n’a pas pu exécuter l’appel d’outil")
                 emit({"type": "status", "conversation": CONVERSATION_ID,
                       "text": f"{fallback_status} ; {active_model} reprend la demande…"})
@@ -4166,7 +4176,7 @@ def main_json_lines() -> None:
                     model_settings=settings, resume=True,
                     event_stream_handler=stream.handle if model_capabilities(active_model)["stream"] else None,
                 )
-            fallback_model = 'gpt-oss-120b'
+            fallback_model = 'gpt-oss-120b' if active_model != 'gpt-oss-120b' else 'Qwen3.6-27B'
             fallback_reason = automatic_fallback_reason(
                 active_model, str(result.output), run_dependencies().engine, run_dependencies().verification)
             if (selected_model == AUTO_MODEL and fallback_reason

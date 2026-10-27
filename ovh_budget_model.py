@@ -1,9 +1,17 @@
 """Budget enforcement immediately around every model request, including streams."""
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 import re
+import asyncio
+from openai import APIConnectionError
+import hashlib
+import math
+from pathlib import Path
+import sqlite3
+import time
+from email.utils import parsedate_to_datetime
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.messages import PartDeltaEvent, PartEndEvent, PartStartEvent, ToolCallPart, ToolCallPartDelta
 
@@ -85,13 +93,110 @@ class NormalizedStream:
         return await self._stream.cancel()
 
 
+def transport_failure(error):
+    """Recognize SDK connection failures through model wrappers, not prose."""
+    seen = set()
+    while isinstance(error, BaseException) and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, APIConnectionError):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
+class OVHRateLimiter:
+    """Share OVH project/model pacing and 429 cooldowns across local processes.
+
+    Authenticated AI Endpoints allow 400 requests/minute/project/model. A paced
+    slot avoids bursts; SQLite serializes callers without holding a lock asleep.
+    Only a hash of the project (or credential fallback) is stored, never a key.
+    """
+    def __init__(self, path, scope, notify=None, *, clock=time.time, sleep=asyncio.sleep):
+        self.path = Path(path)
+        self.scope = hashlib.sha256(scope.encode()).hexdigest()
+        self.notify = notify
+        self.clock = clock
+        self.sleep = sleep
+
+    def _slot(self, model, cooldown=None):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(self.path, timeout=5)) as db, db:
+            db.execute('CREATE TABLE IF NOT EXISTS limits '
+                       '(scope TEXT, model TEXT, next_at REAL, PRIMARY KEY(scope,model))')
+            db.execute('BEGIN IMMEDIATE')
+            now = self.clock()
+            row = db.execute('SELECT next_at FROM limits WHERE scope=? AND model=?',
+                             (self.scope, model)).fetchone()
+            next_at = row[0] if row else 0.0
+            if not math.isfinite(next_at):
+                raise ValueError('Invalid OVH rate-limit state')
+            if cooldown is not None:
+                next_at = max(next_at, now + cooldown)
+            elif next_at <= now:
+                next_at = now + 60.0 / 400
+                db.execute('INSERT OR REPLACE INTO limits VALUES (?,?,?)',
+                           (self.scope, model, next_at))
+                return 0.0
+            else:
+                return next_at - now
+            db.execute('INSERT OR REPLACE INTO limits VALUES (?,?,?)',
+                       (self.scope, model, next_at))
+            return max(0.0, next_at - now)
+
+    async def wait(self, model):
+        notified = False
+        while True:
+            delay = await asyncio.to_thread(self._slot, model)
+            if delay <= 0:
+                return
+            if delay >= 1 and not notified and self.notify:
+                self.notify(model, delay)
+                notified = True
+            await self.sleep(min(delay, 30.0))
+
+    async def rejected(self, model, error, attempt):
+        # HTTP status is evidence; prose such as "quota" is not.
+        cause, seen, limited, retry_after = error, set(), False, None
+        while cause is not None and id(cause) not in seen:
+            seen.add(id(cause))
+            if getattr(cause, 'status_code', None) == 429:
+                limited = True
+            response = getattr(cause, 'response', None)
+            if response is not None and getattr(response, 'status_code', None) == 429:
+                limited = True
+                retry_after = response.headers.get('retry-after')
+            cause = cause.__cause__
+        if not limited:
+            if not transport_failure(error) or attempt >= 3:
+                return False
+            # Retry only the unexposed provider request, never an agent turn.
+            # The SDK has retries disabled; each attempt keeps its own budget.
+            await self.sleep(2.0 ** (attempt - 1))
+            return True
+        delay = min(60.0, 2.0 ** attempt)
+        if retry_after:
+            try:
+                parsed = float(retry_after)
+            except ValueError:
+                try:
+                    parsed = parsedate_to_datetime(retry_after).timestamp() - self.clock()
+                except (ValueError, TypeError, OverflowError):
+                    parsed = delay
+            if math.isfinite(parsed) and parsed >= 0:
+                delay = max(delay, parsed)
+        await asyncio.to_thread(self._slot, model, delay)
+        # Persist long cooldowns, but do not keep a single task waiting forever.
+        return attempt < 3 and delay <= 300
+
+
 class BudgetedModel(WrapperModel):
-    def __init__(self, model, ledger, catalog_card, publish, record=None):
+    def __init__(self, model, ledger, catalog_card, publish, record=None, rate_limiter=None):
         super().__init__(model)
         self.ledger_factory = ledger
         self.catalog_card = catalog_card
         self.publish = publish
         self.record = record
+        self.rate_limiter = rate_limiter
 
     def begin(self, settings):
         card = self.catalog_card(self.model_name)
@@ -159,26 +264,47 @@ class BudgetedModel(WrapperModel):
         self.publish(status)
 
     async def request(self, messages, model_settings, model_request_parameters):
-        reservation = self.begin(model_settings)
-        response = None
-        try:
-            response = await self.wrapped.request(messages, model_settings, model_request_parameters)
-            response = normalize_tool_call_names(response, model_request_parameters)
-            return response
-        finally:
-            self.finish(reservation, response, completed=response is not None)
+        for attempt in range(1, 4):
+            if self.rate_limiter:
+                await self.rate_limiter.wait(self.model_name)
+            reservation = self.begin(model_settings)
+            response = None
+            retry = False
+            try:
+                response = await self.wrapped.request(messages, model_settings, model_request_parameters)
+                response = normalize_tool_call_names(response, model_request_parameters)
+                return response
+            except Exception as error:
+                if self.rate_limiter:
+                    retry = await self.rate_limiter.rejected(self.model_name, error, attempt)
+                if not retry:
+                    raise
+            finally:
+                # Each attempt has its own reservation. Unknown usage remains
+                # conservative; a rejected request is never invented as free.
+                self.finish(reservation, response, completed=response is not None)
 
     @asynccontextmanager
     async def request_stream(self, messages, model_settings, model_request_parameters, run_context=None):
-        reservation = self.begin(model_settings)
-        response, completed = None, False
-        try:
-            async with self.wrapped.request_stream(messages, model_settings, model_request_parameters, run_context) as stream:
-                normalized = NormalizedStream(stream, model_request_parameters)
-                try:
-                    yield normalized
-                    completed = True
-                finally:
-                    response = normalized.get()
-        finally:
-            self.finish(reservation, response, completed=completed)
+        for attempt in range(1, 4):
+            if self.rate_limiter:
+                await self.rate_limiter.wait(self.model_name)
+            reservation = self.begin(model_settings)
+            response, completed, entered = None, False, False
+            try:
+                async with self.wrapped.request_stream(messages, model_settings, model_request_parameters, run_context) as stream:
+                    entered = True
+                    normalized = NormalizedStream(stream, model_request_parameters)
+                    try:
+                        yield normalized
+                        completed = True
+                    finally:
+                        response = normalized.get()
+                return
+            except Exception as error:
+                # Once exposed, a stream may have emitted text/tool calls.
+                # Replaying it could duplicate actions; only retry failures before exposure.
+                if entered or not self.rate_limiter or not await self.rate_limiter.rejected(self.model_name, error, attempt):
+                    raise
+            finally:
+                self.finish(reservation, response, completed=completed)
