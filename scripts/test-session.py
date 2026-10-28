@@ -45,6 +45,74 @@ class Sessions(unittest.TestCase):
             self.assertTrue((a.conversation_dir()/'plan.json').is_file())
             self.assertFalse((a.ARCHIVE_ROOT/'plan.json').exists())
 
+    def test_conversation_model_restores_metadata_then_latest_legacy_choice(self):
+        self.meta.write_text(json.dumps({'model':'Qwen3.8-27B'}))
+        self.events.write_text('\n'.join(json.dumps(e) for e in [
+            {'type':'model_active','model':'gpt-oss-120b','selection':'auto-balanced'},
+            {'type':'model_changed','to_model':'Qwen3.5-9B'},
+            {'type':'response','text':'Done'}])+'\n')
+        self.assertEqual(a.conversation_model('global-model'), 'Qwen3.8-27B')
+        self.meta.write_text('{}')
+        self.assertEqual(a.conversation_model('global-model'), 'Qwen3.5-9B')
+        with self.events.open('a') as stream:
+            stream.write(json.dumps({'type':'model_active','model':'gpt-oss-120b','selection':'auto-balanced'})+'\n')
+        self.assertEqual(a.conversation_model('global-model'), a.AUTO_MODEL)
+        self.events.write_text('')
+        self.assertEqual(a.conversation_model('global-model', {'model':'snapshot-model'}), 'snapshot-model')
+        self.assertEqual(a.conversation_model('global-model'), 'global-model')
+
+    def test_opening_conversation_reuses_its_model_and_history_in_next_inference(self):
+        self.meta.write_text(json.dumps({'model':'Qwen3.8-27B'}))
+        previous=[a.ModelRequest(parts=[a.UserPromptPart(content='Le nom du projet est Neptune.')]),
+                  a.ModelResponse(parts=[a.TextPart(content='Je retiens Neptune.')])]
+        (self.folder/'messages.json').write_bytes(a.ModelMessagesTypeAdapter.dump_json(previous))
+        other=self.folder.parent/'other'
+        other.mkdir()
+        (other/'meta.json').write_text(json.dumps({'model':'gpt-oss-120b'}))
+        (other/'messages.json').write_bytes(a.ModelMessagesTypeAdapter.dump_json([
+            a.ModelRequest(parts=[a.UserPromptPart(content='Unrelated conversation context')])]))
+        original_load=a.load_history
+        received=[]
+        def infer(prompt, **kwargs):
+            received.append(kwargs['message_history'])
+            raise RuntimeError('fixture stops after observing inference context')
+        with patch.object(a,'CONVERSATION_ID','other'):
+            calls, outputs=self.run_failed_queue([
+                {'type':'load_archive','id':'conversation'},
+                {'type':'prompt','text':'Continue avec le même projet.'}],
+                model_agent=SimpleNamespace(run_sync=infer), history_loader=original_load)
+        opened=next(e for e in outputs if e['type']=='archive_loaded' and not e.get('automatic'))
+        self.assertEqual(opened['model'],'Qwen3.8-27B')
+        active=next(e for e in outputs if e['type']=='model_active')
+        self.assertEqual(active['model'],'Qwen3.8-27B')
+        self.assertEqual(len(received),1)
+        serialized=a.ModelMessagesTypeAdapter.dump_json(received[0]).decode()
+        self.assertIn('Le nom du projet est Neptune.',serialized)
+        self.assertIn('Je retiens Neptune.',serialized)
+        self.assertNotIn('Unrelated conversation context',serialized)
+
+    def test_startup_and_snapshot_restore_conversation_model_over_global_choice(self):
+        self.meta.write_text(json.dumps({'model':'Qwen3.8-27B'}))
+        outputs=[]
+        def inputs(requests):
+            requests.put({'type':'load_archive','id':'conversation'})
+            requests.put({'type':'shutdown'})
+        with ExitStack() as stack:
+            mocks={'recover_verification':{},'read_task_state':{'return_value':{}},
+                'load_history':{'return_value':[]},
+                'read_snapshot':{'return_value':{'html':'<p>saved</p>','model':'obsolete-snapshot-model'}},
+                'load_selected_model':{'return_value':'global-model'},'refresh_billing_async':{},
+                'current_budget_status':{'return_value':{}},'publish_budget':{},
+                'stdin_reader':{'side_effect':inputs},'emit':{'side_effect':outputs.append},
+                'write_pointer':{},'list_archives':{'return_value':[]}}
+            for name,settings in mocks.items():stack.enter_context(patch.object(a,name,**settings))
+            stack.enter_context(patch.object(a,'JSON_MODE',False))
+            a.main_json_lines()
+        self.assertEqual(next(e['model'] for e in outputs if e['type']=='ready'),'Qwen3.8-27B')
+        snapshots=[e for e in outputs if e['type']=='snapshot_loaded']
+        self.assertEqual(len(snapshots),2)
+        self.assertTrue(all(e['model']=='Qwen3.8-27B' for e in snapshots))
+
     def test_corrupted_event_does_not_hide_later_events_or_certify_snapshot(self):
         self.events.write_text('\n'.join([json.dumps({'type':'user','text':'before'}),
             '{broken', 'null', '[]', json.dumps({'type':'response','text':'after'})])+'\n')
@@ -84,7 +152,7 @@ class Sessions(unittest.TestCase):
         a.save_snapshot('🙂' * (5 * 1024 * 1024), False, a.AUTO_MODEL, a.archive_revision())
         self.assertEqual(snapshot.read_bytes(), before)
 
-    def run_failed_queue(self, initial, prepare=None, *, model_agent=None, continue_once=False):
+    def run_failed_queue(self, initial, prepare=None, *, model_agent=None, continue_once=False, history_loader=None):
         """Drive the real dispatcher and disk queue without a model/provider."""
         outputs, calls, channels = [], [], {}
         def inputs(requests):
@@ -111,7 +179,7 @@ class Sessions(unittest.TestCase):
             return args[0], {}
         with ExitStack() as stack:
             mocks = {
-                'recover_verification': {}, 'load_history': {'return_value': []},
+                'recover_verification': {}, 'load_history': {'side_effect': history_loader} if history_loader else {'return_value': []},
                 'read_snapshot': {'return_value': None}, 'read_archive': {'return_value': []},
                 'load_selected_model': {'return_value': 'fixture-model'},
                 'refresh_billing_async': {}, 'current_budget_status': {'return_value': {}},
@@ -640,6 +708,7 @@ class Sessions(unittest.TestCase):
                 ({'full_access': True, 'model': 'selected-model'}, True, 'selected-model'),
                 ({}, False, 'old-model')):
             with self.subTest(preferences=preferences):
+                self.meta.write_text(json.dumps({'model':'old-model'}))
                 a.save_task_state(status='interrupted', prompt='Corrige app.py', full_access=True,
                                   model='old-model', images=[], last_tool={})
                 observed = []

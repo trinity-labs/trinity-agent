@@ -279,6 +279,28 @@ def save_selected_model(model: str) -> None:
     MODEL_SELECTION_FILE.chmod(0o600)
 
 
+def conversation_model(fallback: str = AUTO_MODEL, snapshot: dict | None = None) -> str:
+    """Restore this conversation's choice; routed executors are only evidence."""
+    def valid(value: object) -> str:
+        value = normalize_model_selection(value)
+        return value if re.fullmatch(r"[0-9A-Za-z_.-]+", value) else ""
+    if CONVERSATION_ID:
+        try:
+            metadata = json.loads((conversation_dir() / "meta.json").read_text(encoding="utf-8"))
+            if isinstance(metadata, dict) and valid(metadata.get("model")):
+                return valid(metadata["model"])
+        except (OSError, ValueError):
+            pass
+        for event in reversed(read_archive(CONVERSATION_ID, timeline_only=True)):
+            kind = event.get("type")
+            value = event.get("to_model") if kind == "model_changed" else (
+                event.get("selection") or (AUTO_MODEL if event.get("automatic") else event.get("model"))
+                if kind in {"model_active", "user"} and not event.get("steering") else None)
+            if valid(value):
+                return valid(value)
+    return valid((snapshot or {}).get("model")) or valid(fallback) or AUTO_MODEL
+
+
 def initialise_archive() -> None:
     global CONVERSATION_ID
     try:
@@ -3662,7 +3684,7 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
                 revision_before = ""
                 continue
             if timeline_only:
-                items.append({key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose",
+                items.append({key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose", "from_model", "to_model",
                               "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering") if key in event})
                 continue
             if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "execution_evidence", "model_active", "model_changed", "tool_start", "tool_end", "plan_updated"}:
@@ -3939,9 +3961,7 @@ def main_json_lines() -> None:
         save_task_state(status="interrupted")
     initial_snapshot = None if read_task_state().get("status") in {"running", "interrupted"} else read_snapshot()
     snapshot_model = str((initial_snapshot or {}).get("model", AUTO_MODEL))
-    selected_model = load_selected_model(snapshot_model)
-    if AI_PROVIDER == 'deepseek' and selected_model != AUTO_MODEL and not is_selectable_model(selected_model):
-        selected_model = AUTO_MODEL
+    selected_model = conversation_model(load_selected_model(snapshot_model), initial_snapshot)
     if not re.fullmatch(r"[0-9A-Za-z_.-]+", selected_model):
         selected_model = DEFAULT_MODEL
     requests: queue.Queue[dict] = queue.Queue()
@@ -3973,6 +3993,7 @@ def main_json_lines() -> None:
                 "has_context": bool(history),
                 "resumable": read_task_state().get("status") in {"running", "interrupted"},
                 "automatic": True,
+                "model": selected_model,
             })
     emit({"type": "archives", "items": list_archives()})
     while True:
@@ -4049,7 +4070,7 @@ def main_json_lines() -> None:
                 previous_model = selected_model
                 selected_model = requested_model
                 save_selected_model(selected_model)
-                update_metadata(model=selected_model)
+                update_metadata(model=selected_model, provider=AI_PROVIDER)
                 try:
                     conversation_started = any(json.loads(line).get("type") == "user"
                         for line in (conversation_dir() / "events.jsonl").read_text(encoding="utf-8").splitlines())
@@ -4103,6 +4124,7 @@ def main_json_lines() -> None:
                 CONVERSATION_ID = previous_id
                 emit({"type": "error", "text": str(error)})
                 continue
+            selected_model = conversation_model(selected_model, stored_snapshot)
             if stored_snapshot:
                 emit({"type": "snapshot_loaded", "automatic": False, **stored_snapshot, "timeline": read_archive(candidate, timeline_only=True), "model": selected_model, "id": candidate, "resumable": read_task_state().get("status") in {"running", "interrupted"}})
                 # Display saved HTML before deserializing potentially large model
@@ -4117,6 +4139,7 @@ def main_json_lines() -> None:
                     "has_context": bool(history),
                 "resumable": read_task_state().get("status") in {"running", "interrupted"},
                     "automatic": False,
+                    "model": selected_model,
                 })
             emit({"type": "archives", "items": list_archives()})
             continue
@@ -4142,6 +4165,7 @@ def main_json_lines() -> None:
                 continue
             history = load_history(candidate)
             events = read_archive(candidate)
+            selected_model = conversation_model(task.get("model", selected_model))
             restored_images = []
             for image in task.get("images", []):
                 image_path = (target / str(image.get("file", ""))).resolve()
@@ -4150,7 +4174,7 @@ def main_json_lines() -> None:
                     restored_images.append({"name": image.get("name", image_path.name),
                         "data_url": f"data:{media_type};base64,{base64.b64encode(image_path.read_bytes()).decode('ascii')}"})
             emit({"type": "archive_loaded", "id": candidate, "messages": events,
-                  "has_context": bool(history), "automatic": False})
+                  "has_context": bool(history), "automatic": False, "model": selected_model})
             last_tool = json.dumps(task.get("last_tool", {}), ensure_ascii=False)
             continuation = (
                 "Reprends la tâche interrompue ci-dessous. Consulte search_memory et read_memory pour les étapes déjà réalisées. "
@@ -4160,7 +4184,7 @@ def main_json_lines() -> None:
                 f"Dernière étape enregistrée : {last_tool}\nDemande initiale : {task['prompt']}"
             )
             request = {"type": "prompt", "text": continuation, "original_task": task["prompt"],
-                       "model": request.get("model", task.get("model", selected_model)),
+                       "model": request.get("model", selected_model),
                        # Old clients must not silently restore elevated rights.
                        "full_access": request.get("full_access") is True,
                        "resumed": True,
@@ -4193,7 +4217,7 @@ def main_json_lines() -> None:
             binary_images, archived_images = prepare_images(raw_images)
             # Name accepted requests before slow or failing context/model preparation.
             # No deadline: a conversation can remain empty for any length of time.
-            if update_metadata(first_message=str(request.get("original_task", prompt)), model=selected_model):
+            if update_metadata(first_message=str(request.get("original_task", prompt)), model=selected_model, provider=AI_PROVIDER):
                 emit({"type": "archives", "items": list_archives()})
             history, context_stats = compact_history(history)
             request_history, preparation = prepare_task_context(history, prompt, len(binary_images),

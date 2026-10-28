@@ -80,6 +80,31 @@ class ArchiveStore {
       return !!meta && typeof meta==='object' && !Array.isArray(meta);
     } catch { return false; }
   }
+  modelSelection(id) {
+    if (!this.has(id)) return {};
+    const folder=path.join(this.root,id);
+    const valid=value=>typeof value==='string' && /^[0-9A-Za-z_.-]+$/.test(value) ? (value==='auto'?'auto-balanced':value) : '';
+    const meta=this.readCached(path.join(folder,'meta.json'));
+    let model=valid(meta.model);
+    if (!model) {
+      try {
+        const events=this.readCached(path.join(folder,'events.jsonl'),text=>text.split('\n').flatMap(line=>{
+          try {const event=JSON.parse(line);return event && typeof event==='object' ? [event] : [];} catch {return [];}
+        }));
+        for (const event of [...events].reverse()) {
+          model=valid(event.type==='model_changed' ? event.to_model :
+            ['model_active','user'].includes(event.type) && !event.steering ?
+              event.selection || (event.automatic ? 'auto-balanced' : event.model) : '');
+          if (model) break;
+        }
+      } catch {}
+      if (!model) {try {model=valid(this.readCached(path.join(folder,'snapshot.json')).model);} catch {}}
+    }
+    const executed=model==='auto-balanced' ? valid(meta.active_model) : model;
+    const provider=['ovhcloud','deepseek'].includes(meta.provider) ? meta.provider :
+      executed ? (executed.startsWith('deepseek-') ? 'deepseek' : 'ovhcloud') : '';
+    return {model,provider};
+  }
   transcript(id) {
     // Read-only view of one conversation, usable while the backend is busy.
     if (!/^[0-9A-Za-z_-]+$/.test(String(id || ''))) throw new Error(t("Identifiant de conversation invalide."));

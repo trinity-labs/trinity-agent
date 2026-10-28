@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.81
+
+- Use the folder-aware primary color for DeepSeek balance amounts, matching OVHcloud.
+- Restore each conversation’s selected model and provider when reopening it, with its saved context for the next request.
+- Recover conversation navigation after backend errors and session rejection; preserve model choices made while a conversation loads.
+- Keep authorized work available when a follow-up merely describes an unchanged result; preserve actual read-only instructions.
+
 ## 1.17.80
 
 - Include both CNY and USD DeepSeek balances, converting and summing them in euros with dated ECB reference rates. Preserve native amounts and avoid counting granted credit twice.

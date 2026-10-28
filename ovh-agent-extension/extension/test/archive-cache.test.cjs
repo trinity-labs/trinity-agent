@@ -5,6 +5,28 @@ const os = require('node:os');
 const path = require('node:path');
 const {ArchiveStore,archiveCacheBudget} = require('../archive-store');
 
+test('conversation provider follows saved model, legacy changes and automatic provider',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'archive-model-'));
+  try {
+    const store=new ArchiveStore(root,root),folder=path.join(store.root,'one');
+    fs.mkdirSync(folder,{recursive:true});
+    const meta=path.join(folder,'meta.json');
+    fs.writeFileSync(meta,JSON.stringify({model:'deepseek-flash'}));
+    assert.deepEqual(store.modelSelection('one'),{model:'deepseek-flash',provider:'deepseek'});
+    fs.writeFileSync(meta,JSON.stringify({model:'auto-balanced',provider:'deepseek'}));
+    assert.deepEqual(store.modelSelection('one'),{model:'auto-balanced',provider:'deepseek'});
+    fs.writeFileSync(meta,JSON.stringify({model:'auto-balanced',active_model:'deepseek-flash'}));
+    assert.deepEqual(store.modelSelection('one'),{model:'auto-balanced',provider:'deepseek'});
+    fs.writeFileSync(meta,'{}');
+    fs.writeFileSync(path.join(folder,'events.jsonl'),[
+      {type:'model_active',model:'deepseek-flash',selection:'deepseek-flash'},
+      {type:'model_changed',to_model:'Qwen3.8-27B'},
+      {type:'response',text:'Done'}].map(e=>JSON.stringify(e)).join('\n'));
+    assert.deepEqual(store.modelSelection('one'),{model:'Qwen3.8-27B',provider:'ovhcloud'});
+    assert.deepEqual(store.modelSelection('../one'),{});
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('archive cache auto follows cgroup allowance and current pressure instead of host RAM',()=>{
   const mib=1024*1024;
   const system={totalmem:()=>64*1024*mib,freemem:()=>48*1024*mib};

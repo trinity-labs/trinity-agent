@@ -62,14 +62,20 @@ test('opening a saved conversation restores its workspace and persists across pr
  vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
  const Provider=sandbox.module.exports.Provider,state={get:key=>values[key],update:async(key,value)=>{values[key]=value;}};
  const provider=new Provider(extension,{},state);provider.windowLock={};provider.pickProject=items=>vscode.window.showQuickPick(items);provider.store.dataRoot=path.join(root,'data');
- const calls=[];provider.stopAgent=async()=>calls.push('stop');provider.ensureAgent=async()=>{calls.push(provider.workspace);return true;};provider.showArchives=()=>calls.push(provider.store.session);
+ const calls=[];provider.stopAgent=async()=>calls.push('stop');provider.ensureAgent=async()=>{
+   calls.push(provider.workspace);
+   provider.agent={stdin:{write:line=>{
+     const command=JSON.parse(line);assert.equal(command.type,'load_archive');assert.equal(command.id,'saved');
+     assert.equal(provider.workspace,project.root);
+   }}};
+   return true;
+ };provider.showArchives=()=>calls.push(provider.store.session);
  const folder=path.join(store.dataRoot,'archive',project.id,'saved');fs.mkdirSync(folder,{recursive:true});
  fs.writeFileSync(path.join(folder,'meta.json'),JSON.stringify({workspace:project.root,title:'Saved conversation'}));
  fs.writeFileSync(path.join(folder,'../current'),'saved');
- provider.sendControl=async command=>assert.equal(command.id,'saved');
  await provider.openProject(project.id,'saved');
  assert.equal(provider.workspace,project.root);assert.equal(provider.store.session,project.id);
- assert.deepEqual(calls,['stop',project.root,project.id]);assert.equal(new Provider(extension,{},state).workspace,project.root);
+ assert.deepEqual(calls,['stop',project.id,project.root]);assert.equal(new Provider(extension,{},state).workspace,project.root);
  provider.busy=true;await provider.selectProject();assert.equal(picks,0);
 });
 test('deleting a conversation removes generated memory and disk index, preserving manual notes',t=>{

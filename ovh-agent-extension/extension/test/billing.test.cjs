@@ -14,10 +14,14 @@ test('DeepSeek shows the converted euro balance without OVH billing instructions
     assert.match(w.liveBalance.textContent,/DeepSeek.*12,34/);
     assert.doesNotMatch(w.liveBalance.title,/OVH/);
     assert.match(w.liveBalance.textContent,/€/);
+    assert.equal(w.liveBalance.querySelector('.balance-amount').textContent,
+      w.formatMoney(12.34,'EUR'));
+    assert(!w.liveBalance.querySelector('.balance-amount').classList.contains('negative'));
     assert(w.billing.classList.contains('connected'));
     w.applyBillingStatus({provider:'deepseek', configured:true, available:false, error:'DeepSeek unavailable'});
     assert.equal(w.liveBalance.textContent,'DeepSeek · —');
     assert(w.billing.classList.contains('failed'));
+    assert.equal(w.liveBalance.querySelector('.balance-amount'),null);
   } finally { dom.window.close(); }
 });
 function billingView() {

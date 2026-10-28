@@ -18,7 +18,11 @@ async function setup(t) {
     constructor(workspace,data=dataRoot) {super(workspace,data);}
   }};
   const values={},state={get:key=>values[key],update:async(key,value)=>{values[key]=value;}};
-  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:temporary}}]},
+  const settings={provider:'ovhcloud'};
+  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:temporary}}],getConfiguration:()=>({
+    get:(key,fallback)=>settings[key]??fallback,
+    update:async(key,value)=>{settings[key]=value;if(key==='provider')await provider.providerChanged();}
+  })},ConfigurationTarget:{Global:1},
     Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'}};
   const scope={require:name=>name==='vscode'?vscode:name==='./project-store'?projectStore:name==='./archive-store'?archiveStore:native(name),
     module:{exports:{}},process:{env:{OVH_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
@@ -30,7 +34,7 @@ async function setup(t) {
   provider.openWindow=async view=>{provider.windowLock={};view.webview.html=provider.getHtml(view.webview);};
   provider.startAgent=async()=>{
     const agent=new EventEmitter();
-    Object.assign(agent,{exitCode:null,signalCode:null,killed:false,
+    Object.assign(agent,{provider:settings.provider,exitCode:null,signalCode:null,killed:false,
       stdin:{writable:true,write:line=>commands.push(JSON.parse(line))},
       kill:()=>{agent.killed=true;queueMicrotask(()=>{agent.exitCode=0;agent.emit('close');});}});
     provider.agent=agent;
@@ -58,8 +62,51 @@ async function setup(t) {
   const submit=text=>{prompt.value=text;send.click();};
   t.after(()=>{dom.window.close();clearTimeout(provider.archiveRefreshTimer);clearTimeout(provider.deltaTimer);fs.rmSync(temporary,{recursive:true,force:true});});
   return {provider,window,document,prompt,send,sent,commands,flush,emit,submit,temporary,values,
-    projects:new projectStore.ProjectStore(dataRoot)};
+    settings,projects:new projectStore.ProjectStore(dataRoot)};
 }
+
+test('opening a conversation restores its provider before loading the model and context',async t=>{
+  const h=await setup(t),folder=path.join(h.provider.store.root,'deep');
+  fs.mkdirSync(folder,{recursive:true});
+  fs.writeFileSync(path.join(folder,'meta.json'),JSON.stringify({model:'deepseek-flash',provider:'deepseek'}));
+  await h.provider.startAgent();
+  const old=h.provider.agent;
+  await h.provider.sendControl({type:'load_archive',id:'deep'});
+  assert.equal(h.settings.provider,'deepseek');
+  assert(old.killed);
+  assert.equal(h.provider.agent.provider,'deepseek');
+  assert.equal(h.commands.at(-1).type,'load_archive');
+  assert.equal(h.commands.at(-1).id,'deep');
+});
+
+test('session rejection releases navigation and replaces the rejected backend',async t=>{
+  const h=await setup(t);
+  await h.provider.startAgent();
+  const rejected=h.provider.agent;
+  h.provider.busy=true;h.provider.clearingConversation=true;
+  h.emit({type:'session_busy',text:'Session already used'});
+  assert.equal(h.provider.busy,false);assert.equal(h.provider.clearingConversation,false);
+  await h.provider.sendControl({type:'load_archive',id:'existing'});
+  assert(rejected.killed);
+  assert.notEqual(h.provider.agent,rejected);
+  assert.equal(h.commands.at(-1).type,'load_archive');
+});
+
+test('a failed backend startup or control write reports archive failure and allows another attempt',async t=>{
+  const h=await setup(t);const start=h.provider.startAgent;
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{data:{type:'archives',items:[{id:'existing',title:'Existing'}]}}));
+  h.provider.startAgent=async()=>false;
+  h.document.querySelector('[data-archive-id="existing"] .archive-open').click();await h.flush();
+  assert.equal(h.document.getElementById('messages').hasAttribute('aria-busy'),false);
+  h.provider.startAgent=start;
+  h.document.querySelector('[data-archive-id="existing"] .archive-open').click();await h.flush();
+  assert.equal(h.commands.at(-1).type,'load_archive');
+  h.emit({type:'archive_open_failed',text:'Failed load'});
+  h.provider.agent.stdin.write=()=>{throw new Error('Closed pipe');};
+  h.document.querySelector('[data-archive-id="existing"] .archive-open').click();await h.flush();
+  assert.equal(h.document.getElementById('messages').hasAttribute('aria-busy'),false);
+  assert.equal(h.provider.busy,false);
+});
 
 for(const restoration of ['archive_loaded','snapshot_loaded'])test(`${restoration} during backend startup preserves the submitted request and queue semantics`,async t=>{
   const h=await setup(t);

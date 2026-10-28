@@ -279,11 +279,68 @@ test('archive header restores its own routed model and clears stale routes', () 
     emit({type:'archive_loaded',id:'unknown',messages:[]});
     assert.doesNotMatch(label(),/qwen|gpt/);
     emit({type:'archive_loaded',id:'manual',model:'manual-model',messages:[]});
-    assert.match(label(),/auto/i);assert.doesNotMatch(label(),/manual-model/);
+    assert.equal(label(),'manual-model');
     emit({type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced',automatic:true});
-    assert.match(label(),/gpt-oss-120b/);
+    assert.equal(label(),'manual-model','a delayed execution does not replace the restored choice');
     emit({type:'cleared',conversation:'fresh'});
     assert.doesNotMatch(label(),/gpt|qwen/);
+  } finally {dom.window.close();}
+});
+
+for (const restoration of ['archive_loaded','snapshot_loaded'])
+test(`${restoration} restores the opened conversation model and sends the next prompt with it`,()=>{
+  const {dom,w,emit,posted}=browser(undefined,{model:'previous-model'});
+  try {
+    emit({type:'archives',items:[{id:'target',title:'Target'}]});
+    w.document.querySelector('[data-archive-id="target"] .archive-open').click();
+    emit({type:restoration,id:'target',model:'Qwen3.8-27B',html:'<p>Target context</p>',messages:[],timeline:[]});
+    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.8-27B');
+    emit({type:'models',selected:'previous-model',items:[]});
+    emit({type:'model_selected',model:'previous-model'});
+    w.document.getElementById('prompt').value='Continue';
+    w.document.getElementById('send').click();
+    assert.equal(posted.find(e=>e.type==='prompt').model,'Qwen3.8-27B');
+  } finally {dom.window.close();}
+});
+
+test('legacy archive uses the last chronological choice after an earlier automatic execution',()=>{
+  const {dom,w,emit}=browser(undefined,{model:'previous-model'});
+  try {
+    emit({type:'archive_loaded',id:'legacy',messages:[
+      {type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced'},
+      {type:'model_changed',to_model:'Qwen3.8-27B'},
+      {type:'response',text:'done'}]});
+    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.8-27B');
+  } finally {dom.window.close();}
+});
+
+for (const failure of ['error','session_busy','idle'])
+test(`${failure} while opening an archive releases loading and permits opening another conversation`,()=>{
+  const {dom,w,emit,posted}=browser();
+  try {
+    emit({type:'archives',items:[{id:'a',title:'A'},{id:'b',title:'B'}]});
+    const click=id=>w.document.querySelector(`[data-archive-id="${id}"] .archive-open`).click();
+    click('a');
+    emit({type:'status',conversation:'a',text:'Loading'});
+    emit({type:failure,text:'Backend unavailable'});
+    assert.equal(w.document.getElementById('messages').hasAttribute('aria-busy'),false);
+    click('b');
+    assert.equal(posted.filter(e=>e.type==='loadArchive').at(-1).id,'b');
+    emit({type:'archive_loaded',id:'b',model:'Qwen3.8-27B',messages:[]});
+    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.8-27B');
+  } finally {dom.window.close();}
+});
+
+for (const failure of ['error','session_busy'])
+test(`${failure} opens the conversation requested while the task was busy`,()=>{
+  const {dom,w,emit,posted}=browser();
+  try {
+    emit({type:'archives',items:[{id:'target',title:'Target'}]});
+    emit({type:'status',conversation:'old',text:'Working'});
+    w.document.querySelector('[data-archive-id="target"] .archive-open').click();
+    assert(!posted.some(e=>e.type==='loadArchive'));
+    emit({type:failure,text:'Request failed'});
+    assert.equal(posted.filter(e=>e.type==='loadArchive').at(-1).id,'target');
   } finally {dom.window.close();}
 });
 
@@ -303,7 +360,7 @@ test('manual model changes render and restore an inline conversation divider',()
     ]});
     divider=w.document.querySelector('.model-change');
     assert(divider);assert.match(divider.textContent,/Qwen3\.6-27B/);
-    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.8-27B','archived dividers do not replace the current preference');
+    assert.equal(w.document.getElementById('selected-model').textContent,'Qwen3.6-27B','opening the archive restores its latest model choice');
     const children=[...w.document.getElementById('messages').children];
     assert(children.indexOf(divider)>children.findIndex(node=>node.textContent.includes('Avant')));
     assert(children.indexOf(divider)<children.findIndex(node=>node.textContent.includes('Après')));
@@ -351,7 +408,7 @@ test('restored execution survives delayed global model replies and snapshots ech
   const {dom,w,emit,posted}=browser();
   try {
     emit({type:'ready',model:'auto-balanced',conversation:'x'});
-    emit({type:'snapshot_loaded',id:'x',html:'<p>Latest answer</p>',model:'Qwen3.5-9B',archive_revision:'42:1234',timeline:[
+    emit({type:'snapshot_loaded',id:'x',html:'<p>Latest answer</p>',model:'auto-balanced',archive_revision:'42:1234',timeline:[
       {type:'user',model:'gpt-oss-120b',selection:'auto-balanced'},
       {type:'model_active',model:'gpt-oss-120b',selection:'auto-balanced',automatic:true}
     ]});
@@ -387,7 +444,7 @@ test('model selection closes the catalogue and survives delayed catalogue and ar
       {id:'auto-balanced',kind:'auto',selectable:true},
       {id:'gpt-oss-120b',kind:'chat',selectable:true,provider:'ovhcloud'}
     ]});
-    emit({type:'archive_loaded',id:'a',messages:[]});
+    emit({type:'archive_loaded',id:'a',model:'auto-balanced',messages:[]});
     assert.equal(panel.hidden,true);
     assert.equal(w.document.getElementById('selected-model').textContent,'gpt-oss-120b');
     assert.match(w.document.querySelector('.model-item.selected').textContent,/gpt-oss-120b/);

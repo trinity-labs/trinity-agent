@@ -199,6 +199,10 @@ def read_only_policy(prompt, previous=False):
         r'(?=\s*(?:["»”`\']|[.!?,;:\n]|$))', '', text)
     # Naming or refusing the read-only feature is not a read-only instruction.
     text = mask_read_only_mentions(text)
+    # A statement about an unchanged result is not an imperative addressed to
+    # the agent ("cela ne change pas la liste des fichiers"). Keep any earlier
+    # actual restriction, and still parse subsequent explicit prohibitions.
+    text = re.sub(r'\b(?:cela|ceci|ca)\s+ne\s+(?:change|modifie)\s+pas\b', '', text)
     execution = execution_requested(text)
     if execution:
         # Preserving source files does not prohibit an explicitly requested

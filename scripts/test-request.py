@@ -746,6 +746,20 @@ class SourceEvidence(unittest.TestCase):
 
 
 class HistoricalContext(unittest.TestCase):
+    def test_unchanged_result_statement_does_not_create_a_read_only_order(self):
+        for prompt in [
+            'Cela ne change pas la liste des fichiers exportés.',
+            'Ceci ne modifie pas le résultat du contrôle.',
+            'Ça ne change pas la portée de la livraison.',
+            'Relance le contrôle complet. Cela ne change pas la liste des 13 fichiers exportés.',
+        ]:
+            with self.subTest(prompt=prompt):
+                self.assertFalse(r.read_only_policy(prompt, False))
+                self.assertTrue(r.read_only_policy(prompt, True), 'A description cannot revoke an actual restriction')
+        self.assertTrue(r.read_only_policy('Cela ne change pas la liste. Ne modifie pas les fichiers.'))
+        self.assertTrue(r.read_only_policy('Cela ne change pas la liste. Lecture seule.'))
+        self.assertFalse(r.read_only_policy('Cela ne change pas la liste. Exécute le contrôle et installe le paquet.', True))
+
     def test_past_no_edit_report_is_context(self):
         for prompt in [
             "Reprends la correction. Aucune modification n’a été appliquée.",

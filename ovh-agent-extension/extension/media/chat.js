@@ -315,6 +315,7 @@ function requestArchiveOpen(id, source) {
     return;
   }
   loadingArchive = id;
+  archiveModelRevision = modelChoiceRevision;
   activeArchiveId = id;
   updateSendButton();
   setArchiveVisible(false);
@@ -347,6 +348,8 @@ let activeFullAccess = null;
 let pendingSubmission = null;
 const normalizeModelSelection = value => value === "auto" ? "auto-balanced" : (value || "auto-balanced");
 let selectedModel = normalizeModelSelection(saved?.model);
+let modelChoiceRevision = 0;
+let archiveModelRevision = null;
 let lastRoutedModel = saved?.lastRoutedModel || "";
 let modelCatalog = [];
 let modelCatalogueNote = "";
@@ -403,18 +406,25 @@ function syncModelSelection(value) {
   return true;
 }
 
-// Restore the archive's routing evidence without replacing the user's selection.
+// Opening a conversation restores its choice. A later click or submitted request wins.
 function restoreArchiveModel(data) {
   const events = data.timeline || data.messages || [];
   const execution = [...events].reverse().find(event =>
     ['model_active', 'model_routed'].includes(event.type) && event.model);
-  const changed = [...events].reverse().find(event => event.type === 'model_changed' && event.to_model);
-  const request = [...events].reverse().find(event => event.type === 'user' && !event.steering);
-  const archivedSelection = execution?.selection || changed?.to_model || request?.selection || data.model || request?.model;
-  syncModelSelection(archivedSelection);
+  const lastChoice = [...events].reverse().map(event => event.type === 'model_changed' ? event.to_model :
+    ['model_active', 'user'].includes(event.type) && !event.steering
+      ? event.selection || (event.automatic ? 'auto-balanced' : event.model) : '').find(Boolean);
+  const archivedSelection = data.model || lastChoice;
+  if (archivedSelection && !data.automatic && !pendingSubmission &&
+      (archiveModelRevision === null || archiveModelRevision === modelChoiceRevision)) {
+    selectedModel = normalizeModelSelection(archivedSelection);
+    hasModelPreference = true;
+  } else syncModelSelection(archivedSelection);
+  if (!data.automatic) archiveModelRevision = null;
   lastRoutedModel = selectedModel === 'auto-balanced' && normalizeModelSelection(archivedSelection) === 'auto-balanced'
     ? (execution?.model || data.active_model || '') : '';
   updateModelButton();
+  renderModels();
 }
 
 function updateModelButton() {
@@ -530,6 +540,7 @@ function renderModels() {
         modelPanel.hidden = true;
         modelPicker.focus();
         setStatus(t("Modèle sélectionné : {0}", selectedModel));
+        modelChoiceRevision++;
         vscode.postMessage({ type: "selectModel", model: selectedModel, provider: model.provider || "" });
         persist();
       });
@@ -1331,6 +1342,7 @@ function renderArchiveRows(items, container, project) {
         return;
       }
       loadingArchive = item.id;
+      archiveModelRevision = modelChoiceRevision;
       beginArchiveLoading(item, source, displayTitle, button.closest(".archive-project")?.style.getPropertyValue("--project-color"));
       if(!active && source) {
         setStatus(t("Chargement de la conversation…"));
@@ -2095,7 +2107,14 @@ function applyBillingStatus(data, announce = true) {
     refreshDeepSeekCosts();
     const available = data.available && data.currency === "EUR" && Number.isFinite(data.credit_available);
     liveBalance.dataset.available = String(Boolean(available));
-    liveBalance.textContent = available ? `DeepSeek · ${formatMoney(data.credit_available, "EUR")}${data.stale ? t(" (non actualisé)") : ""}` : "DeepSeek · —";
+    if (available) {
+      const amount = document.createElement("span");
+      amount.className = "balance-amount";
+      amount.classList.toggle("negative", data.credit_available < 0);
+      amount.textContent = formatMoney(data.credit_available, "EUR");
+      liveBalance.replaceChildren(document.createTextNode("DeepSeek · "), amount,
+        document.createTextNode(data.stale ? t(" (non actualisé)") : ""));
+    } else liveBalance.textContent = "DeepSeek · —";
     const details = (data.balance_infos || []).map(row => `${row.source_currency} → ${formatMoney(row.total_balance, "EUR")}`).join(" · ");
     const exchange = data.exchange_rates?.date ? t("Conversion EUR · taux BCE du {0}", data.exchange_rates.date) : "";
     billing.title = liveBalance.title = available
@@ -2540,8 +2559,19 @@ window.addEventListener("message", ({ data }) => {
   rememberExchangeRates(data);
   if (data.exchange_rates) refreshDeepSeekCosts();
   // Only accept revision tokens after conversation-ID filtering below.
-  if (data.type === "archive_open_failed" || (loadingArchive && data.type === "error")) {
+  if (data.type === "archive_open_failed" || (loadingArchive && ["error", "idle", "session_busy"].includes(data.type))) {
     loadingArchive = null;
+    archiveModelRevision = null;
+    if (data.type !== "archive_open_failed") {
+      stopping = false;
+      pendingSubmission = null;
+      creatingConversation = false;
+      clear.disabled = false;
+      interruptPendingFollowup();
+      if (performancePicker) performancePicker.disabled = false;
+      if (currentRun) finishRun("error");
+      setBusy(false);
+    }
     endArchiveLoading();
     setArchiveVisible(true);
     setStatus(data.text || t("Termine ou arrête la tâche avant de changer de projet."), "warning");
@@ -2556,7 +2586,7 @@ window.addEventListener("message", ({ data }) => {
     if (data.type === "cleared") {
       creatingConversation = false;
       clear.disabled = false;
-    } else if (data.type === "error" || data.type === "idle") {
+    } else if (["error", "idle", "session_busy"].includes(data.type)) {
       creatingConversation = false;
       clear.disabled = false;
       if (data.type === "idle") data = {type:"error",text:t("Création de conversation interrompue. Réessaie Nouvelle conversation.")};
@@ -2673,6 +2703,11 @@ window.addEventListener("message", ({ data }) => {
     resetFollowupInteraction();
     if (currentRun) finishRun("stopped");
     setBusy(false, OvhI18n.message(data.text), true);
+    if (deferredArchiveOpen) {
+      const target = deferredArchiveOpen;
+      deferredArchiveOpen = null;
+      requestArchiveOpen(target.id, target.source);
+    }
   }
   if (data.type === "tool_start") addActivity(data);
   if (data.type === "tool_progress") {
@@ -2795,6 +2830,11 @@ window.addEventListener("message", ({ data }) => {
     finishRun("error");
     status.title = detail;
     setBusy(false, severity === 'warning' ? detail : t("La requête a échoué : {0}", detail), severity);
+    if (deferredArchiveOpen) {
+      const target = deferredArchiveOpen;
+      deferredArchiveOpen = null;
+      requestArchiveOpen(target.id, target.source);
+    }
   }
   if (data.type === "idle") {
     stopping = false;

@@ -339,7 +339,7 @@ class OvhAgentViewProvider {
     this.store=new ArchiveStore(entry.root,dataRoot);
     await this.state?.update("ovhAgent.projectRoot",entry.root);
     // Keep the webview and expanded history folders alive while switching backends.
-    await this.ensureAgent();
+    if (!conversation) await this.ensureAgent();
     this.showArchives();
     if(conversation)await this.sendControl({type:"load_archive",id:conversation});
   }
@@ -740,6 +740,7 @@ class OvhAgentViewProvider {
 
   async ensureAgent() {
     if (!this.windowLock) return false;
+    if (this.agent?.sessionBusy) await this.stopAgent(false);
     if (this.stopPromise) await this.stopPromise;
     if (!this.windowLock || this.windowClosing || this.deleting) return false;
     if (this.agent && !this.agent.killed) return true;
@@ -885,13 +886,13 @@ class OvhAgentViewProvider {
           ["write_file","edit_file","run_command","run_host_command","write","edit","command"].includes(message.tool))) this.explorerDirty=true;
         if (message.type === "session_busy" && this.agent) this.agent.sessionBusy = true;
         if (message.type === "status") { this.responseText = ""; this.busy = true; }
-        if (["response", "error", "idle"].includes(message.type)) this.busy = false;
+        if (["response", "error", "idle", "session_busy"].includes(message.type)) this.busy = false;
         if (message.type === "idle" && this.providerRestartPending) {
           // A provider change requested during a task waits for this idle point.
           this.providerRestartPending = false;
           void this.stopAgent(false);
         }
-        if (["cleared", "error", "idle"].includes(message.type)) this.clearingConversation = false;
+        if (["cleared", "error", "idle", "session_busy"].includes(message.type)) this.clearingConversation = false;
         if (message.type === "followup_ack" && message.already_started && message.running === false) this.busy = false;
         if (message.type === "delta") {
           this.responseText = (this.responseText + String(message.text || "")).slice(0, 2*1024*1024);
@@ -954,9 +955,29 @@ class OvhAgentViewProvider {
   }
 
   async sendControl(payload) {
-    if (!(await this.ensureAgent())) return;
-    if (payload.type === "resume_archive" || (payload.type === "followup" && ["add", "steer", "continue"].includes(payload.action))) this.busy = true;
-    this.agent.stdin.write(`${JSON.stringify(payload)}\n`);
+    try {
+      if (payload.type === "load_archive") {
+        if (this.busy) { this.post({type:"archive_open_failed"}); return; }
+        const {provider}=this.store.modelSelection(payload.id);
+        if (provider && provider!==inferenceProvider()) {
+          this.restoringProvider=true;
+          try {
+            await vscode.workspace.getConfiguration("ovhAgent").update("provider",provider,vscode.ConfigurationTarget.Global);
+          } finally { this.restoringProvider=false; }
+          await this.providerChanged();
+        }
+      }
+      if (!(await this.ensureAgent())) {
+        if (payload.type === "load_archive") this.post({type:"archive_open_failed"});
+        return;
+      }
+      if (payload.type === "resume_archive" || (payload.type === "followup" && ["add", "steer", "continue"].includes(payload.action))) this.busy = true;
+      this.agent.stdin.write(`${JSON.stringify(payload)}\n`);
+    } catch (error) {
+      this.busy=false;
+      this.clearingConversation=false;
+      this.post({type:payload.type==="load_archive" ? "archive_open_failed" : "error",text:String(error.message)});
+    }
   }
 
   async clearConversation() {
@@ -1012,6 +1033,7 @@ class OvhAgentViewProvider {
   }
 
   async providerChanged() {
+    if (this.restoringProvider) return;
     const provider = inferenceProvider();
     if (this.busy || this.clearingConversation) {
       this.providerRestartPending = true;
