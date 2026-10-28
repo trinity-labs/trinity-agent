@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.79
+
+- Request one bounded recovery attempt before accepting a final answer after a failed or unavailable tool. Corrected calls and available native alternatives remain usable; authorization denials and uncertain mutations are never bypassed.
+- Keep corrected progress plans callable after invalid step indices, while retaining repeated-loop detection.
+- Expose approved local diagnostics during read-only tasks, with execution-time restrictions on writes, shell composition and remote calls.
+
 ## 1.17.78
 
 - Raise the bounded tool-retry limit from 2 to 8, configurable with `OVH_AGENT_TOOL_RETRIES`, so a model can correct an invalid `run_command` call instead of failing the turn with `exceeded max retries count of 2`.

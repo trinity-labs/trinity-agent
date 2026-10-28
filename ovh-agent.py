@@ -2898,6 +2898,10 @@ async def prepare_tool_for_request(ctx: RunContext[RunDependencies], definition)
         return definition
     analysis = analyze_request(prompt)
     allowed = READ_ONLY_TOOLS if analysis.web_allowed else READ_ONLY_TOOLS - {'search_web', 'read_webpage'}
+    if definition.name == 'run_command' and ctx.deps.engine is not None and ctx.deps.engine.trusted_diagnostics:
+        return replace(definition, description=(definition.description or '') +
+            '\nLecture seule active : uniquement les diagnostics locaux reconnus par le moteur '
+            '(par exemple pwd, ls ou cat). Les écritures, compositions shell et appels distants restent refusés.')
     return definition if definition.name in allowed else None
 
 

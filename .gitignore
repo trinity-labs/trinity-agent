@@ -160,6 +160,8 @@
 !/ovh_tools.py
 !/ovh_process.py
 !/scripts/test-tools.py
+!/scripts/test-tool-fallback.py
+!/scripts/test-tool-recovery.py
 !/scripts/test-process.py
 !/scripts/evaluate-agent.py
 !/scripts/test-agent-evaluation.py

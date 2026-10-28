@@ -25,9 +25,9 @@ import unicodedata
 from typing import Any, TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from pydantic_ai import RunContext, ToolFailed
+from pydantic_ai import ModelRetry, RunContext, ToolFailed
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.messages import InstructionPart
+from pydantic_ai.messages import InstructionPart, RetryPromptPart, ToolReturnPart, UserPromptPart
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage
@@ -124,6 +124,54 @@ class ExecutionCapability(AbstractCapability[RunDependencies]):
             result = execution.result
             raise ToolFailed(result if isinstance(result, str) else json.dumps(result, ensure_ascii=False))
         return execution.result
+
+    async def wrap_output_process(self, ctx, *, output_context, output, handler):
+        engine = ctx.deps.engine
+        if (engine is not None and engine._validation_retries < 1
+                and not engine.journal.snapshot()['unresolved_mutations']
+                and not engine.transactions.snapshot()['unresolved_mutations']
+                and self.unfinished_tool(ctx.messages)):
+            # One recovery opportunity, shared with postcondition validation.
+            # Read native outcomes, not a model's claim that a tool is unavailable.
+            engine._validation_retries += 1
+            raise ModelRetry(
+                "Le dernier échec d’outil n’a pas été suivi d’une action utile. "
+                "Avant de conclure, corrige l’appel ou utilise un autre outil disponible et autorisé "
+                "pour poursuivre la demande ; discover_tools permet de chercher une capacité manquante. "
+                "Une commande absente peut souvent être remplacée par les outils natifs de fichiers. "
+                "Respecte les refus d’accès ; ne rejoue aucune opération aux effets incertains. "
+                "Si aucune solution autorisée n’aboutit, décris le blocage et les tentatives observées.")
+        return await handler(output)
+
+    @staticmethod
+    def unfinished_tool(messages):
+        """A final answer or a progress report alone does not recover a failed tool."""
+        for message in reversed(messages):
+            for part in reversed(message.parts):
+                if isinstance(part, UserPromptPart):
+                    return False  # Failures from an earlier user turn are historical.
+                if isinstance(part, RetryPromptPart) and part.tool_name:
+                    return True  # SDK argument validation or an unknown tool name.
+                if not isinstance(part, ToolReturnPart):
+                    continue
+                if part.outcome == 'success':
+                    if part.tool_name in {'update_plan', 'discover_tools', 'workflow_status', 'inspect_task_execution'}:
+                        continue
+                    return False
+                if part.outcome in {'denied', 'interrupted'}:
+                    return False
+                try:
+                    data = json.loads(part.content) if isinstance(part.content, str) else part.content
+                except (ValueError, TypeError):
+                    data = None
+                if isinstance(data, dict) and (
+                        data.get('error') in {'approval_denied', 'policy_denied'}
+                        or data.get('category') in {'read_only', 'permission_denied', 'recovery_required'}):
+                    return False
+                if classify_failure(part.content) in {'permission_denied', 'provider_auth', 'cancelled'}:
+                    return False
+                return True
+        return False
 
 MUTATIONS = frozenset({'edit_file', 'write_file', 'edit_file_batch', 'run_command',
                       'run_host_command', 'install_tools', 'remember_context'})
@@ -543,6 +591,10 @@ class WorkflowController:
 
     def _observation_revision(self, name, arguments):
         revision = [self.progress]
+        if name == 'update_plan':
+            # A plan changes only task metadata. Keep its journal and identical
+            # retry bound, but never lock a corrected plan behind other arguments.
+            revision.append(arguments)
         # A real file discovered after several wrong guesses must remain usable.
         # Only target metadata invalidates the failed-call budget; unrelated reads
         # and paraphrasing the same nonexistent path do not count as progress.
@@ -555,7 +607,7 @@ class WorkflowController:
                 revision += [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
             except OSError:
                 revision.append(None)
-        return json.dumps(revision)
+        return json.dumps(revision, sort_keys=True)
 
     def invoke(self, function, *args, **kwargs):
         """Direct Python execution shares the same receipts as native AI hooks."""

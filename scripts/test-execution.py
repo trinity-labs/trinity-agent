@@ -33,6 +33,18 @@ class ExecutionTests(unittest.TestCase):
     def operations(self, engine=None):
         return (engine or self.engine).journal.snapshot()["operations"]
 
+    def test_corrected_plan_remains_available_after_repeated_invalid_plans(self):
+        for index in range(5):
+            with self.engine.execution('update_plan', {'steps': ['invalid'] * 13, 'current_step': index}) as execution:
+                if execution.execute:
+                    execution.result = json.dumps({'status': 'failed', 'message': 'Too many steps'})
+        with self.engine.execution('update_plan', {'steps': ['Check', 'Apply'], 'current_step': 0,
+                'explanation': 'Check the observed failure before applying the update.'}) as execution:
+            self.assertTrue(execution.execute, execution.result)
+            execution.result = json.dumps({'steps': ['Check', 'Apply'], 'current_step': 0})
+        self.assertFalse(execution.failed)
+        self.assertEqual(self.engine.progress, 0)
+
     def test_real_backend_nonexecuted_script_retries_without_stale_incomplete_state(self):
         with patch.object(sys, 'argv', ['test-execution', '--billing-status']):
             spec = importlib.util.spec_from_file_location('literal_command_backend', ROOT/'ovh-agent.py')
