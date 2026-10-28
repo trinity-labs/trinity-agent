@@ -170,6 +170,17 @@ class RecoveryDiscovery(unittest.TestCase):
         self.runner = runner
         self.a.run_dependencies().engine = WorkflowController(self.workspace, self.root/'execution', operation_runner=runner)
 
+    def test_agent_uses_bounded_tool_retry_limit_above_two(self):
+        a = self.a
+        model = FunctionModel(lambda messages, info: ModelResponse(parts=[TextPart('ok')]))
+        model_id = 'tool-retry-fixture'
+        self.addCleanup(a.AGENTS.pop, model_id, None)
+        with patch.object(a, 'get_budgeted_model', return_value=model), \
+                patch.object(a, 'model_capabilities', return_value={'tools': False}):
+            agent = a.get_agent(model_id)
+        self.assertGreaterEqual(a.TOOL_RETRIES, 5)
+        self.assertEqual(agent._max_tool_retries, a.TOOL_RETRIES)
+
     def test_configured_install_is_callable_and_recovery_does_not_install_twice(self):
         self.configure_install()
         a = self.a

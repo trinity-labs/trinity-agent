@@ -124,6 +124,9 @@ MODEL_CATALOG_EXPIRES = 0.0
 BILLING_CACHE_SECONDS = budget_setting("OVH_AGENT_BILLING_CACHE_SECONDS", 60)
 BILLING_REFRESH_LOCK = threading.Lock()
 JSON_MODE = False
+# Tool retries let the model repair an invalid tool call. Keep the limit
+# bounded while allowing more than the SDK's previous fixed value of two.
+TOOL_RETRIES = budget_setting("OVH_AGENT_TOOL_RETRIES", 8, 1)
 RUN_CONTEXT: ContextVar[RunDependencies | None] = ContextVar('trinity_run_dependencies', default=None)
 
 
@@ -3042,7 +3045,7 @@ def get_agent(model_id: str, *, output_validator=None) -> Agent[RunDependencies,
             deps_type=RunDependencies,
             toolsets=[FunctionToolset(agent_tools()).prepared(prepare_tools_for_request)] if model_capabilities(model_id)["tools"] else [],
             # The SDK requires an integer; DeepSeek has no practical retry ceiling.
-            retries=sys.maxsize if AI_PROVIDER == 'deepseek' else 2,
+            retries=sys.maxsize if AI_PROVIDER == 'deepseek' else TOOL_RETRIES,
             capabilities=[ExecutionCapability(RUN_CONTEXT), ProcessHistory(apply_steering), ProcessHistory(task_checkpoint), ProcessHistory(manage_model_context)],
         )
         AGENTS[model_id].instructions(load_infrastructure_instructions)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.78
+
+- Raise the bounded tool-retry limit from 2 to 8, configurable with `OVH_AGENT_TOOL_RETRIES`, so a model can correct an invalid `run_command` call instead of failing the turn with `exceeded max retries count of 2`.
+
 ## 1.17.77
 
 - Retry interrupted OVH connections before exposing a response, with a separate budget reservation for each bounded attempt. Automatic routing can switch away from GPT-OSS after connection failure, without replaying mutations or started streams.
