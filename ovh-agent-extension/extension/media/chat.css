@@ -386,6 +386,11 @@ main {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.activity .activity-row .activity-command {
+  color: var(--vscode-foreground);
+  border-left: 2px solid color-mix(in srgb, var(--ovh-primary) 40%, transparent);
+}
+.activity .activity-row .activity-output:empty { display: none; }
 .file-change {
   margin: 3px 0 12px;
   overflow: hidden;
@@ -470,8 +475,8 @@ main {
   user-select: none;
 }
 .diff-prefix { color: var(--vscode-descriptionForeground); text-align: center; user-select: none; }
-.diff-line.added { background: rgba(46, 185, 80, .22); }
-.diff-line.removed { background: rgba(248, 70, 65, .23); }
+.diff-line.added { background: rgba(39, 195, 78, .28); }
+.diff-line.removed { background: rgba(255, 65, 60, .29); }
 .diff-line.added .diff-prefix { color: var(--vscode-gitDecoration-addedResourceForeground, #2ea043); }
 .diff-line.removed .diff-prefix { color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149); }
 .diff-line.hunk {
@@ -481,6 +486,7 @@ main {
 }
 .diff-line.hunk span { padding-left: 10px; letter-spacing: 2px; user-select: none; }
 .diff-line.hunk code { color: var(--vscode-descriptionForeground); }
+.approval-diff { max-height: 240px; margin: 9px 0; border-radius: 5px; }
 .archived-file-change { margin-bottom: 14px; }
 .approval-card {
   margin: 8px 0 2px;
@@ -858,6 +864,9 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 .archive-title-icon { display: block; width: 15px; height: 15px; fill: currentColor; stroke: none; opacity: .15; }
 .archive-mount { display: flex; align-items: baseline; min-width: 0; gap: 4px; }
 .archive-mount-label { flex-shrink: 0; white-space: pre; }
+.archive-mount-separator { opacity: .33; }
+.archive-mount-separator, #archive-used { flex-shrink: 0; white-space: nowrap; }
+.archive-mount > [hidden] { display: none; }
 #archive-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
 .archive-head > button { flex-shrink: 0; }
 
@@ -932,15 +941,17 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
   margin: 4px auto 0;
   padding: 0;
   border: 0;
-  background: transparent;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 .activity-bottom-chevron .agent-icon { width: 12px; height: 12px; }
-.activity[open] .activity-bottom-chevron { display: flex; opacity: 0.5; }
-.activity[open] .activity-bottom-chevron:hover:not(:disabled), .activity[open] .activity-bottom-chevron:focus-visible { opacity: 1; }
+.activity[open] .activity-bottom-chevron { display: flex; opacity: .66; }
+.activity[open] .activity-bottom-chevron:hover:not(:disabled), .activity[open] .activity-bottom-chevron:focus-visible { opacity: 1; background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent); }
+.activity-bottom-chevron:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .activity[open] .activity-bottom-chevron .agent-icon { transform: rotate(180deg); }
 .message.working > .label { display: none; }
 
@@ -1049,6 +1060,17 @@ body.vscode-dark header .history-brand, body.vscode-high-contrast header .histor
    added/deleted row background reaches across the source, not just its gutter. */
 .diff-scroller .diff-line > code,
 .markdown .diff-line > code { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 0 12px 0 0; font: inherit; }
+
+/* Syntax colours must remain readable on the editor and diff backgrounds,
+   including light themes; the bundled Monokai background stays on prose code. */
+.diff-scroller { --diff-keyword: #ff92b7; --diff-string: #c3e88d; --diff-number: #d5a5ff; --diff-title: #82d9f5; --diff-comment: #aab5ae; }
+body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller { --diff-keyword: #a31561; --diff-string: #246923; --diff-number: #7441a4; --diff-title: #005d80; --diff-comment: #535e59; }
+.diff-scroller .hljs span { color: inherit; }
+.diff-scroller .hljs :is(.hljs-keyword, .hljs-literal, .hljs-name, .hljs-selector-tag, .hljs-tag) { color: var(--diff-keyword); }
+.diff-scroller .hljs :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-template-tag, .hljs-template-variable) { color: var(--diff-string); }
+.diff-scroller .hljs :is(.hljs-number, .hljs-attr, .hljs-attribute, .hljs-symbol, .hljs-variable, .hljs-built_in) { color: var(--diff-number); }
+.diff-scroller .hljs :is(.hljs-title, .hljs-type, .hljs-section, .hljs-selector-class) { color: var(--diff-title); }
+.diff-scroller .hljs :is(.hljs-comment, .hljs-meta, .hljs-quote, .hljs-deletion) { color: var(--diff-comment); }
 
 /* Only explicitly selected conversations appear in project folders. */
 .archive-project { margin-bottom: 4px; --project-color: var(--ovh-primary); }

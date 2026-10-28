@@ -5,6 +5,27 @@ const os = require('node:os');
 const path = require('node:path');
 const {ArchiveStore,archiveCacheBudget} = require('../archive-store');
 
+test('mount usage measures filesystem blocks, handles a new archive and preserves unavailable state',t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'archive-usage-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const store=new ArchiveStore(root,path.join(root,'missing-data'));
+  const seen=[];
+  const stat=t.mock.method(fs,'statfsSync',folder=>{
+    seen.push(folder);
+    if(folder!==root)throw Object.assign(new Error('Missing'),{code:'ENOENT'});
+    return {blocks:100,bfree:20,bavail:10,bsize:4096};
+  });
+  assert.equal(store.usedFilesystemBytes(),80*4096,'Reserved free blocks are not occupied space');
+  assert.equal(seen[0],store.root);assert.equal(seen.at(-1),root);
+  assert.equal(fs.existsSync(store.dataRoot),false,'Measuring must not create storage');
+  stat.mock.mockImplementation(()=>{throw Object.assign(new Error('Denied'),{code:'EACCES'});});
+  assert.equal(store.usedFilesystemBytes(),null);
+  stat.mock.mockImplementation(()=>({blocks:100,bfree:100,bsize:4096}));
+  assert.equal(store.usedFilesystemBytes(),0);
+  stat.mock.mockImplementation(()=>({blocks:10,bfree:20,bsize:4096}));
+  assert.equal(store.usedFilesystemBytes(),null);
+});
+
 test('conversation provider follows saved model, legacy changes and automatic provider',()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'archive-model-'));
   try {

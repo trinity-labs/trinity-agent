@@ -752,24 +752,123 @@ function addArchivedAssistant(html, failed = false, timestamp = null) {
   return article;
 }
 
-function wireFileChangeCopy(details) {
+function storedDiff(element) {
+  const value = element.dataset.diff || '';
+  // New snapshots encode angle brackets so the HTML sanitizer never treats
+  // literal source inside an attribute as executable markup. Read old patches too.
+  try {return value.startsWith('"') ? JSON.parse(value) : value;} catch {return value;}
+}
+
+function storeDiff(element, diff) {
+  element.dataset.diff = JSON.stringify(String(diff || '')).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+}
+
+function enhanceFileChange(details) {
+  const scroller = details.querySelector('.diff-scroller');
+  if (scroller && scroller.dataset.renderedDiff !== 'yes' && details.hasAttribute('data-diff')) {
+    scroller.replaceWith(createDiffScroller(storedDiff(details), details.querySelector('.file-change-head > code')?.textContent || ''));
+  }
   const copy = details.querySelector(".copy-diff");
   if (!copy) return;
+  copy.disabled = !details.hasAttribute('data-diff');
   copy.innerHTML = uiIcon("copy");
   copy.onclick = async (event) => {
     event.preventDefault();
     event.stopPropagation();
-    await navigator.clipboard.writeText(details.dataset.diff || "");
+    await navigator.clipboard.writeText(storedDiff(details));
     copy.innerHTML = uiIcon("check");
     window.setTimeout(() => { copy.innerHTML = uiIcon("copy"); }, 1200);
   };
+}
+
+function diffLanguage(path, diff) {
+  const header = /^\+\+\+ (?:b\/)?([^\t\n]+)/m.exec(diff.split(/^@@ /m, 1)[0])?.[1];
+  const name = String(header && header !== '/dev/null' ? header : path).replace(/\\/g, '/').split('/').pop().toLowerCase();
+  const extension = name.split('.').pop();
+  const aliases = {js:'javascript',mjs:'javascript',cjs:'javascript',jsx:'javascript',ts:'typescript',tsx:'typescript',py:'python',sh:'bash',zsh:'bash',yml:'yaml',md:'markdown',html:'xml',htm:'xml',svg:'xml',vue:'xml',svelte:'xml',rs:'rust',rb:'ruby',h:'c',hpp:'cpp',cc:'cpp',ps1:'powershell',cs:'csharp',kt:'kotlin',tf:'hcl'};
+  const language = /^(?:dockerfile|containerfile)(?:\.|$)/.test(name) ? 'dockerfile'
+    : name === 'makefile' ? 'makefile' : name === 'nginx.conf' ? 'nginx' : aliases[extension] || extension;
+  return window.hljs?.getLanguage(language) ? language : '';
+}
+
+function highlightDiffLines(codes, language) {
+  if (!codes.length) return;
+  const source = codes.map(code => code.textContent).join('\n');
+  try {
+    const result = window.hljs.highlight(source, {language, ignoreIllegals:true});
+    const fragment = safeHtml(result.value, true);
+    const lines = [document.createDocumentFragment()];
+    // Carry nested token classes across newlines. Lex old and new sides
+    // separately so removed code cannot change the syntax state of additions.
+    function visit(node, classes) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        node.textContent.split('\n').forEach((text, index) => {
+          if (index) lines.push(document.createDocumentFragment());
+          if (!text) return;
+          let piece = document.createTextNode(text);
+          for (let i = classes.length - 1; i >= 0; i--) {
+            const span = document.createElement('span');span.className = classes[i];span.append(piece);piece = span;
+          }
+          lines.at(-1).append(piece);
+        });
+      } else {
+        const nested = node.nodeName === 'SPAN' && node.className ? [...classes, node.className] : classes;
+        for (const child of node.childNodes) visit(child, nested);
+      }
+    }
+    visit(fragment, []);
+    if (lines.length !== codes.length || lines.some((line, i) => line.textContent !== codes[i].textContent)) return;
+    codes.forEach((code, i) => {code.replaceChildren(lines[i]);code.classList.add('hljs');});
+  } catch { /* Keep literal code readable if a grammar is missing or fails. */ }
+}
+
+function createDiffScroller(diff, path = '') {
+  const scroller = document.createElement('div');
+  scroller.className = 'diff-scroller';
+  scroller.dataset.renderedDiff = 'yes';
+  diff = String(diff || '');
+  const lines = diff.split('\n');
+  if (lines.at(-1) === '') lines.pop(); // A patch terminator is not a context line.
+  const language = diff.length <= 100000 && lines.length <= 2000 ? diffLanguage(path, diff) : '';
+  let oldLine = 0, newLine = 0, inHunk = false, oldCodes = [], newCodes = [];
+  const highlight = () => {
+    if (language) {highlightDiffLines(oldCodes, language);highlightDiffLines(newCodes, language);}
+    oldCodes = [];newCodes = [];
+  };
+  for (const rawLine of lines) {
+    const hunk = rawLine.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);
+    if (hunk) {
+      highlight();inHunk = true;oldLine = Number(hunk[1]);newLine = Number(hunk[2]);
+      const row = document.createElement('div');row.className = 'diff-line hunk';
+      const marker = document.createElement('span');marker.textContent = '···';
+      const code = document.createElement('code');code.textContent = rawLine;
+      row.append(marker, code);scroller.append(row);continue;
+    }
+    if (!inHunk || rawLine.startsWith('\\ No newline')) continue;
+    const kind = rawLine.startsWith('+') ? 'added' : rawLine.startsWith('-') ? 'removed' : 'context';
+    const row = document.createElement('div');row.className = `diff-line ${kind}`;
+    const oldNumber = document.createElement('span');oldNumber.className = 'diff-number';
+    const newNumber = document.createElement('span');newNumber.className = 'diff-number';
+    const prefix = document.createElement('span');prefix.className = 'diff-prefix';
+    const code = document.createElement('code');
+    code.textContent = /^[ +\-]/.test(rawLine) ? rawLine.slice(1) : rawLine;
+    if (kind !== 'added') {oldNumber.textContent = String(oldLine++);oldCodes.push(code);}
+    if (kind !== 'removed') {newNumber.textContent = String(newLine++);newCodes.push(code);}
+    prefix.textContent = kind === 'added' ? '+' : kind === 'removed' ? '−' : ' ';
+    row.append(oldNumber, newNumber, prefix, code);scroller.append(row);
+  }
+  highlight();
+  if (!inHunk && diff) {
+    const fallback = document.createElement('pre');fallback.className = 'diff';fallback.textContent = diff;scroller.append(fallback);
+  }
+  return scroller;
 }
 
 function createFileChange(data) {
   const details = document.createElement("details");
   details.className = "file-change";
   details.open = true;
-  details.dataset.diff = String(data.diff || "");
+  storeDiff(details, data.diff);
 
   const summary = document.createElement("summary");
   const icon = document.createElement("span");
@@ -804,58 +903,10 @@ function createFileChange(data) {
   stats.append(added, removed, copy);
   header.append(path, stats);
 
-  const scroller = document.createElement("div");
-  scroller.className = "diff-scroller";
-  let oldLine = 0;
-  let newLine = 0;
-  for (const rawLine of String(data.diff || "").split("\n")) {
-    if (rawLine.startsWith("---") || rawLine.startsWith("+++")) continue;
-    const hunk = rawLine.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);
-    if (hunk) {
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
-      const row = document.createElement("div");
-      row.className = "diff-line hunk";
-      const marker = document.createElement("span");
-      marker.textContent = "···";
-      const code = document.createElement("code");
-      code.textContent = rawLine;
-      row.append(marker, code);
-      scroller.appendChild(row);
-      continue;
-    }
-    if (!rawLine && oldLine === 0 && newLine === 0) continue;
-    const kind = rawLine.startsWith("+") ? "added" : rawLine.startsWith("-") ? "removed" : "context";
-    if (rawLine.startsWith("\\ No newline")) continue;
-    const row = document.createElement("div");
-    row.className = `diff-line ${kind}`;
-    const oldNumber = document.createElement("span");
-    oldNumber.className = "diff-number";
-    const newNumber = document.createElement("span");
-    newNumber.className = "diff-number";
-    const prefix = document.createElement("span");
-    prefix.className = "diff-prefix";
-    const code = document.createElement("code");
-    if (kind === "added") {
-      newNumber.textContent = String(newLine++);
-      prefix.textContent = "+";
-      code.textContent = rawLine.slice(1);
-    } else if (kind === "removed") {
-      oldNumber.textContent = String(oldLine++);
-      prefix.textContent = "−";
-      code.textContent = rawLine.slice(1);
-    } else {
-      oldNumber.textContent = String(oldLine++);
-      newNumber.textContent = String(newLine++);
-      prefix.textContent = " ";
-      code.textContent = rawLine.startsWith(" ") ? rawLine.slice(1) : rawLine;
-    }
-    row.append(oldNumber, newNumber, prefix, code);
-    scroller.appendChild(row);
-  }
+  const scroller = createDiffScroller(data.diff, data.path);
   body.append(header, scroller);
   details.append(summary, body);
-  wireFileChangeCopy(details);
+  enhanceFileChange(details);
   return details;
 }
 
@@ -962,7 +1013,11 @@ function applySnapshot(data) {
     }
     for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
     for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
-    for (const change of messages.querySelectorAll(".file-change")) wireFileChangeCopy(change);
+    const changes = (data.timeline || []).filter(item => item.type === 'file_change');
+    messages.querySelectorAll('.file-change').forEach((change, index) => {
+      if (!change.dataset.diff && changes[index]?.diff) storeDiff(change, changes[index].diff);
+    });
+    for (const change of messages.querySelectorAll(".file-change")) enhanceFileChange(change);
     restoreExecutionEvidence(messages, data.timeline || []);
     // Restored content must not change the access mode chosen in this webview.
     restoreArchiveModel(data);
@@ -1765,6 +1820,12 @@ function iconForTool(tool) {
 // Saved conversations retain their content while adopting the current layout/icons.
 function upgradeSnapshotPresentation(root) {
   cleanActivityLabels(root);
+  for (const previous of root.querySelectorAll('.approval-card > .diff, .approval-card > .approval-diff')) {
+    if (previous.dataset.renderedDiff === 'yes') continue;
+    const source = previous.classList.contains('diff') ? previous.textContent : storedDiff(previous);
+    const diff = createDiffScroller(source);
+    diff.classList.add('approval-diff');storeDiff(diff, source);previous.replaceWith(diff);
+  }
   root.querySelectorAll("details.activity").forEach(ensureActivityCollapse);
   for (const element of root.querySelectorAll('.error-message, .warning-message, .message.failure > .content')) {
     const severity = diagnosticSeverity(element.textContent);
@@ -1827,6 +1888,16 @@ function updateActivityTimers(run) {
     if(item.row.closest('.message')===run.article && item.row.classList.contains('running'))setActivityDuration(item.row,Math.max(0,Date.now()-item.startedAt));
   }
 }
+function preserveActivityCommand(row, command) {
+  if (typeof command !== 'string' || !command) return;
+  const output = row.querySelector('code:not(.activity-command)');
+  if (!output) return;
+  let code = row.querySelector('.activity-command');
+  if (!code) {code = document.createElement('code');code.className = 'activity-command';output.before(code);}
+  code.textContent = command;
+  output.classList.add('activity-output');
+  if (row.classList.contains('running') && output.textContent === command) output.textContent = '';
+}
 function restoreActivityTimings(root, timeline=[]) {
   const labels=new Map([
     ['Contexte préparé','request_prepared'],['Réponse depuis la mémoire du projet','request_prepared'],
@@ -1865,6 +1936,7 @@ function restoreActivityTimings(root, timeline=[]) {
       ? (row.dataset.eventType && stampValue ? stamps.get(`${type}:${Date.parse(stampValue)}`) : types.get(type))
       : titles.get(title));
     if(event)used.add(event);
+    if(event?.type === 'tool_start' && event.tool === 'command') preserveActivityCommand(row, event.detail);
     if (event && isDeepSeekCost(event) && ["usage", "model_routed"].includes(event.type)) {
       row.dataset.deepseekCost = JSON.stringify(event);
       const detail = row.querySelector("code");
@@ -1925,6 +1997,7 @@ function addActivity(data, updateCurrentAction = true) {
   body.append(title, detail);
   stamp(body, data.timestamp);
   row.append(icon, body);
+  if (data.tool === 'command') preserveActivityCommand(row, data.detail);
   run.list.appendChild(row);
   activityRows.set(data.id, { row, icon, detail, startedAt:Date.now(), timestamp:data.timestamp });
   if (!restoringArchive) setActivityDuration(row,0);
@@ -2175,9 +2248,9 @@ function addApproval(data) {
   card.append(heading, detail);
 
   if (data.diff) {
-    const diff = document.createElement("pre");
-    diff.className = "diff";
-    diff.textContent = data.diff;
+    const diff = createDiffScroller(data.diff, data.detail);
+    diff.classList.add('approval-diff');
+    storeDiff(diff, data.diff);
     card.appendChild(diff);
   }
 
@@ -2386,7 +2459,7 @@ if (saved?.html) {
   OvhI18n.translateSnapshot(messages);
   for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
-  for (const change of messages.querySelectorAll(".file-change")) wireFileChangeCopy(change);
+  for (const change of messages.querySelectorAll(".file-change")) enhanceFileChange(change);
 }
 
 if (!promptHistory.length) {
@@ -2555,6 +2628,29 @@ messages.addEventListener("click", (event) => {
   vscode.postMessage({ type: "openLink", href: anchor.getAttribute("href") });
 });
 
+function updateArchiveMount(data) {
+  const archivePath=document.getElementById('archive-path');
+  if(!archivePath || !data.archive_root)return;
+  const changed=archivePath.title!==data.archive_root;
+  archivePath.textContent=data.archive_root;
+  archivePath.title=data.archive_root;
+  const used=document.getElementById('archive-used');
+  const separator=document.getElementById('archive-mount-separator');
+  if(!used || !separator)return;
+  if(!changed && !Object.hasOwn(data,'archive_used_bytes'))return;
+  const bytes=data.archive_used_bytes;
+  const valid=Number.isSafeInteger(bytes) && bytes>=0;
+  used.hidden=separator.hidden=!valid;
+  used.textContent='';
+  used.title='';
+  if(valid) {
+    const units=['byte','kilobyte','megabyte','gigabyte','terabyte','petabyte'];
+    const index=bytes===0?0:Math.min(units.length-1,Math.floor(Math.log10(bytes)/3));
+    used.textContent=new Intl.NumberFormat(uiLanguage,{style:'unit',unit:units[index],unitDisplay:'short',maximumFractionDigits:1}).format(bytes/1000**index);
+    used.title=t('Espace utilisé sur le volume : {0}',new Intl.NumberFormat(uiLanguage,{style:'unit',unit:'byte',unitDisplay:'long'}).format(bytes));
+  }
+}
+
 window.addEventListener("message", ({ data }) => {
   rememberExchangeRates(data);
   if (data.exchange_rates) refreshDeepSeekCosts();
@@ -2602,11 +2698,7 @@ window.addEventListener("message", ({ data }) => {
     for (const content of messages.querySelectorAll(".assistant .markdown")) filterResponseEmojis(content);
     if (!loadingArchive) activeArchiveId = data.conversation || activeArchiveId;
     updateSendButton();
-    const archivePath = document.getElementById("archive-path");
-    if (archivePath) {
-      archivePath.textContent = data.archive_root || t("Chemin d’archivage indisponible");
-      archivePath.title = data.archive_root || "";
-    }
+    updateArchiveMount(data);
     backendReady = true;
     followupCommand("list");
     if (!pendingSubmission && syncModelSelection(data.model)) hasModelPreference = true;
@@ -2939,11 +3031,7 @@ window.addEventListener("message", ({ data }) => {
     }
     updateSendButton();
     renderArchives(data.items, data.projects);
-    const archivePath = document.getElementById("archive-path");
-    if (data.archive_root && archivePath) {
-      archivePath.textContent = data.archive_root;
-      archivePath.title = data.archive_root;
-    }
+    updateArchiveMount(data);
   }
   if (data.type === "models") {
     modelCatalog = data.items || [];

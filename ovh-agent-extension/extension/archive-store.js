@@ -37,6 +37,21 @@ class ArchiveStore {
     this.cacheLimit = archiveCacheBudget();
     this.nextCacheRefresh=Date.now()+30000;
   }
+  usedFilesystemBytes() {
+    // Run in the archive worker, including before the first conversation exists.
+    let folder=this.root;
+    for (;;) {
+      try {
+        const {blocks,bfree,bsize}=fs.statfsSync(folder);
+        const used=(blocks-bfree)*bsize;
+        return bsize>0 && bfree>=0 && Number.isSafeInteger(used) && used>=0 ? used : null;
+      } catch(error) {
+        const parent=path.dirname(folder);
+        if(error.code!=='ENOENT' || parent===folder)return null;
+        folder=parent;
+      }
+    }
+  }
   refreshCacheBudget() {
     if(Date.now()<this.nextCacheRefresh)return;
     this.cacheLimit=archiveCacheBudget({retainedBytes:this.cacheBytes});
@@ -336,7 +351,7 @@ if(!isMainThread && workerData?.archiveCatalog) {
         } catch(failure) {error=String(failure.message);}
         parentPort.postMessage({id,result:{project:project.id,deleted,...(error?{error}:{})}});return;
       }
-      parentPort.postMessage({id,result:{type:'archives',items,projects,archive_root:store.root}});
+      parentPort.postMessage({id,result:{type:'archives',items,projects,archive_root:store.root,archive_used_bytes:store.usedFilesystemBytes()}});
     } catch(error) {parentPort.postMessage({id,error:String(error.message)});}
   });
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.82
+
+- Add a subtle background and hover/keyboard-focus feedback to the centered action collapse button in light and dark themes.
+- Make added and removed diff colors slightly brighter while keeping the light and dark themes readable.
+- Highlight diff code with bundled highlight.js while preserving line numbers and copied patches; upgrade older snapshots and approval cards and keep oversized diffs readable.
+- Keep executed commands visible alongside results after success, errors and reopening conversations, including long commands and older snapshots.
+- Show used filesystem space beside the archive mount path, with a subtle separator.
+
 ## 1.17.81
 
 - Use the folder-aware primary color for DeepSeek balance amounts, matching OVHcloud.

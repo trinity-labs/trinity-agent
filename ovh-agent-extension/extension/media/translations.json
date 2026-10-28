@@ -1,4 +1,10 @@
 {
+  "Espace utilisé sur le volume : {0}": {
+    "fr": "Espace utilisé sur le volume : {0}",
+    "en": "Used space on the volume: {0}",
+    "de": "Belegter Speicher auf dem Volume: {0}",
+    "es": "Espacio usado en el volumen: {0}"
+  },
   "Critères vérifiés": {
     "fr": "Critères vérifiés",
     "en": "Criteria verified",

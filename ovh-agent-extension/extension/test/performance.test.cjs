@@ -197,6 +197,8 @@ test('archive reads keep the host event loop available and recover after a stora
   await new Promise(resolve=>setImmediate(()=>{responsive=true;resolve();}));
   const result=await pending;
   assert(responsive);assert.equal(result.items[0].id,'saved');assert(result.items[0].resumable);
+  assert.equal(result.archive_root,store.root);
+  assert(Number.isSafeInteger(result.archive_used_bytes) && result.archive_used_bytes>0,'The worker must deliver the measured filesystem usage');
   fs.writeFileSync(path.join(dataRoot,'projects.json'),'invalid');
   await assert.rejects(reader.read({workspace:folder,dataRoot}));
   fs.writeFileSync(path.join(dataRoot,'projects.json'),'[]');

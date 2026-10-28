@@ -3684,8 +3684,19 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
                 revision_before = ""
                 continue
             if timeline_only:
-                items.append({key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose", "from_model", "to_model",
-                              "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering") if key in event})
+                item = {key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose", "from_model", "to_model",
+                        "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering") if key in event}
+                # Old HTML snapshots kept only tool results. Retain the recorded
+                # command for their upgrade without duplicating every tool output.
+                if event.get('type') == 'tool_start':
+                    item['tool'] = event.get('tool', '')
+                    if item['tool'] == 'command':
+                        item['detail'] = event.get('detail', '')
+                if event.get('type') == 'file_change':
+                    # A legacy raw diff attribute containing HTML may be removed
+                    # by sanitization; the event is the authoritative copy source.
+                    item.update({key: event[key] for key in ('path', 'diff') if key in event})
+                items.append(item)
                 continue
             if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "execution_evidence", "model_active", "model_changed", "tool_start", "tool_end", "plan_updated"}:
                 if event.get("type") == "user" and isinstance(event.get("images"), list):
@@ -3710,7 +3721,7 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
                         except OSError:
                             continue
                     event["images"] = restored_images
-                if event.get('type') in {'tool_start', 'tool_end'}:
+                if event.get('type') in {'tool_start', 'tool_end'} and not (event.get('type') == 'tool_start' and event.get('tool') == 'command'):
                     # Restore activity without inflating the opening payload with full tool logs.
                     detail = str(event.get('detail', ''))
                     if len(detail) > 4000:

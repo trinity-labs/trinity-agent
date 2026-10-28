@@ -45,6 +45,25 @@ class Sessions(unittest.TestCase):
             self.assertTrue((a.conversation_dir()/'plan.json').is_file())
             self.assertFalse((a.ARCHIVE_ROOT/'plan.json').exists())
 
+    def test_snapshot_timeline_retains_commands_and_original_diffs_for_legacy_upgrade(self):
+        command = "cwd=/tmp\nprintf '<script>literal</script>\\n'\n" + "# command body\n" * 400
+        diff = '--- a/example.js\n+++ b/example.js\n@@ -0,0 +1 @@\n+const html = "<script>literal</script>";\n'
+        self.events.write_text('\n'.join(json.dumps(event) for event in [
+            {'type': 'tool_start', 'id': 'command', 'tool': 'command', 'detail': command},
+            {'type': 'tool_end', 'id': 'command', 'success': True, 'detail': 'Large command output'},
+            {'type': 'tool_start', 'id': 'read', 'tool': 'read', 'detail': 'example.js'},
+            {'type': 'file_change', 'path': 'example.js', 'diff': diff},
+        ]) + '\n')
+        timeline = a.read_archive('conversation', timeline_only=True)
+        self.assertEqual(timeline[0]['tool'], 'command')
+        self.assertEqual(timeline[0]['detail'], command)
+        self.assertNotIn('detail', timeline[1])
+        self.assertEqual(timeline[2]['tool'], 'read')
+        self.assertNotIn('detail', timeline[2])
+        self.assertEqual(timeline[3]['path'], 'example.js')
+        self.assertEqual(timeline[3]['diff'], diff)
+        self.assertEqual(a.read_archive('conversation')[0]['detail'], command)
+
     def test_conversation_model_restores_metadata_then_latest_legacy_choice(self):
         self.meta.write_text(json.dumps({'model':'Qwen3.8-27B'}))
         self.events.write_text('\n'.join(json.dumps(e) for e in [
