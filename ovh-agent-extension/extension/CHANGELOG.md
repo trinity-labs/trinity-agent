@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.80
+
+- Include both CNY and USD DeepSeek balances, converting and summing them in euros with dated ECB reference rates. Preserve native amounts and avoid counting granted credit twice.
+- Show DeepSeek model prices and conversation costs in euros, retain native accounting, reject obsolete dollar-only balance caches, and expose exchange-rate outages without inventing a conversion.
+
 ## 1.17.79
 
 - Request one bounded recovery attempt before accepting a final answer after a failed or unavailable tool. Corrected calls and available native alternatives remain usable; authorization denials and uncertain mutations are never bypassed.

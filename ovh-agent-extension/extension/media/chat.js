@@ -448,13 +448,13 @@ function compactTokens(value) {
 function priceLabel(model) {
   if (model.id === "auto-balanced") return t("Prix minimal utile · contexte compacté");
   const currency = model.currency || "EUR";
-  if (model.hourly != null) return t("{0}/heure", formatModelCost(model.hourly, currency));
+  if (model.hourly != null) return t("{0}/heure", formatModelCost(model.hourly, currency, model));
   if (model.free) return t("Gratuit");
   const input = Number(model.input_per_million || 0);
   const output = Number(model.output_per_million || 0);
   if (input || output) {
-    const inputText = input ? formatModelCost(input, currency) : "-";
-    const outputText = output ? formatModelCost(output, currency) : "-";
+    const inputText = input ? formatModelCost(input, currency, model) : "-";
+    const outputText = output ? formatModelCost(output, currency, model) : "-";
     return t("{0} entrée · {1} sortie / 1M tokens", inputText, outputText);
   }
   return t("Tarif non communiqué par l’API");
@@ -879,6 +879,8 @@ function renderArchiveMessages(items) {
       if (item.type === "tool_start") addActivity(item);
       if (item.type === "tool_end") finishActivity(item);
       if (item.type === "plan_updated") showProgress(item.explanation);
+      if (isDeepSeekCost(item) && item.type === "usage") addCompletedActivity("cost", t("Utilisation du modèle"), usageCostDetail(item), item);
+      if (isDeepSeekCost(item) && item.type === "model_routed") addCompletedActivity("route", t("Routage économique"), routingCostDetail(item), item);
       if (item.type === "partial_response") {
         setMarkdown(item.html || "");
         finishRun("stopped");
@@ -1851,6 +1853,11 @@ function restoreActivityTimings(root, timeline=[]) {
       ? (row.dataset.eventType && stampValue ? stamps.get(`${type}:${Date.parse(stampValue)}`) : types.get(type))
       : titles.get(title));
     if(event)used.add(event);
+    if (event && isDeepSeekCost(event) && ["usage", "model_routed"].includes(event.type)) {
+      row.dataset.deepseekCost = JSON.stringify(event);
+      const detail = row.querySelector("code");
+      if (detail) detail.textContent = event.type === "usage" ? usageCostDetail(event) : routingCostDetail(event);
+    }
     let end=event;
     if(event?.type==='tool_start')end=ends.get(event.id);
     if(event?.type==='model_active') {
@@ -1894,6 +1901,7 @@ function addActivity(data, updateCurrentAction = true) {
   row.className = "activity-row running";
   row.dataset.activityId=data.id;
   if(data.type)row.dataset.eventType=data.type;
+  if (isDeepSeekCost(data) && ["usage", "model_routed"].includes(data.type)) row.dataset.deepseekCost = JSON.stringify(data);
   const icon = document.createElement("span");
   icon.className = "activity-icon";
   icon.innerHTML = uiIcon(iconForTool(data.tool));
@@ -2000,8 +2008,57 @@ function restoreExecutionEvidence(root, timeline) {
   root.querySelectorAll(".execution-evidence").forEach(badge => badge.remove());
 }
 
-function formatModelCost(value, currency = "EUR") {
+function formatModelCost(value, currency = "EUR", context = {}) {
+  if (isDeepSeekCost(context) && String(currency).toUpperCase() !== "EUR") {
+    const exchange = context.exchange_rates?.rates?.[String(currency).toUpperCase()] > 0
+      ? context.exchange_rates : deepSeekExchangeRates;
+    const rate = Number(exchange?.rates?.[String(currency).toUpperCase()]);
+    const amount = value == null ? NaN : Number(value);
+    if (!exchange?.date || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(amount / rate)) {
+      return t("Conversion en euros indisponible");
+    }
+    return formatMoney(amount / rate, "EUR") + (exchange.stale ? t(" (non actualisé)") : "");
+  }
   return formatMoney(value, currency);
+}
+
+let deepSeekExchangeRates = null;
+
+function isDeepSeekCost(data) {
+  return data?.provider === "deepseek" || String(data?.model || data?.id || "").startsWith("deepseek-");
+}
+
+function rememberExchangeRates(data) {
+  if (data.exchange_rates) deepSeekExchangeRates = data.exchange_rates;
+}
+
+function refreshDeepSeekCosts() {
+  for (const row of document.querySelectorAll("[data-deepseek-cost]")) {
+    try {
+      const data = JSON.parse(row.dataset.deepseekCost), detail = row.querySelector("code");
+      if (detail) detail.textContent = data.type === "usage" ? usageCostDetail(data) : routingCostDetail(data);
+    } catch { /* Ignore an invalid saved display; never modify its archive. */ }
+  }
+}
+
+function usageCostDetail(data) {
+  const timing = Number.isFinite(data.first_text_ms)
+    ? t(" · premier texte : {0} s", (data.first_text_ms / 1000).toFixed(2)) : "";
+  const uncertain = data.unknown_requests
+    ? t(" · coût partiel : {0} appel(s) sans consommation confirmée", data.unknown_requests) : "";
+  return t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens,
+    formatModelCost(data.cost_eur ?? data.cost_usd, data.cost_eur != null ? "EUR" : "USD", data)) + timing + uncertain;
+}
+
+function routingCostDetail(data) {
+  const projectedCost = data.projected_cost_eur ?? data.projected_cost_usd;
+  const cost = projectedCost == null ? "" : t(" · estimation {0}", formatModelCost(projectedCost, data.projected_cost_eur != null ? "EUR" : "USD", data));
+  const pool = data.eligible_models ? t(" · {0} modèles économiques compatibles", data.eligible_models) : "";
+  const history = data.previous_requests
+    ? t(" · historique {0} requête{1} / {2}", data.previous_requests, data.previous_requests > 1 ? "s" : "", formatModelCost(data.previous_cost_eur ?? data.previous_cost_usd, data.previous_cost_eur != null ? "EUR" : "USD", data)) : "";
+  const account = data.billing?.available
+    ? t(data.billing.balance_estimated ? " · solde estimé {0} · prévision {1}" : " · crédits {0} · prévision {1}", formatMoney(data.billing.balance_estimated ? data.billing.credit_remaining ?? data.billing.credit_remaining_display : data.billing.credit_available, data.billing.credit_currency || data.billing.currency), formatMoney(data.billing.forecast_usage, data.billing.currency)) : "";
+  return `${data.model} · ${data.reason || t("modèle compatible")}${cost}${pool}${history}${account}`;
 }
 
 function formatMoney(value, currency = "EUR") {
@@ -2034,10 +2091,18 @@ function applyBillingStatus(data, announce = true) {
   liveBalance.dataset.available = String(Boolean(data.available));
   if (Number.isFinite(data.refresh_seconds) && data.refresh_seconds > 0) scheduleBillingRefresh(data.refresh_seconds);
   if (data.provider === "deepseek") {
-    liveBalance.textContent = data.available ? `DeepSeek · ${formatMoney(data.credit_available, data.currency)}${data.stale ? t(" (non actualisé)") : ""}` : "DeepSeek · —";
-    billing.title = liveBalance.title = data.available ? `DeepSeek · ${data.last_update}` : (data.error || "DeepSeek");
-    billing.classList.toggle("connected", Boolean(data.available && !data.stale));
-    billing.classList.toggle("failed", Boolean(!data.available || data.stale));
+    rememberExchangeRates(data);
+    refreshDeepSeekCosts();
+    const available = data.available && data.currency === "EUR" && Number.isFinite(data.credit_available);
+    liveBalance.dataset.available = String(Boolean(available));
+    liveBalance.textContent = available ? `DeepSeek · ${formatMoney(data.credit_available, "EUR")}${data.stale ? t(" (non actualisé)") : ""}` : "DeepSeek · —";
+    const details = (data.balance_infos || []).map(row => `${row.source_currency} → ${formatMoney(row.total_balance, "EUR")}`).join(" · ");
+    const exchange = data.exchange_rates?.date ? t("Conversion EUR · taux BCE du {0}", data.exchange_rates.date) : "";
+    billing.title = liveBalance.title = available
+      ? [`DeepSeek · ${data.last_update || ""}`, details, exchange, data.stale ? t(" (non actualisé)") : "", data.error].filter(Boolean).join("\n")
+      : (data.error || t("Conversion en euros indisponible"));
+    billing.classList.toggle("connected", Boolean(available && !data.stale));
+    billing.classList.toggle("failed", Boolean(!available || data.stale));
     if (announce && data.error) setStatus(data.error, true);
     return;
   }
@@ -2472,6 +2537,8 @@ messages.addEventListener("click", (event) => {
 });
 
 window.addEventListener("message", ({ data }) => {
+  rememberExchangeRates(data);
+  if (data.exchange_rates) refreshDeepSeekCosts();
   // Only accept revision tokens after conversation-ID filtering below.
   if (data.type === "archive_open_failed" || (loadingArchive && data.type === "error")) {
     loadingArchive = null;
@@ -2658,16 +2725,7 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "model_routed") {
     lastRoutedModel = data.model || "";
     updateModelButton();
-    const projectedCost = data.projected_cost_eur ?? data.projected_cost_usd;
-    const cost = projectedCost == null ? "" : t(" · estimation {0}", formatModelCost(projectedCost, data.projected_cost_eur != null ? "EUR" : "USD"));
-    const pool = data.eligible_models ? t(" · {0} modèles économiques compatibles", data.eligible_models) : "";
-    const history = data.previous_requests
-      ? t(" · historique {0} requête{1} / {2}", data.previous_requests, data.previous_requests > 1 ? "s" : "", formatModelCost(data.previous_cost_eur ?? data.previous_cost_usd, data.previous_cost_eur != null ? "EUR" : "USD"))
-      : "";
-    const account = data.billing?.available
-      ? t(data.billing.balance_estimated ? " · solde estimé {0} · prévision {1}" : " · crédits {0} · prévision {1}", formatMoney(data.billing.balance_estimated ? data.billing.credit_remaining ?? data.billing.credit_remaining_display : data.billing.credit_available, data.billing.credit_currency || data.billing.currency), formatMoney(data.billing.forecast_usage, data.billing.currency))
-      : "";
-    addCompletedActivity("route", t("Routage économique"), `${data.model} · ${data.reason || t("modèle compatible")}${cost}${pool}${history}${account}`, data);
+    addCompletedActivity("route", t("Routage économique"), routingCostDetail(data), data);
   }
   if (data.type === "plan_updated") {
     showProgress(data.explanation);
@@ -2701,11 +2759,7 @@ window.addEventListener("message", ({ data }) => {
       if(item)finishActivity({...data,id:currentRun.modelActivityId,success:true,detail:item.detail.textContent});
       currentRun.modelActivityId=null;
     }
-    const timing = Number.isFinite(data.first_text_ms)
-      ? t(" · premier texte : {0} s", (data.first_text_ms / 1000).toFixed(2)) : "";
-    const uncertain = data.unknown_requests
-      ? t(" · coût partiel : {0} appel(s) sans consommation confirmée", data.unknown_requests) : "";
-    addCompletedActivity("cost", data.local_answer ? t("Mémoire locale · aucun appel API") : data.purpose === "compaction" ? t("Coût de la compaction") : t("Utilisation du modèle"), t("{0} · {1} tokens entrée · {2} sortie · {3}", data.model, data.input_tokens, data.output_tokens, formatModelCost(data.cost_eur ?? data.cost_usd, data.cost_eur != null ? "EUR" : "USD")) + timing + uncertain, data);
+    addCompletedActivity("cost", data.local_answer ? t("Mémoire locale · aucun appel API") : data.purpose === "compaction" ? t("Coût de la compaction") : t("Utilisation du modèle"), usageCostDetail(data), data);
   }
   if (data.type === "approval") addApproval(data);
   if (data.type === "approval_result") resolveApproval(data);

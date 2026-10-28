@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 try:
@@ -27,9 +28,16 @@ with patch.dict(os.environ, {'OVH_AGENT_PROVIDER':'deepseek'}), patch.object(sys
 
 RAW = {'id':'deepseek-flash', 'context_window':1048576, 'max_output_tokens':393216,
        'input_modalities':['text','image']}
+RATES = {'source': a.ECB_RATES_URL, 'date': datetime.now(timezone.utc).strftime('%Y-%m-%d'),
+         'rates': {'EUR': 1, 'USD': 2, 'CNY': 8}, 'stale': False}
 
 
 class DeepSeekIntegration(unittest.TestCase):
+    def setUp(self):
+        rates = patch.object(a, 'fetch_euro_rates', return_value=RATES)
+        rates.start()
+        self.addCleanup(rates.stop)
+
     def test_provider_metadata_and_limits_do_not_inherit_ovh_caps(self):
         card = a.normalise_model(RAW)
         self.assertEqual(card['currency'], 'USD')
@@ -70,6 +78,75 @@ class DeepSeekIntegration(unittest.TestCase):
                 self.assertEqual(get.call_count,1)
             self.assertEqual(a.billing_file().name,'billing-deepseek.json')
             self.assertEqual(a.router_file().name,'router-deepseek.json')
+
+    def test_cny_and_mixed_balances_are_summed_in_euros_without_double_counting(self):
+        yuan = {'currency': 'CNY', 'total_balance': '16', 'granted_balance': '8', 'topped_up_balance': '8'}
+        dollar = {'currency': 'USD', 'total_balance': '2', 'granted_balance': '0', 'topped_up_balance': '2'}
+        for rows, total, topped_up in [([yuan], 2, 1), ([yuan, dollar], 3, 2)]:
+            with self.subTest(rows=rows), tempfile.TemporaryDirectory() as folder, \
+                 patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
+                 patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'fixture'}), \
+                 patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(
+                     {'balance_infos': rows, 'is_available': True}).encode())):
+                status = a.fetch_billing_status(force=True)
+                self.assertTrue(status['available'])
+                self.assertEqual(status['currency'], 'EUR')
+                self.assertEqual(status['credit_available'], total)
+                self.assertEqual(status['granted_balance'], 1)
+                self.assertEqual(status['topped_up_balance'], topped_up)
+                self.assertEqual(status['balance_infos'][0]['source_currency'], 'CNY')
+                self.assertEqual(status['balance_infos'][0]['source_total_balance'], '16')
+                self.assertEqual(status['balance_infos'][0]['total_balance'], 2)
+
+    def test_old_dollar_cache_is_replaced_and_failed_refresh_keeps_only_euro_cache(self):
+        payload = {'balance_infos': [{'currency': 'CNY', 'total_balance': '16.34'}], 'is_available': True}
+        with tempfile.TemporaryDirectory() as folder, patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
+             patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'fixture'}):
+            a.billing_file().write_text(json.dumps({'provider': 'deepseek', 'available': True,
+                'currency': 'USD', 'credit_available': 999, 'cached_at': a.time.time()}))
+            with patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(payload).encode())) as get:
+                converted = a.fetch_billing_status()
+            self.assertEqual(get.call_count, 1)
+            self.assertAlmostEqual(converted['credit_available'], 16.34 / 8)
+            with patch.object(a.urllib.request, 'urlopen', side_effect=OSError('offline')):
+                stale = a.fetch_billing_status(force=True)
+            self.assertEqual(stale['credit_available'], converted['credit_available'])
+            self.assertEqual(stale['currency'], 'EUR')
+            self.assertTrue(stale['stale'])
+
+    def test_missing_rate_or_invalid_currency_never_displays_a_partial_or_fake_total(self):
+        for rows, rates in [
+            ([{'currency': 'CNY', 'total_balance': '16'}], {'rates': {'EUR': 1}}),
+            ([{'currency': 'USD', 'total_balance': '2'}, {'currency': 'XYZ', 'total_balance': '3'}], RATES),
+            ([{'currency': 'CNY', 'total_balance': 'NaN'}], RATES),
+            ([], RATES),
+        ]:
+            with self.subTest(rows=rows), tempfile.TemporaryDirectory() as folder, \
+                 patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
+                 patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'fixture'}), \
+                 patch.object(a, 'fetch_euro_rates', return_value=rates), \
+                 patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(
+                     {'balance_infos': rows, 'is_available': True}).encode())):
+                status = a.fetch_billing_status(force=True)
+            self.assertFalse(status['available'])
+            self.assertNotIn('credit_available', status)
+
+    def test_display_metadata_preserves_native_prices_and_archived_accounting(self):
+        usage = {'type': 'usage', 'model': 'deepseek-flash', 'cost_usd': 2, 'currency': 'USD'}
+        decorated = a.with_euro_display(usage)
+        self.assertEqual(decorated['cost_usd'], 2)
+        self.assertEqual(decorated['currency'], 'USD')
+        self.assertEqual(decorated['exchange_rates'], RATES)
+        self.assertNotIn('exchange_rates', usage)
+        archive = {'type': 'archive_loaded', 'messages': [usage]}
+        self.assertEqual(a.with_euro_display(archive)['messages'][0], decorated)
+        card = a.normalise_model(RAW)
+        ovh = {'id': 'gpt-oss-120b', 'provider': 'ovhcloud', 'currency': 'EUR'}
+        display = a.with_euro_display({'type': 'models', 'items': [card, ovh]})
+        self.assertEqual(display['items'][0]['input_per_million'], card['input_per_million'])
+        self.assertEqual(display['items'][0]['exchange_rates'], RATES)
+        self.assertNotIn('exchange_rates', display['items'][1])
+        self.assertNotIn('exchange_rates', card)
 
     def test_real_sdk_preserves_reasoning_across_read_edit_verify_and_answer(self):
         with tempfile.TemporaryDirectory() as name:
@@ -153,6 +230,61 @@ class DeepSeekIntegration(unittest.TestCase):
                 refused=json.loads(engine.invoke(a.run_command,'touch prohibited'))
                 self.assertEqual(refused['category'],'read_only')
                 self.assertFalse((root/'prohibited').exists())
+
+
+class EuroReferenceRates(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        root = patch.object(a, 'DATA_ROOT', Path(self.folder.name))
+        root.start()
+        self.addCleanup(root.stop)
+        a.EUR_RATES_MEMORY = None
+
+    def test_public_ecb_xml_is_cached_and_no_key_is_forwarded(self):
+        xml = f'''<Envelope xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+          <Cube><Cube time="{RATES['date']}"><Cube currency="USD" rate="2"/>
+          <Cube currency="CNY" rate="8"/></Cube></Cube></Envelope>'''
+        with patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(xml.encode())) as get:
+            data = a.fetch_euro_rates()
+            self.assertEqual(data['rates'], RATES['rates'])
+            self.assertEqual(data['date'], RATES['date'])
+            self.assertFalse(data['stale'])
+            self.assertEqual(get.call_args.args, (a.ECB_RATES_URL,))
+            a.EUR_RATES_MEMORY = None
+            self.assertEqual(a.fetch_euro_rates(), data)
+            self.assertEqual(get.call_count, 1)
+
+    def test_outage_uses_dated_cache_but_rejects_older_than_seven_days(self):
+        cache = a.DATA_ROOT / 'cache' / 'exchange-rates-eur.json'
+        cache.parent.mkdir()
+        for days, usable in [(1, True), (8, False), (-1, False)]:
+            with self.subTest(days=days):
+                a.EUR_RATES_MEMORY = None
+                old = {**RATES, 'date': (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d'),
+                       'cached_at': a.time.time() - 86400}
+                cache.write_text(json.dumps(old))
+                with patch.object(a.urllib.request, 'urlopen', side_effect=OSError('offline')) as get:
+                    rates = a.fetch_euro_rates()
+                    self.assertEqual(a.fetch_euro_rates(), rates)
+                    self.assertEqual(get.call_count, 1)
+                self.assertTrue(rates['stale'])
+                self.assertEqual('CNY' in rates['rates'], usable)
+
+    def test_invalid_rates_are_rejected(self):
+        for value in (0, -1, 'NaN', 'Infinity', None, '1e999', '1e-999'):
+            with self.subTest(value=value), self.assertRaises((ValueError, a.InvalidOperation)):
+                a.validated_euro_rates({**RATES, 'rates': {'USD': 2, 'CNY': value}})
+
+    def test_malformed_cache_and_offline_feed_return_an_explicit_unavailable_rate(self):
+        cache = a.DATA_ROOT / 'cache' / 'exchange-rates-eur.json'
+        cache.parent.mkdir()
+        cache.write_text('[]')
+        with patch.object(a.urllib.request, 'urlopen', side_effect=OSError('offline')):
+            rates = a.fetch_euro_rates()
+        self.assertEqual(rates['rates'], {'EUR': 1})
+        self.assertTrue(rates['stale'])
+        self.assertIn('indisponible', rates['error'])
 
 
 if __name__ == '__main__':

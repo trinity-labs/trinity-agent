@@ -773,3 +773,28 @@ test('folder deletion handles pending, failure, duplicate clicks, renamed IDs an
   assert.match(document.querySelector('#archive-notice').textContent,/supprimés définitivement/);
  } finally {dom.window.close();}
 });
+
+
+test('DeepSeek live and restored costs use euros and update when rates arrive', () => {
+ const {dom,document,emit}=browser();
+ const exchange_rates={date:'2026-10-28',rates:{EUR:1,USD:2,CNY:8},stale:false};
+ const usage={type:'usage',model:'deepseek-flash',input_tokens:100,output_tokens:10,cost_usd:2,currency:'USD',timestamp:'2026-10-17T15:40:01Z'};
+ try {
+  emit({type:'status',text:'Working'});
+  emit(usage);
+  assert.match(document.querySelector('[data-event-type="usage"] code').textContent,/indisponible/);
+  emit({type:'models',items:[],exchange_rates});
+  assert.match(document.querySelector('[data-event-type="usage"] code').textContent,/1,00\s*€/);
+  emit({type:'model_routed',model:'deepseek-flash',projected_cost_usd:4,previous_cost_usd:2,previous_requests:1,exchange_rates});
+  const route=document.querySelector('[data-event-type="model_routed"] code').textContent;
+  assert.match(route,/estimation 2,00\s*€/);assert.match(route,/historique.*1,00\s*€/);assert.doesNotMatch(route,/\$/);
+  const row=document.querySelector('[data-event-type="usage"]');
+  delete row.dataset.deepseekCost;row.querySelector('code').textContent='deepseek-flash · 2,00 $US';
+  const html=document.getElementById('messages').innerHTML;
+  emit({type:'snapshot_loaded',id:'fx-snapshot',html,timeline:[usage],model:'deepseek-flash'});
+  assert.match(document.querySelector('[data-event-type="usage"] code').textContent,/1,00\s*€/);
+  assert.doesNotMatch(document.querySelector('[data-event-type="usage"] code').textContent,/\$/);
+  emit({type:'archive_loaded',id:'fx-events',messages:[{type:'user',text:'check'},usage,{type:'response',html:'<p>Done</p>'}]});
+  assert.match(document.querySelector('[data-event-type="usage"] code').textContent,/1,00\s*€/);
+ } finally {dom.window.close();}
+});

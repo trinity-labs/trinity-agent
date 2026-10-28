@@ -2506,5 +2506,17 @@
     "en": "Command still running · {0} s. Waiting for the result.",
     "de": "Befehl läuft noch · {0} s. Ergebnis steht noch aus.",
     "es": "El comando sigue en curso · {0} s. Resultado pendiente."
+  },
+  "Conversion en euros indisponible": {
+    "en": "Euro conversion unavailable",
+    "de": "Euro-Umrechnung nicht verfügbar",
+    "es": "Conversión a euros no disponible",
+    "fr": "Conversion en euros indisponible"
+  },
+  "Conversion EUR · taux BCE du {0}": {
+    "en": "EUR conversion · ECB reference rate dated {0}",
+    "de": "EUR-Umrechnung · EZB-Referenzkurs vom {0}",
+    "es": "Conversión EUR · tipo de referencia del BCE del {0}",
+    "fr": "Conversion EUR · taux BCE du {0}"
   }
 }

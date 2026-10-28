@@ -526,7 +526,8 @@ class OvhAgentViewProvider {
       if (!cache || Array.isArray(cache) || !cache.available || !Number.isFinite(cache.credit_available)) return;
       const result = {...cache, provider};
       if (provider === "deepseek") {
-        if (cache.provider !== provider || cache.currency !== "USD" || !readServerSecret("DEEPSEEK_API_KEY")) return;
+        if (cache.provider !== provider || cache.schema_version !== 2 || cache.currency !== "EUR" ||
+            cache.credit_currency !== "EUR" || !readServerSecret("DEEPSEEK_API_KEY")) return;
       } else {
         const project = readServerSecret("OVH_CLOUD_PROJECT");
         if (cache.schema_version !== 2 || !project || cache.project !== project ||

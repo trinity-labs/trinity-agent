@@ -6,13 +6,14 @@ const {JSDOM} = require('jsdom');
 const i18n = require('../media/i18n');
 
 const source = fs.readFileSync(path.join(__dirname, '../media/chat.js'), 'utf8');
-test('DeepSeek shows the provider balance in USD without OVH billing instructions', () => {
+test('DeepSeek shows the converted euro balance without OVH billing instructions', () => {
   const dom = billingView(), w = dom.window;
   try {
     w.applyBillingStatus({provider:'deepseek', configured:true, available:true,
-      currency:'USD', credit_available:12.34, last_update:'2026-10-24', refresh_seconds:60});
+      currency:'EUR', credit_available:12.34, last_update:'2026-10-24', refresh_seconds:60});
     assert.match(w.liveBalance.textContent,/DeepSeek.*12,34/);
-    assert.doesNotMatch(w.liveBalance.title,/OVH|EUR/);
+    assert.doesNotMatch(w.liveBalance.title,/OVH/);
+    assert.match(w.liveBalance.textContent,/€/);
     assert(w.billing.classList.contains('connected'));
     w.applyBillingStatus({provider:'deepseek', configured:true, available:false, error:'DeepSeek unavailable'});
     assert.equal(w.liveBalance.textContent,'DeepSeek · —');
@@ -132,7 +133,7 @@ function setupBillingProvider(t, providerName, cache) {
  t.after(()=>{provider.billingChannel.cancel();fs.rmSync(temporary,{recursive:true,force:true});});
  return {provider,settings,calls,posts,done:(index,result)=>calls[index].done(null,JSON.stringify(result))};
 }
-const deepCache={provider:'deepseek',configured:true,available:true,currency:'USD',credit_available:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
+const deepCache={provider:'deepseek',schema_version:2,credit_currency:'EUR',configured:true,available:true,currency:'EUR',credit_available:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
 const ovhCache={schema_version:2,configured:true,available:true,project:'project-a',currency:'EUR',credit_currency:'EUR',credit_available:100,current_usage:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
 test('cached DeepSeek balance is sent before the upstream response and refresh uses selected provider',async t=>{
  const h=setupBillingProvider(t,'deepseek',deepCache);let ovhCalls=0;h.provider.billingCredentials=async()=>{ovhCalls++;return undefined;};
@@ -174,7 +175,7 @@ test('pending refresh preserves the displayed balance and a provider switch reje
     const dom = billingView(), w = dom.window;
     try {
       w.document.body.dataset.provider = provider;
-      w.applyBillingStatus({provider, configured:true, available:true, currency:provider === 'deepseek' ? 'USD' : 'EUR', credit_available:12.34});
+      w.applyBillingStatus({provider, configured:true, available:true, currency:'EUR', credit_available:12.34});
       const before = w.liveBalance.textContent;
       w.applyBillingStatus({provider, pending:true, configured:true, available:false}, false);
       assert.equal(w.liveBalance.textContent, before);
@@ -214,4 +215,38 @@ test('expired cached balance remains visible and is marked stale if refresh fail
     assert.match(w.liveBalance.textContent, /12,34.*non actualisé/);
     assert(w.billing.classList.contains('failed'));
   } finally { dom.window.close(); }
+});
+
+const eurRates = {source:'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml',date:'2026-10-28',rates:{EUR:1,USD:2,CNY:8},stale:false};
+test('DeepSeek prices and costs convert USD and CNY, keeping OVH prices native', () => {
+ const dom=billingView(),w=dom.window;
+ try {
+  const context={provider:'deepseek',exchange_rates:eurRates};
+  assert.match(w.priceLabel({id:'deepseek-flash',currency:'USD',input_per_million:.3,output_per_million:1.2,...context}),/0,15\s*€ entrée.*0,60\s*€ sortie/);
+  assert.match(w.formatModelCost(16,'CNY',context),/2,00\s*€/);
+  assert.match(w.formatModelCost(0,'USD',context),/0,00\s*€/);
+  assert.match(w.formatModelCost(2,'USD'),/2,00\s*\$US/);
+  assert.match(w.formatModelCost(2,'USD',{...context,exchange_rates:{date:'2026-10-28',rates:{}}}),/indisponible/);
+  assert.match(w.formatModelCost(2,'USD',{...context,exchange_rates:{...eurRates,stale:true}}),/1,00.*non actualisé/);
+ } finally {dom.window.close();}
+});
+test('DeepSeek balance tooltip exposes the yuan contribution in euros and the ECB date', () => {
+ const dom=billingView(),w=dom.window;
+ try {
+  w.applyBillingStatus({...deepCache,credit_available:3,exchange_rates:eurRates,
+   balance_infos:[{source_currency:'CNY',currency:'EUR',total_balance:2},{source_currency:'USD',currency:'EUR',total_balance:1}]});
+  assert.match(w.liveBalance.textContent,/3,00\s*€/);
+  assert.match(w.liveBalance.title,/CNY → 2,00\s*€.*USD → 1,00\s*€/);
+  assert.match(w.liveBalance.title,/BCE du 2026-10-28/);
+  w.applyBillingStatus({...deepCache,currency:'USD',credit_available:999});
+  assert.equal(w.liveBalance.textContent,'DeepSeek · —');
+ } finally {dom.window.close();}
+});
+test('old dollar-only DeepSeek cache is rejected before the euro refresh', async t => {
+ const h=setupBillingProvider(t,'deepseek',{...deepCache,currency:'USD',schema_version:undefined});
+ const pending=h.provider.refreshBilling();await tick();
+ assert(!h.posts.some(p=>p.available),'Legacy USD cache must not be relabelled as EUR');
+ h.done(0,deepCache);await pending;
+ assert.equal(h.posts.at(-1).currency,'EUR');
+ assert.equal(h.posts.at(-1).credit_available,12.34);
 });

@@ -49,6 +49,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -372,6 +373,10 @@ if "--billing-status" not in sys.argv:
 
 
 def emit(payload: dict[str, object]) -> None:
+    # Presentation metadata only: native USD accounting and archived costs keep
+    # their original meaning. Never feed converted prices back into routing.
+    if payload.get('type') in {'models', 'usage', 'model_routed', 'archive_loaded', 'snapshot_loaded'}:
+        payload = with_euro_display(payload)
     if payload.get('type') == 'usage':
         total = run_dependencies().usage_reported.setdefault(str(payload.get('model', '')), {})
         for key in ('requests', 'input_tokens', 'output_tokens'):
@@ -1747,6 +1752,128 @@ def read_billing_cache() -> dict[str, object] | None:
     return None
 
 
+ECB_RATES_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
+EUR_RATES_LOCK = threading.Lock()
+EUR_RATES_MEMORY = None
+
+
+def validated_euro_rates(data: dict) -> dict:
+    """ECB quotes units of foreign currency per euro (divide to convert)."""
+    if (not isinstance(data, dict) or data.get('source') != ECB_RATES_URL
+            or not isinstance(data.get('rates'), dict)):
+        raise ValueError('Source de change invalide')
+    date = datetime.strptime(data['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc).date() - date.date()).days
+    if not 0 <= age <= 7:
+        raise ValueError('Taux de change trop ancien ou futur')
+    rates = {currency: Decimal(str(data['rates'][currency])) for currency in ('USD', 'CNY')}
+    if not all(value.is_finite() and value > 0 and math.isfinite(float(value)) and float(value) > 0
+               for value in rates.values()):
+        raise ValueError('Taux de change invalide')
+    return {**data, 'rates': {'EUR': 1, **{k: float(v) for k, v in rates.items()}}}
+
+
+def fetch_euro_rates() -> dict:
+    """Public, credential-free ECB reference rates, cached for six hours.
+
+    A dated rate up to seven days old may survive an outage or bank holiday;
+    an outage is marked stale. Missing/older rates never become a 1:1 rate.
+    """
+    global EUR_RATES_MEMORY
+    cache_file = DATA_ROOT / 'cache' / 'exchange-rates-eur.json'
+    with EUR_RATES_LOCK:
+        if EUR_RATES_MEMORY and EUR_RATES_MEMORY[0] == cache_file and time.time() < EUR_RATES_MEMORY[1]:
+            return EUR_RATES_MEMORY[2]
+        cached = None
+        try:
+            cached = validated_euro_rates(json.loads(read_text_cached(cache_file)))
+            age = time.time() - float(cached['cached_at'])
+            if 0 <= age < 6 * 3600:
+                EUR_RATES_MEMORY = (cache_file, time.time() + min(300, 6 * 3600 - age), cached)
+                return cached
+        except (OSError, ValueError, KeyError, TypeError, InvalidOperation):
+            cached = None
+        try:
+            # No inference key or other credentials are sent to this public URL.
+            with urllib.request.urlopen(ECB_RATES_URL, timeout=5) as response:
+                tree = ET.fromstring(response.read(128 * 1024))
+            day = next(node for node in tree.iter() if node.get('time'))
+            data = validated_euro_rates({'source': ECB_RATES_URL, 'date': day.attrib['time'],
+                'rates': {node.attrib['currency']: node.attrib['rate'] for node in day
+                          if node.get('currency') in {'USD', 'CNY'}},
+                'cached_at': time.time(), 'stale': False})
+            try:
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                atomic_write(cache_file, json.dumps(data))
+            except OSError:
+                pass  # The successful reference read remains usable.
+        except (OSError, ValueError, KeyError, TypeError, StopIteration, InvalidOperation, ET.ParseError):
+            data = {**(cached or {'source': ECB_RATES_URL, 'date': None, 'rates': {'EUR': 1}}),
+                    'stale': True, 'error': 'Conversion en euros indisponible : taux BCE non actualisés.'}
+        EUR_RATES_MEMORY = (cache_file, time.time() + 300, data)
+        return data
+
+
+def with_euro_display(payload: dict) -> dict:
+    """Attach exchange evidence to DeepSeek views, including old USD events."""
+    result = dict(payload)
+    if payload.get('type') == 'models':
+        cards = payload.get('items', [])
+        if any(card.get('provider') == 'deepseek' for card in cards):
+            rates = fetch_euro_rates()
+            result['exchange_rates'] = rates
+            result['items'] = [dict(card, exchange_rates=rates) if card.get('provider') == 'deepseek'
+                               else card for card in cards]
+    elif payload.get('type') in {'archive_loaded', 'snapshot_loaded'}:
+        key = 'messages' if payload['type'] == 'archive_loaded' else 'timeline'
+        result[key] = [with_euro_display(event) for event in payload.get(key, [])]
+    elif (payload.get('type') in {'usage', 'model_routed'}
+          and (payload.get('provider') == 'deepseek' or str(payload.get('model', '')).startswith('deepseek-'))):
+        # Keep a conversion recorded with the event; old events use today's
+        # dated reference for presentation without rewriting their archive.
+        if 'exchange_rates' not in result:
+            result['exchange_rates'] = fetch_euro_rates()
+    return result
+
+
+def deepseek_euro_balance(payload: dict, rates: dict) -> dict:
+    rows = payload['balance_infos']
+    if not isinstance(rows, list) or not rows:
+        raise ValueError('Relevé DeepSeek vide')
+    converted, currencies = [], set()
+    totals = {name: Decimal(0) for name in ('total_balance', 'granted_balance', 'topped_up_balance')}
+    for row in rows:
+        currency = row['currency']
+        if currency not in {'USD', 'CNY'} or currency in currencies:
+            raise ValueError('Devise DeepSeek inconnue ou dupliquée')
+        currencies.add(currency)
+        rate = Decimal(str(rates['rates'][currency]))
+        if not rate.is_finite() or rate <= 0:
+            raise ValueError('Taux de conversion indisponible')
+        item = {'currency': 'EUR', 'source_currency': currency}
+        for field in totals:
+            if field not in row and field != 'total_balance':
+                continue
+            amount = Decimal(str(row[field]))
+            if not amount.is_finite():
+                raise ValueError('Montant DeepSeek invalide')
+            value = amount / rate
+            if not math.isfinite(float(value)):
+                raise ValueError('Montant DeepSeek hors limites')
+            item['source_' + field] = str(amount)
+            item[field] = float(value) if value else 0.0
+            totals[field] += value
+        converted.append(item)
+    if not all(math.isfinite(float(value)) for value in totals.values()):
+        raise ValueError('Total DeepSeek hors limites')
+    result = {'credit_available': float(totals['total_balance']), 'balance_infos': converted,
+              'exchange_rates': rates, 'stale': bool(rates.get('stale'))}
+    for field in ('granted_balance', 'topped_up_balance'):
+        if all(field in row for row in rows):
+            result[field] = float(totals[field])
+    return result
+
+
 def billing_balance(status: dict[str, object]) -> dict[str, object]:
     """Derive a display estimate from one OVH snapshot; never debit stored credit.
 
@@ -1787,22 +1914,30 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
     if AI_PROVIDER == 'deepseek':
         key = os.environ.get('DEEPSEEK_API_KEY')
         status = {'provider': 'deepseek', 'configured': bool(key), 'available': False,
-                  'currency': 'USD', 'refresh_seconds': BILLING_CACHE_SECONDS}
+                  'schema_version': 2, 'currency': 'EUR', 'credit_currency': 'EUR',
+                  'refresh_seconds': BILLING_CACHE_SECONDS}
         if not key:
             return status
         cached = read_billing_cache()
-        if not force and cached and 0 <= time.time() - cached.get('cached_at', 0) < BILLING_CACHE_SECONDS:
-            return cached
+        if cached and (cached.get('schema_version') != 2 or cached.get('currency') != 'EUR'
+                       or cached.get('provider') != 'deepseek'):
+            cached = None
+        if cached:
+            try:
+                age = time.time() - float(cached['cached_at'])
+                if not math.isfinite(age) or age < 0 or not math.isfinite(float(cached['credit_available'])):
+                    raise ValueError('Cache DeepSeek invalide')
+                if not force and age < BILLING_CACHE_SECONDS:
+                    return cached
+            except (KeyError, TypeError, ValueError):
+                cached = None
         try:
             request = urllib.request.Request(AI_API_BASE_URL + '/user/balance',
                 headers={'Authorization': 'Bearer ' + key})
             with urllib.request.urlopen(request, timeout=15) as response:
                 payload = json.load(response)
-            row = next(item for item in payload['balance_infos'] if item['currency'] == 'USD')
-            balance = Decimal(str(row['total_balance']))
-            if not balance.is_finite():
-                raise ValueError('Invalid balance')
-            status.update(available=True, credit_available=float(balance),
+            status.update(deepseek_euro_balance(payload, fetch_euro_rates()))
+            status.update(available=True,
                           account_available=bool(payload['is_available']), cached_at=time.time(), last_update=now_iso())
             try:
                 # Before the first conversation archive exists, its directory is
@@ -1813,7 +1948,10 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
             except OSError:
                 status.pop('cached_at', None)
         except (OSError, ValueError, KeyError, TypeError, StopIteration, InvalidOperation) as error:
-            status['error'] = 'DeepSeek balance unavailable: ' + type(error).__name__
+            message = 'Solde DeepSeek en euros indisponible : relevé du compte ou taux de change non exploitable.'
+            if cached and cached.get('available'):
+                return {**cached, 'stale': True, 'error': message}
+            status['error'] = message
         return status
     if not billing_configured():
         return billing_balance({"configured": False, "available": False})

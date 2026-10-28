@@ -110,9 +110,13 @@ API's advertised context/output capacities, account balance and rate limits stil
 apply. Context compaction remains necessary when the provider window is full.
 File backups, permission checks, tool validation and command deadlines remain
 active. DeepSeek tool conversations preserve the reasoning returned by the API
-between turns. Costs are displayed in USD as conservative peak/cache-miss
-estimates; the displayed account balance comes directly from DeepSeek. Actual
-charges may be lower because of caching or off-peak pricing.
+between turns. Costs are displayed in euros as conservative peak/cache-miss estimates.
+DeepSeek USD and CNY balances are both retrieved and converted using dated
+`ECB reference rates <https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml>`_.
+The total includes granted credit only once. Rates are cached for six hours;
+during an outage, a rate up to seven days old can be used with a stale indicator.
+Without a usable rate, conversion is unavailable. Native accounting amounts
+remain unchanged. Actual charges may be lower because of caching or off-peak pricing.
 
 Development checks
 ------------------
@@ -380,8 +384,9 @@ are added without per-call rounding; only the UI displays two decimal places.
 An unknown price or unsupported currency blocks paid requests. Native prices
 come from ``metadata.usage_information.pricing`` in the AI Endpoints catalogue,
 matching the `official France EUR prices, excluding VAT <https://www.ovhcloud.com/fr/public-cloud/prices/>`_.
-There is no exchange-rate service or currency conversion. Historical USD
-events remain labelled USD and are not silently reinterpreted as EUR.
+OVH accounting uses these native EUR prices without currency conversion.
+DeepSeek display conversion is separate: native USD event amounts remain
+unchanged, with dated ECB rates supplied to the euro display.
 
 The provider-backed, locked and atomically written ledger is
 ``/root/.ovh-agent/budgets/usage-ovh-eur.json`` on the persistent mount. The legacy
@@ -715,8 +720,9 @@ The discovery service supplies availability, total parameters, quantization,
 modalities, tools, reasoning, supported reasoning efforts, response formats,
 licence and rate limits. Runtime /v1/models supplies precise token ceilings.
 Model costs use native EUR prices from discovery, verified against the official
-France price list. Historical USD costs retain their currency; no conversion
-is performed. Documented MoE active parameter counts supplement the catalog.
+France price list. OVH historical USD costs retain their currency. DeepSeek
+prices and costs are converted only for display, preserving native accounting.
+Documented MoE active parameter counts supplement the catalog.
 Snapshots and per-model OpenAPI schemas provide fallback information.
 
 All models marked available are considered for automatic routing if their tools,
