@@ -871,9 +871,13 @@ Affichage et maîtrise des tours d'outils
 --------------------------------------
 
 ``OVH_AGENT_EMOJI_MODE`` configure la prose et les messages intermédiaires :
+
+| 🚫 ``0`` supprime les émojis décoratifs.
+| ✅ ``1`` autorise uniquement ✅ pour les réussites vérifiées, ⭕ pour les erreurs et ➡️ pour les suites et recommandations. Ce mode est utilisé par défaut.
+| ✨ ``2`` autorise tous les émojis avec parcimonie.
+| 🎉 ``3`` demande un usage expressif des émojis.
+
 Les libellés du journal d’activité restent sans emojis et utilisent les icônes SVG.
-0 supprime les emojis décoratifs, 1 autorise uniquement ✅ (réussites vérifiées), ⭕ (erreurs) et ➡️ (suites et recommandations) par défaut,
-2 autorise tous les emojis avec parcimonie, 3 demande un usage expressif.
 Le code, les commandes et les citations littérales restent intacts. Les modes
 2 et 3 diffèrent par la consigne de génération ; leur fréquence n'est pas un quota.
 Le backend transmet le mode à la webview, y compris avec le lanceur local.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.94
+
+- Present emoji modes as clear unbulleted lines with coded values in both READMEs.
+
 ## 1.17.93
 
 - Apply 0.33 opacity consistently to decorative icons in webview popups.

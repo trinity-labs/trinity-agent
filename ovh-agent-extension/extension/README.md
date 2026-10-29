@@ -53,9 +53,14 @@ Prompts, relevant workspace contents, tool results and images can be sent to the
 
 Original code: 0BSD. Bootstrap Icons: MIT. Highlight.js and its bundled Monokai theme: BSD-3-Clause. The Marketplace icon is the TRINITY logo. The history header uses Font Awesome Free's **hexagon-nodes** icon under CC BY 4.0. DOMPurify, Markdown-it and other dependencies retain their respective licenses; license files are included in the package.
 
-Display style is configurable through `OVH_AGENT_EMOJI_MODE`: `0` disables
-decorative emojis, `1` allows ✅ for verified successes, ⭕ for errors and ➡️ for next steps (default), `2` uses all supported emojis
-sparingly, and `3` is expressive. Code and quotations remain exact. Activity
+Display style is configurable through `OVH_AGENT_EMOJI_MODE`:
+
+🚫 `0` disables decorative emojis.<br>
+✅ `1` allows only ✅ for verified successes, ⭕ for errors and ➡️ for next steps. This is the default.<br>
+✨ `2` uses all supported emojis sparingly.<br>
+🎉 `3` uses emojis expressively.
+
+Code and quotations remain exact. Activity
 labels do not use emojis; the setting applies to written progress messages and
 answers. Icons match their actions, the cursor follows the primary color,
 verification labels and the disclaimer use 50% opacity, and diffs color the full
