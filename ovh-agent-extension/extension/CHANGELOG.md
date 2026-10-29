@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.84
+
+- Replace the activity-bar menu logo with the bolder TRINITY variant while preserving the dedicated light and dark header logos.
+
 ## 1.17.83
 
 - Replace the activity-bar menu icon with the dedicated TRINITY hexagonal logo without changing the light/dark application logos.
