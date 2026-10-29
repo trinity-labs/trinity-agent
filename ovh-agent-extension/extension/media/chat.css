@@ -896,7 +896,8 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 }
 
 #delete-dialog h3 { display: flex; align-items: center; gap: 10px; }
-.delete-title-icon { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .65; }
+.delete-title-icon { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+dialog .agent-icon { opacity: .33; }
 
 /* Derived brand text stays visible on dark backgrounds. */
 body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 55%, #fff); }

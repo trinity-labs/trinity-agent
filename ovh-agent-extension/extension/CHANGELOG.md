@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.93
+
+- Apply 0.33 opacity consistently to decorative icons in webview popups.
+
 ## 1.17.92
 
 - Make archive storage usage part of the mount-point display so disabling the mount-point setting hides both the path and used size while retaining the Conversations heading.

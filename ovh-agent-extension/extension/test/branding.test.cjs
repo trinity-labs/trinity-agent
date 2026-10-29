@@ -203,3 +203,9 @@ test('mount point setting controls both the archive path and its storage usage',
   assert.doesNotMatch(hidden, /id="archive-mount-separator"/);
   assert.doesNotMatch(hidden, /id="archive-used"/);
 });
+
+test('popup icons use the subdued shared opacity', () => {
+  const css = fs.readFileSync(path.resolve(__dirname, '../media/chat.css'), 'utf8');
+  assert.match(css, /dialog\s+\.agent-icon\s*\{\s*opacity:\s*\.33;\s*\}/);
+  assert.doesNotMatch(css, /\.delete-title-icon\s*\{[^}]*opacity\s*:/);
+});
