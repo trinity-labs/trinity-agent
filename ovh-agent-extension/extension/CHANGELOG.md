@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.88
+
+- Render the TRINITY Agent header title in pure white in dark and high-contrast themes.
+
 ## 1.17.87
 
 - Add a plus action after each project pencil to create and open a conversation directly in that folder.

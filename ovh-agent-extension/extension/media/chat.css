@@ -1024,6 +1024,8 @@ body.vscode-dark header .back-history, body.vscode-high-contrast header .back-hi
 body.vscode-dark header .history-brand, body.vscode-high-contrast header .history-brand {
   color: var(--ovh-primary-text);
 }
+body.vscode-dark header .brand strong,
+body.vscode-high-contrast header .brand strong { color: #fff; }
 
 
 #close-history svg.agent-icon { width: 8.5px; height: 8.5px; }
