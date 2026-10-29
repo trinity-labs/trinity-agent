@@ -497,7 +497,7 @@ test('reopening interrupted conversation restores actions, partial text and resu
 });
 
 // A passing generic suite did not detect the later theme overrides in production.
-test('header background stays transparent after the full cascade in every theme', () => {
+test('header background stays transparent and its themed logo fully opaque', () => {
   const css = fs.readFileSync(path.resolve(__dirname, '../media/chat.css'), 'utf8');
   for (const theme of ['vscode-light', 'vscode-dark', 'vscode-high-contrast']) {
     const dom = new JSDOM(`<style>${css}</style><body class="${theme}"><header><span class="history-brand"><img class="header-app-logo header-app-logo-light" src="light.svg"><img class="header-app-logo header-app-logo-dark" src="dark.svg"></span></header></body>`);
@@ -515,7 +515,7 @@ test('header background stays transparent after the full cascade in every theme'
       const value = dom.window.getComputedStyle(node).opacity;
       opacity *= value === '' ? 1 : Number(value);
     }
-    assert.equal(opacity, 0.5, `${theme}: combined logo and ancestor opacity`);
+    assert.equal(opacity, 1, `${theme}: combined logo and ancestor opacity`);
     dom.window.close();
   }
 });

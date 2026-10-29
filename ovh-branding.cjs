@@ -112,7 +112,8 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
   const lightThemeIcon = appIcon || defaultIcon;
   const menuOverride = customIcon('OVH_AGENT_MENU_ICON', media);
   const menuIcon = menuOverride ||
-    (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/ovh-activity.svg');
+    (fs.existsSync(path.join(media, 'trinity-menu.png')) ? 'media/trinity-menu.png' :
+      fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/ovh-activity.svg');
   const darkOverride = customIcon('OVH_AGENT_DARK_THEME_ICON', media);
   const darkThemeIcon = darkOverride ||
     (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : menuIcon);
@@ -139,7 +140,7 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
       fs.writeFileSync(target, JSON.stringify({ ...catalog, ...updates }, null, 2) + '\n');
     }
   }
-  const themedMenuIcon = menuOverride || staticThemeIcon(darkTheme ? darkThemeIcon : lightThemeIcon, media, 'menu', darkTheme);
+  const themedMenuIcon = menuOverride || staticThemeIcon(menuIcon, media, 'menu', darkTheme);
   for (const view of manifest.contributes?.viewsContainers?.activitybar || []) { view.title = name; view.icon = themedMenuIcon; }
   for (const view of manifest.contributes?.views?.ovhAgent || []) view.name = name;
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
@@ -178,18 +179,41 @@ function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server
   margin: 0 !important;
   object-fit: contain;
   object-position: center;
-  opacity: 0.66 !important;
+  opacity: 1 !important;
 }
 ${end}`;
   const updated = original + '\n' + css + '\n';
-  if (updated === current) return false;
-  if (!current.includes(start)) {
-    const digest = crypto.createHash('sha256').update(current).digest('hex').slice(0, 12);
-    const backup = file + '.trinity-' + digest + '.bak';
-    if (!fs.existsSync(backup)) fs.copyFileSync(file, backup, fs.constants.COPYFILE_EXCL);
+  let changed = updated !== current;
+  if (changed) {
+    if (!current.includes(start)) {
+      const digest = crypto.createHash('sha256').update(current).digest('hex').slice(0, 12);
+      const backup = file + '.trinity-' + digest + '.bak';
+      if (!fs.existsSync(backup)) fs.copyFileSync(file, backup, fs.constants.COPYFILE_EXCL);
+    }
+    fs.writeFileSync(file, updated);
   }
-  fs.writeFileSync(file, updated);
-  return true;
+  // VS Code serves this stylesheet with a one-year cache lifetime. Changing
+  // its contents alone leaves existing browsers on the old branding rules.
+  const htmlFile = path.join(path.dirname(file), 'workbench.html');
+  if (fs.existsSync(htmlFile)) {
+    const html = fs.readFileSync(htmlFile, 'utf8');
+    const revision = crypto.createHash('sha256').update(updated).digest('hex').slice(0, 16);
+    const link = /(\bhref=["'][^"']*\/workbench\.css)(?:\?([^"']*))?(["'])/;
+    if (!link.test(html)) throw new Error('Workbench stylesheet link not found; branding cache was not refreshed.');
+    const versioned = html.replace(link, (_, base, query, quote) => {
+      const params = new URLSearchParams(query || '');
+      params.set('trinity-branding', revision);
+      return base + '?' + params.toString() + quote;
+    });
+    if (versioned !== html) {
+      const backup = htmlFile + '.trinity.bak';
+      if (!fs.existsSync(backup)) fs.copyFileSync(htmlFile, backup, fs.constants.COPYFILE_EXCL);
+      fs.writeFileSync(htmlFile + '.branding.tmp', versioned, { mode: fs.statSync(htmlFile).mode });
+      fs.renameSync(htmlFile + '.branding.tmp', htmlFile);
+      changed = true;
+    }
+  }
+  return changed;
 }
 if (require.main === module) {
   const extensions = path.join(require('os').homedir(), '.local/share/code-server/extensions');

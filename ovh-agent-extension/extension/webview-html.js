@@ -14,20 +14,10 @@ function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, we
   const configuredColor = String(env.OVH_AGENT_PRIMARY_COLOR || "").trim();
   const primaryColor = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor : "#3e3aab";
   const mediaRoot = path.join(extensionUri.fsPath || extensionUri, "media");
-  // Branding resolves/sanitizes local assets into the installed manifest. Keep
-  // the application icon for light themes and a distinct high-contrast mark for
-  // dark headers so changing one no longer changes the other.
-  let logoFile = "trinity-icon.png";
-  let darkLogoFile = "trinity-activity.png";
-  try {
-    const manifest = JSON.parse(fs.readFileSync(path.join(extensionUri.fsPath || extensionUri, "package.json"), "utf8"));
-    const candidate = String(manifest.ovhAgentBranding?.lightThemeIcon || manifest.icon || "");
-    if (/^media\/[a-z0-9_.-]+\.(?:png|svg|jpg|jpeg|webp)$/i.test(candidate) &&
-        fs.existsSync(path.join(mediaRoot, candidate.slice(6)))) logoFile = candidate.slice(6);
-    const darkCandidate = String(manifest.ovhAgentBranding?.darkThemeIcon || "");
-    if (/^media\/[a-z0-9_.-]+\.(?:png|svg|jpg|jpeg|webp)$/i.test(darkCandidate) &&
-        fs.existsSync(path.join(mediaRoot, darkCandidate.slice(6)))) darkLogoFile = darkCandidate.slice(6);
-  } catch { /* The packaged original remains available when metadata cannot be read. */ }
+  // Header marks are independent from Marketplace, extension-list and menu
+  // icons so each surface keeps the contrast intended for its theme.
+  const logoFile = "trinity-header-primary.png";
+  const darkLogoFile = "trinity-header-white.png";
   const logoUri = webview.asWebviewUri(joinPath(extensionUri, "media", logoFile));
   const darkLogoUri = webview.asWebviewUri(joinPath(extensionUri, "media", darkLogoFile));
   // Packaging generates minified assets; source checkouts work without a build.

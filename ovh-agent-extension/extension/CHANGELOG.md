@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.83
+
+- Replace the activity-bar menu icon with the dedicated TRINITY hexagonal logo without changing the light/dark application logos.
+- Use dedicated primary and white TRINITY header logos in light and dark themes at full opacity.
+- Refresh the versioned workbench stylesheet URL when local branding changes so existing browsers do not keep stale logo opacity rules.
+
 ## 1.17.82
 
 - Add a subtle background and hover/keyboard-focus feedback to the centered action collapse button in light and dark themes.

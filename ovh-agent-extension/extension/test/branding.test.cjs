@@ -3,8 +3,34 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {applyManifest} = require('../../../ovh-branding.cjs');
+const {applyManifest, applyExtensionListStyle} = require('../../../ovh-branding.cjs');
 const {buildChatHtml} = require('../webview-html');
+test('existing browsers get a new stylesheet URL even when the branding CSS is already current', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'branding-cache-'));
+  try {
+    const css = path.join(root, 'workbench.css');
+    const html = path.join(root, 'workbench.html');
+    fs.writeFileSync(css, '.existing { color: red; }\n');
+    applyExtensionListStyle(css);
+    const initialCss = fs.readFileSync(css, 'utf8');
+    const template = '<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css?existing=keep">';
+    fs.writeFileSync(html, template);
+    assert.equal(applyExtensionListStyle(css), true);
+    assert.equal(fs.readFileSync(css, 'utf8'), initialCss);
+    const first = fs.readFileSync(html, 'utf8');
+    assert.match(first, /workbench\.css\?existing=keep&trinity-branding=[a-f0-9]{16}/);
+    assert.equal(fs.readFileSync(html + '.trinity.bak', 'utf8'), template);
+    assert.equal(applyExtensionListStyle(css), false);
+    assert.equal(fs.readFileSync(html, 'utf8'), first);
+    fs.writeFileSync(css, initialCss.replace('color: red', 'color: blue'));
+    assert.equal(applyExtensionListStyle(css), true);
+    assert.notEqual(fs.readFileSync(html, 'utf8'), first);
+    assert.equal((fs.readFileSync(html, 'utf8').match(/trinity-branding=/g) || []).length, 1);
+    assert.equal(fs.readFileSync(html + '.trinity.bak', 'utf8'), template);
+  } finally {
+    fs.rmSync(root, {recursive:true, force:true});
+  }
+});
 test('packaged local icon matches the theme before installation; Marketplace stays purple', () => {
   const filename = path.resolve(__dirname, '../scripts/package-vsix.cjs');
   const originalRequire = require('node:module').createRequire(filename);
@@ -29,7 +55,7 @@ test('packaged local icon matches the theme before installation; Marketplace sta
           assert.deepEqual(fs.readFileSync(path.join(stage, manifest.icon)),
             fs.readFileSync(path.resolve(__dirname, '..', expected)));
           assert.equal(manifest.ovhAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
-          assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-activity.png');
+          assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.png');
           inspected = true;
           throw stopped;
         },
@@ -109,6 +135,7 @@ test('missing overrides restore bundled branding and preserve localization keys'
     fs.copyFileSync(path.resolve(__dirname, '../media/ovh-activity.svg'), path.join(root, 'media/ovh-activity.svg'));
     fs.copyFileSync(path.resolve(__dirname, '../media/trinity-icon.png'), path.join(root, 'media/trinity-icon.png'));
     fs.copyFileSync(path.resolve(__dirname, '../media/trinity-activity.png'), path.join(root, 'media/trinity-activity.png'));
+    fs.copyFileSync(path.resolve(__dirname, '../media/trinity-menu.png'), path.join(root, 'media/trinity-menu.png'));
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json')));
     pkg.icon = 'media/customer.svg';
     pkg.__metadata = {publisherDisplayName: 'Customer'};
@@ -123,6 +150,10 @@ test('missing overrides restore bundled branding and preserve localization keys'
     assert.equal(result.ovhAgentBranding.lightThemeIcon, 'media/trinity-icon.png');
     assert.equal(result.__metadata.publisherDisplayName, 'TRINITY');
     assert.match(result.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-dark-/);
+    assert.deepEqual(
+      fs.readFileSync(path.join(root, result.contributes.viewsContainers.activitybar[0].icon)),
+      fs.readFileSync(path.resolve(__dirname, '../media/trinity-menu.png')),
+    );
     assert.equal(result.ovhAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.nls.fr.json')))['ovhAgent.performanceMode.auto'], 'Auto');
     process.env.OVH_AGENT_APP_ICON = '/missing/logo.svg';
@@ -136,14 +167,16 @@ test('missing overrides restore bundled branding and preserve localization keys'
   }
 });
 
-test('webview header keeps application and dark-theme logos independent', () => {
+test('webview header uses fully opaque dedicated light and dark logos', () => {
   const root = path.resolve(__dirname, '..');
   const extensionUri = {fsPath: root};
   const joinPath = (base, ...parts) => ({fsPath: path.join(base.fsPath, ...parts)});
   const webview = {cspSource: 'webview-resource:', asWebviewUri: uri => `webview:${uri.fsPath}`};
   const html = buildChatHtml({extensionUri, brand:'TRINITY Agent', performanceMode:'max', env:{}, joinPath}, webview);
-  assert.match(html, /header-app-logo header-app-logo-light[^>]+trinity-icon\.png/);
-  assert.match(html, /header-app-logo header-app-logo-dark[^>]+trinity-activity\.png/);
+  assert.match(html, /header-app-logo header-app-logo-light[^>]+trinity-header-primary\.png/);
+  assert.match(html, /header-app-logo header-app-logo-dark[^>]+trinity-header-white\.png/);
+  const css = fs.readFileSync(path.join(root, 'media/chat.css'), 'utf8');
+  assert.doesNotMatch(css, /\.history-brand\s*\{[^}]*opacity\s*:/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json')))
-    .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-activity.png');
+    .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.png');
 });
