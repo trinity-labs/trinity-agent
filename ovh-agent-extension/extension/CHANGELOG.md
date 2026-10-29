@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.86
+
+- Use the black TRINITY logo for the editor title sidebar button in light themes, with its white counterpart in dark themes.
+
 ## 1.17.85
 
 - Add a bold TRINITY button to editor title bars that opens TRINITY Agent directly in the sidebar.

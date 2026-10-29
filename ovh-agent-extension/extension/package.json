@@ -2,7 +2,7 @@
   "name": "ovh-agent",
   "displayName": "TRINITY Agent",
   "description": "Open-source coding assistant for OVHcloud AI Endpoints and DeepSeek: archives, task resumption, steering and queued messages. Self-hosted backend required.",
-  "version": "1.17.85",
+  "version": "1.17.86",
   "icon": "media/trinity-icon.png",
   "ovhAgentBranding": {
     "lightThemeIcon": "media/trinity-icon.png",
@@ -30,8 +30,8 @@
         "title": "%ovhAgent.start.title%",
         "category": "TRINITY Agent",
         "icon": {
-          "light": "media/trinity-menu.png",
-          "dark": "media/trinity-menu.png"
+          "light": "media/trinity-title-black.png",
+          "dark": "media/trinity-header-white.png"
         }
       },
       {
