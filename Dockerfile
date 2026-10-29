@@ -1,11 +1,15 @@
-ARG NODE_IMAGE=node:lts-alpine
+ARG NODE_IMAGE=node:24-alpine
+ARG GO_IMAGE=golang:1.27.3-alpine
+FROM ${GO_IMAGE} AS go-toolchain
 FROM ${NODE_IMAGE}
+
+COPY --from=go-toolchain /usr/local/go /usr/local/go
 
 ENV PYTHON=/usr/bin/python3 \
     GOBIN=/usr/local/bin \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/root/.bun/bin:${PATH}"
+    PATH="/usr/local/go/bin:/root/.bun/bin:${PATH}"
 
 # =============================================================================
 # BASE SYSTEM
@@ -24,8 +28,8 @@ RUN apk upgrade --no-cache \
         fail2ban \
         fd \
         file \
+        gcc \
         git \
-        go \
         grep \
         iproute2 \
         iputils \
@@ -34,6 +38,7 @@ RUN apk upgrade --no-cache \
         less \
         libstdc++ \
         lsof \
+        musl-dev \
         nano \
         ncdu \
         nginx \
@@ -195,17 +200,29 @@ RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
 # FINAL VALIDATION
 # =============================================================================
 
-RUN echo "============================================================" \
+RUN apk add --no-cache docker-cli-buildx \
+    && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+    && npm install -g npm@12 \
+    && npm cache clean --force \
+    && rm -rf /root/.npm \
+    && echo "============================================================" \
     && echo " TRINITY code-server image" \
     && echo "============================================================" \
     && printf 'Node        : ' \
     && node --version \
+    && printf 'npm         : ' \
+    && npm --version \
+    && printf 'Go          : ' \
+    && go version \
     && printf 'code-server : ' \
     && code-server --version \
     && printf 'Bun         : ' \
     && bun --version \
     && printf 'Codex       : ' \
     && codex --version \
+    && /opt/ovh-agent/bin/pip check \
+    && docker buildx version \
     && echo "============================================================"
 
 # =============================================================================
