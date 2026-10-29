@@ -1278,7 +1278,7 @@ function renderArchives(items, projects) {
     const icon=document.createElement('span');icon.className='project-folder-icon';icon.innerHTML=uiIcon('folder');
     const name=document.createElement('span');name.className='project-folder-name';name.textContent=project.name;name.title=project.root;
     const total=project.items?.length || 0;
-    const count=document.createElement('span');count.className='project-folder-count';count.textContent=total===1?t('1 conversation'):t('{0} conversations',total);
+    const count=document.createElement('span');count.className='project-folder-count';count.innerHTML=String(total)+uiIcon('chat');count.setAttribute('aria-label',total===1?t('1 conversation'):t('{0} conversations',total));
     summary.append(handle,icon,name,count);
     const edit=document.createElement('button');edit.type='button';edit.className='icon project-edit';edit.innerHTML=uiIcon('edit');edit.title=t('Personnaliser le projet');edit.setAttribute('aria-label',edit.title+' : '+project.name);
     const add=document.createElement('button');add.type='button';add.className='icon project-add';add.innerHTML=uiIcon('plus');add.title=t('Nouvelle conversation dans ce dossier');add.setAttribute('aria-label',add.title+' : '+project.name);

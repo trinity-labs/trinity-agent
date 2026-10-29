@@ -1090,7 +1090,8 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .project-folder-icon { display: inline-flex; color: var(--project-color); }
 .project-folder-icon .agent-icon { width: 18px; height: 18px; }
 .project-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.project-folder-count { font-size: 10px; opacity: .5; }
+.project-folder-count { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; opacity: .5; }
+.project-folder-count .agent-icon { width: 12px; height: 12px; }
 .project-caret .agent-icon { transform: rotate(-90deg); transition: transform .15s; }
 .archive-project[open] > summary .project-caret .agent-icon { transform: rotate(0); }
 .project-caret, .project-edit, .project-add { flex-shrink: 0; width: 22px; height: 22px; padding: 4px; box-sizing: border-box; }

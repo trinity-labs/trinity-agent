@@ -474,10 +474,14 @@ test('project color picker matches the primary or custom icon color, with explic
    const group=document.querySelector('.archive-project');
    assert.equal(group.style.getPropertyValue('--project-color').toLowerCase(),expected);
    assert.equal(group.querySelector('input[type=color]').value,expected);
-   assert.equal(group.querySelector('.project-folder-count').textContent,'0 conversations');
+   assert.equal(group.querySelector('.project-folder-count').textContent,'0');
+   assert(group.querySelector('.project-folder-count .icon-chat'));
+   assert.equal(group.querySelector('.project-folder-count').getAttribute('aria-label'),'0 conversations');
    assert.equal(group.querySelector('.archive-empty').textContent,'Aucune conversation associée à ce projet.');
    emit({type:'archives',items:[],projects:[{...project,color:'#dd4400',items:[{id:'selected',title:'Selected'}]}]});
-   assert.equal(document.querySelector('.project-folder-count').textContent,'1 conversation');
+   assert.equal(document.querySelector('.project-folder-count').textContent,'1');
+   assert(document.querySelector('.project-folder-count .icon-chat'));
+   assert.equal(document.querySelector('.project-folder-count').getAttribute('aria-label'),'1 conversation');
    assert.equal(document.querySelector('input[type=color]').value,'#dd4400');
    assert.equal(document.querySelector('.archive-project').style.getPropertyValue('--project-color'),'#dd4400');
    emit({type:'archives',items:[],projects:[]});

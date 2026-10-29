@@ -9,6 +9,7 @@ const names = {
   terminal:'terminal', list:'list-ul', read:'file-earmark-text', search:'search',
   edit:'pencil', context:'layers', project:'folder-plus', folder:'folder-fill', cost:'currency-dollar', model:'cpu',
   copy:'copy', check:'check-lg', warning:'exclamation-triangle', error:'exclamation-diamond', robot:'robot', wallet:'wallet2', grip:'grip-vertical',
+  chat:'chat',
 };
 const bootstrapRoot = path.dirname(require.resolve('bootstrap-icons/package.json'));
 const icons = Object.fromEntries(Object.entries(names).map(([name, symbol]) => {

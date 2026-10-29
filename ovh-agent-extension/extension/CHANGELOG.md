@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.89
+
+- Replace the conversation word in project counters with a compact chat bubble icon while retaining accessible labels.
+
 ## 1.17.88
 
 - Render the TRINITY Agent header title in pure white in dark and high-contrast themes.

@@ -8,11 +8,11 @@ const {svg} = require('../media/icons.min.js');
 const media = path.resolve(__dirname,'../media');
 test('Bootstrap outline subset and Font Awesome logo works offline in Node and browser within size budget', () => {
   const js=fs.readFileSync(path.join(media,'icons.min.js'),'utf8');
-  assert.ok(Buffer.byteLength(js)<14000);
-  assert.ok(zlib.gzipSync(js).length<5000);
+  assert.ok(Buffer.byteLength(js)<14500);
+  assert.ok(zlib.gzipSync(js).length<5300);
   const dom=new JSDOM('',{runScripts:'outside-only'});
   dom.window.eval(js);
-  for(const name of ['nodes','archive','back','chevron','database','key','plus','close','reload','image','shield','stop','stopFilled','send','play','trash','terminal','list','read','search','edit','context','project','folder','cost','model','copy','check','warning','error','robot','wallet','grip']) {
+  for(const name of ['nodes','archive','back','chevron','database','key','plus','close','reload','image','shield','stop','stopFilled','send','play','trash','terminal','list','read','search','edit','context','project','folder','cost','model','copy','check','warning','error','robot','wallet','grip','chat']) {
     const html=svg(name,'custom-class');
     assert.equal(dom.window.AgentIcons.svg(name,'custom-class'),html);
     dom.window.document.body.innerHTML=html;
