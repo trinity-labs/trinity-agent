@@ -247,6 +247,7 @@ with tempfile.TemporaryDirectory() as folder:
     with patch.object(a, 'conversation_dir', return_value=Path(folder)), \
          patch.object(a, 'emit', side_effect=events.append), \
          patch.object(a, 'save_history'), patch.object(a, 'context_overhead', return_value=0), \
+         patch.object(a, 'AI_PROVIDER', 'deepseek'), patch.object(a, 'generation_settings', return_value={}), \
          patch.object(a, 'CONTEXT_TOKEN_CAP', 5000), \
          patch.object(a, 'SUMMARY_TIMEOUT_SECONDS', .25), \
          patch.object(a, 'fetch_model_catalog', return_value=[{'id': fm.model_name, 'context_length': 131072}]), \
@@ -331,6 +332,7 @@ with tempfile.TemporaryDirectory() as folder:
         return 'Préférence utilisateur déclarée : conserver le thème.'
     with patch.object(a, 'conversation_dir', return_value=location), \
          patch.object(a, 'WORKSPACE', location), patch.object(a, 'DATA_ROOT', location/'data'), \
+         patch.object(a, 'AI_PROVIDER', 'ovhcloud'), \
          patch.object(a.WorkspaceContext, 'search', side_effect=safe_context), \
          patch.object(a.ConversationMemory, 'search', side_effect=safe_context):
         clean = a.history_with_memory(polluted, 'Modernise la vue', include_excerpts=False)

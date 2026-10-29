@@ -223,10 +223,11 @@ class RecoveryDiscovery(unittest.TestCase):
         self.a.run_dependencies().tools = ToolSelection('continue')
         self.assertTrue(self.visible('reconcile_operation'))
         failure = RuntimeError("Tool 'edit_file' exceeded max retries count of 2")
-        self.assertFalse(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.run_dependencies().engine))
-        identifier = self.a.run_dependencies().engine.transactions.snapshot()['unresolved_mutations'][0]
-        self.a.run_dependencies().engine.reconcile(identifier)
-        self.assertTrue(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.run_dependencies().engine))
+        with patch.object(self.a, 'AI_PROVIDER', 'ovhcloud'):
+            self.assertFalse(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.run_dependencies().engine))
+            identifier = self.a.run_dependencies().engine.transactions.snapshot()['unresolved_mutations'][0]
+            self.a.run_dependencies().engine.reconcile(identifier)
+            self.assertTrue(self.a.automatic_fallback_reason('gpt-oss-20b', failure, self.a.run_dependencies().engine))
 
     def test_unresolved_command_without_plan_does_not_advertise_execution(self):
         identifier = self.a.run_dependencies().engine.journal.start('run_command', {}, mutation=True)

@@ -576,6 +576,9 @@ def run_campaign(*, seed=20261019, cases=None, real_model=None,
         # credit policy. Only offline mode redirects that ledger to disposable data.
         if not real_model:
             bootstrap['OVH_AGENT_DATA_ROOT'] = str(base/'bootstrap-data')
+            # The reference adapter has no provider catalogue. Keep offline
+            # evidence independent from the provider selected by the installation.
+            bootstrap['OVH_AGENT_PROVIDER'] = 'ovhcloud'
         with patch.dict(os.environ, bootstrap):
             backend = load_backend()
         model, ledger, card = None, None, None

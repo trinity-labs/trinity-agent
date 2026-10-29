@@ -3208,8 +3208,10 @@ def get_agent(model_id: str, *, output_validator=None) -> Agent[RunDependencies,
             instructions=emoji_instructions(EMOJI_MODE) + execution_instructions(WORKSPACE),
             deps_type=RunDependencies,
             toolsets=[FunctionToolset(agent_tools()).prepared(prepare_tools_for_request)] if model_capabilities(model_id)["tools"] else [],
-            # The SDK requires an integer; DeepSeek has no practical retry ceiling.
-            retries=sys.maxsize if AI_PROVIDER == 'deepseek' else TOOL_RETRIES,
+            # Keep malformed or unavailable tool calls bounded for every provider.
+            # Recovery can then expose another tool or switch model instead of
+            # spending the entire run repeating the same invalid call.
+            retries=TOOL_RETRIES,
             capabilities=[ExecutionCapability(RUN_CONTEXT), ProcessHistory(apply_steering), ProcessHistory(task_checkpoint), ProcessHistory(manage_model_context)],
         )
         AGENTS[model_id].instructions(load_infrastructure_instructions)
@@ -3436,7 +3438,6 @@ async def manage_model_context(ctx: RunContext[RunDependencies], messages: list)
         summary_timeout = SUMMARY_TIMEOUT_SECONDS
         if AI_PROVIDER == 'deepseek':
             settings = generation_settings(model_id, '')
-            summary_timeout = None
         deadline_text = f" (délai {summary_timeout:g} s)" if summary_timeout is not None else ""
         emit({"type": "status", "text": f"Compression de l’historique : résumé par modèle{deadline_text}, puis secours local si nécessaire…"})
         summary_started = time.monotonic()

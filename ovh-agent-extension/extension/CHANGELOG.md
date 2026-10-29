@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.95
+
+- Bound malformed tool-call retries for every provider so the agent can recover with another available tool instead of looping.
+- Restore the DeepSeek context-summary deadline and local fallback when model compaction stalls.
+- Isolate offline autonomy evaluation from the installation's selected provider for reproducible evidence.
+
 ## 1.17.94
 
 - Present emoji modes as clear unbulleted lines with coded values in both READMEs.
