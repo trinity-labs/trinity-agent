@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.90
+
+- Keep the chat-icon project counters covered by the complete drag-and-drop test suite.
+
 ## 1.17.89
 
 - Replace the conversation word in project counters with a compact chat bubble icon while retaining accessible labels.

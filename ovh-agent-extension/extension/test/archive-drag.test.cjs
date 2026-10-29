@@ -66,7 +66,9 @@ test('dropping a conversation into a closed folder uses its actual archive sourc
   emit({type:'archives_organized'});archives([folder(A,'Alpha',[duplicate]),folder(B,'Beta',[item])]);
   assert.equal(group(B).open,true);assert.equal(row().closest('.archive-project').dataset.projectId,B);
   assert.equal(doc.activeElement,row().querySelector('.archive-open'));
-  assert.equal(group(B).querySelector('.project-folder-count').textContent,'1 conversation');
+  assert.equal(group(B).querySelector('.project-folder-count').textContent,'1');
+  assert(group(B).querySelector('.project-folder-count .icon-chat'));
+  assert.equal(group(B).querySelector('.project-folder-count').getAttribute('aria-label'),'1 conversation');
   assert.equal(group(B).querySelectorAll('.project-document').length,1);
   assert.equal(row(A).closest('.archive-project').dataset.projectId,A);
 });
@@ -84,7 +86,9 @@ test('conversations can move between folders and back outside projects, includin
   event(outside,'drop',data);
   assert.deepEqual(sent.at(-1),{type:'moveConversation',source:SOURCE,conversation:'same-id',target:null});
   emit({type:'archives_organized'});archives([folder(A,'Alpha'),folder(B,'Beta')],[item]);
-  assert(row().closest('.archive-ungrouped'));assert.equal(group(B).querySelector('.project-folder-count').textContent,'0 conversations');
+  assert(row().closest('.archive-ungrouped'));assert.equal(group(B).querySelector('.project-folder-count').textContent,'0');
+  assert(group(B).querySelector('.project-folder-count .icon-chat'));
+  assert.equal(group(B).querySelector('.project-folder-count').getAttribute('aria-label'),'0 conversations');
 });
 
 test('external drops, same-folder drops, action controls and canceled drags cannot change classification',t=>{
