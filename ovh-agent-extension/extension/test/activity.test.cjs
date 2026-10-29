@@ -388,6 +388,19 @@ test('history nests conversations in project folders and routes cross-project op
  } finally {dom.window.close();}
 });
 
+test('folder plus follows the pencil and creates a conversation directly in that folder',()=>{
+ const {dom,document,emit,sent}=browser();
+ try {
+  const project={id:'a'.repeat(20),name:'Target',root:'/project/a',active:true,items:[]};
+  emit({type:'archives',items:[],projects:[project]});
+  const group=document.querySelector('.archive-project');
+  const controls=[...group.querySelectorAll(':scope > summary > button')];
+  assert.equal(controls.indexOf(group.querySelector('.project-add')),controls.indexOf(group.querySelector('.project-edit'))+1);
+  group.querySelector('.project-add').click();
+  assert.equal(sent.at(-1).type,'newProjectConversation');assert.equal(sent.at(-1).project,project.id);
+ } finally {dom.window.close();}
+});
+
 test('history keeps ungrouped conversations, routes assignments by source and edits project appearance',()=>{
  const {dom,document,emit,sent}=browser();
  try {

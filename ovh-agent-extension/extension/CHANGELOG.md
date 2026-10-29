@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.87
+
+- Add a plus action after each project pencil to create and open a conversation directly in that folder.
+
 ## 1.17.86
 
 - Use the black TRINITY logo for the editor title sidebar button in light themes, with its white counterpart in dark themes.

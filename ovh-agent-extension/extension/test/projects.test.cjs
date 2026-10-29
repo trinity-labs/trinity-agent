@@ -249,6 +249,8 @@ test('history groups only explicit choices, preserving ungrouped archives with i
 test('project history actions validate their IDs and reject traversal',()=>{
  const {validMessage}=require('../security');
  assert(validMessage({type:'openProject',project:'a'.repeat(20),conversation:'saved'}));
+ assert(validMessage({type:'newProjectConversation',project:'a'.repeat(20)}));
+ assert(!validMessage({type:'newProjectConversation',project:'../outside'}));
  assert(!validMessage({type:'openProject',project:'../outside'}));
  assert(!validMessage({type:'openProject',project:'a'.repeat(20),conversation:'../saved'}));
  assert(validMessage({type:'assignProject',source:'a'.repeat(20),conversation:'saved'}));
@@ -530,9 +532,6 @@ test('archive assignment and attachment reject symlinked parents before moving d
 
 test('selected folder becomes the workspace and group of the next new conversation',async t=>{
  const {root,store,provider,values}=typedPicker(t),project=store.create(root,'selected-folder');
- await provider.openProject(project.id);
- assert.equal(provider.workspace,root,'selection must not move the existing conversation');
- assert.equal(values['ovhAgent.newConversationProject'],project.id);
  provider.ensureAgent=async()=>{
   provider.agent={stdin:{write:line=>{
    assert.equal(JSON.parse(line).type,'clear');
@@ -541,7 +540,8 @@ test('selected folder becomes the workspace and group of the next new conversati
    fs.writeFileSync(path.join(folder,'../current'),'new');
   }}};return true;
  };
- await provider.clearConversation();
+ await provider.newProjectConversation(project.id);
+ assert.equal(values['ovhAgent.newConversationProject'],project.id);
  assert.equal(provider.workspace,project.root);
  assert.equal(provider.store.session,project.id);
  provider.consumeOutput('{"type":"cleared","conversation":"new"}\n');

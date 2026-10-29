@@ -2524,5 +2524,11 @@
     "de": "EUR-Umrechnung · EZB-Referenzkurs vom {0}",
     "es": "Conversión EUR · tipo de referencia del BCE del {0}",
     "fr": "Conversion EUR · taux BCE du {0}"
+  },
+  "Nouvelle conversation dans ce dossier": {
+    "fr": "Nouvelle conversation dans ce dossier",
+    "en": "New conversation in this folder",
+    "de": "Neue Unterhaltung in diesem Ordner",
+    "es": "Nueva conversación en esta carpeta"
   }
 }

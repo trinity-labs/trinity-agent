@@ -34,6 +34,7 @@ function validMessage(message) {
     case "deleteProjectConfirmed": return projectId(message.project);
     case "openProjectDocument": return text(message.project,20) && /^[a-f0-9]{20}$/.test(message.project) && text(message.name,255) && !/[\/\\]/.test(message.name) && /\.md$/i.test(message.name) && ["root","memory"].includes(message.scope);
     case "openProject": return text(message.project,20) && /^[a-f0-9]{20}$/.test(message.project) && (message.conversation===undefined || id(message.conversation));
+    case "newProjectConversation": return projectId(message.project);
     case "assignProject": return text(message.source,20) && /^[a-f0-9]{20}$/.test(message.source) && id(message.conversation);
     case "moveProject": return projectId(message.source) && projectId(message.target) && message.source!==message.target && ['before','after'].includes(message.position);
     case "moveConversation": return projectId(message.source) && id(message.conversation) && (message.target===null || projectId(message.target));

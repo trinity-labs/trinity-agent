@@ -110,6 +110,7 @@ class OvhAgentViewProvider {
       if (message.type === "setPerformance") await this.setPerformance(message.mode);
       if (message.type === "selectProject") await this.selectProject();
       if (message.type === "openProject") await this.openProject(message.project, message.conversation);
+      if (message.type === "newProjectConversation") await this.newProjectConversation(message.project);
       if (message.type === "openProjectDocument") await this.openProjectDocument(message);
       if (message.type === "assignProject") await this.assignProject(message);
       if (["moveProject","moveConversation"].includes(message.type)) this.organizeArchives(message);
@@ -323,6 +324,17 @@ class OvhAgentViewProvider {
     this.newConversationProject = entry.id;
     await this.state?.update("ovhAgent.newConversationProject", entry.id);
     this.post({type:"project_selected",project:entry.id});
+  }
+
+  async newProjectConversation(id) {
+    if (!this.windowLock || this.deleting || this.clearingConversation) return;
+    const entry = new ProjectStore(this.store.dataRoot).catalog().find(project => project.id === id);
+    if (!entry) {
+      this.post({type:"error", text:t("Le dossier sélectionné n’existe plus. Sélectionne un dossier avant de créer la conversation.")});
+      return;
+    }
+    await this.selectConversationFolder(entry);
+    await this.clearConversation();
   }
 
   async activateProject(entry, conversation) {

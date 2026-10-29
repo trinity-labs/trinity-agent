@@ -1281,7 +1281,9 @@ function renderArchives(items, projects) {
     const count=document.createElement('span');count.className='project-folder-count';count.textContent=total===1?t('1 conversation'):t('{0} conversations',total);
     summary.append(handle,icon,name,count);
     const edit=document.createElement('button');edit.type='button';edit.className='icon project-edit';edit.innerHTML=uiIcon('edit');edit.title=t('Personnaliser le projet');edit.setAttribute('aria-label',edit.title+' : '+project.name);
-    summary.append(edit,caret);
+    const add=document.createElement('button');add.type='button';add.className='icon project-add';add.innerHTML=uiIcon('plus');add.title=t('Nouvelle conversation dans ce dossier');add.setAttribute('aria-label',add.title+' : '+project.name);
+    add.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();startNewConversation({type:'newProjectConversation',project:project.id});});
+    summary.append(edit,add,caret);
     const contents=document.createElement('div');contents.className='project-conversations';
     const editor=document.createElement('form');editor.className='project-editor';editor.hidden=true;
     const titleLabel=document.createElement('label');titleLabel.textContent=t('Titre du projet');
@@ -2483,7 +2485,7 @@ stop.addEventListener("click", () => {
   send.disabled = true;
   vscode.postMessage({ type: "cancel" });
 });
-clear.addEventListener("click", () => {
+function startNewConversation(message = {type:"clear"}) {
   if (creatingConversation) return;
   creatingConversation = true;
   stopping = false;
@@ -2511,11 +2513,12 @@ clear.addEventListener("click", () => {
   pendingImages = [];
   renderPendingImages();
   persist();
-  vscode.postMessage({ type: "clear" });
+  vscode.postMessage(message);
   send.disabled = true;
   setStatus(t("Nouvelle conversation"));
   prompt.focus();
-});
+}
+clear.addEventListener("click", () => startNewConversation());
 document.getElementById("project-picker")?.addEventListener("click", () => vscode.postMessage({type:"selectProject"}));
 configure.addEventListener("click", () => vscode.postMessage({ type: "configureKey" }));
 billing.addEventListener("click", () => {

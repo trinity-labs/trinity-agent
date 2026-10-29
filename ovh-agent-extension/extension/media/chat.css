@@ -956,13 +956,13 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 .message.working > .label { display: none; }
 
 /* Branded header controls and a more visible send interaction. */
-.header-actions .icon, .back-history, .project-edit, .project-caret {
+.header-actions .icon, .back-history, .project-edit, .project-add, .project-caret {
   border-radius: 4px;
   transition: color 120ms ease, background-color 120ms ease;
 }
-.header-actions .icon, .project-edit, .project-caret { color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent); }
+.header-actions .icon, .project-edit, .project-add, .project-caret { color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent); }
 .header-actions .icon:hover:not(:disabled), .header-actions .icon:focus-visible,
-.project-edit:hover:not(:disabled), .project-edit:focus-visible, .project-caret:hover:not(:disabled), .project-caret:focus-visible {
+.project-edit:hover:not(:disabled), .project-edit:focus-visible, .project-add:hover:not(:disabled), .project-add:focus-visible, .project-caret:hover:not(:disabled), .project-caret:focus-visible {
   color: var(--ovh-primary-text);
 }
 .back-history:hover:not(:disabled), .back-history:focus-visible {
@@ -981,7 +981,7 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 }
 @media (prefers-reduced-motion: reduce) {
   button { transition: none; }
-  .header-actions .icon, .back-history, .project-edit, .project-caret, #send, .delete-dialog-actions button { transition: none; }
+  .header-actions .icon, .back-history, .project-edit, .project-add, .project-caret, #send, .delete-dialog-actions button { transition: none; }
 }
 
 #live-balance .balance-amount { color: var(--ovh-primary-text); font-weight: 500; }
@@ -1091,10 +1091,10 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .project-folder-count { font-size: 10px; opacity: .5; }
 .project-caret .agent-icon { transform: rotate(-90deg); transition: transform .15s; }
 .archive-project[open] > summary .project-caret .agent-icon { transform: rotate(0); }
-.project-caret, .project-edit { flex-shrink: 0; width: 22px; height: 22px; padding: 4px; box-sizing: border-box; }
-.project-caret svg.agent-icon, .project-edit svg.agent-icon { width: 11px; height: 11px; opacity: .45; }
-.project-caret:hover:not(:disabled) svg.agent-icon, .project-edit:hover:not(:disabled) svg.agent-icon,
-.project-caret:focus-visible svg.agent-icon, .project-edit:focus-visible svg.agent-icon { opacity: .65; }
+.project-caret, .project-edit, .project-add { flex-shrink: 0; width: 22px; height: 22px; padding: 4px; box-sizing: border-box; }
+.project-caret svg.agent-icon, .project-edit svg.agent-icon, .project-add svg.agent-icon { width: 11px; height: 11px; opacity: .45; }
+.project-caret:hover:not(:disabled) svg.agent-icon, .project-edit:hover:not(:disabled) svg.agent-icon, .project-add:hover:not(:disabled) svg.agent-icon,
+.project-caret:focus-visible svg.agent-icon, .project-edit:focus-visible svg.agent-icon, .project-add:focus-visible svg.agent-icon { opacity: .65; }
 .project-conversations {
   --ovh-primary-pastel: color-mix(in srgb, var(--project-color) 7%, var(--vscode-sideBar-background));
   margin-left: 18px; padding-left: 6px;
