@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.92
+
+- Make archive storage usage part of the mount-point display so disabling the mount-point setting hides both the path and used size while retaining the Conversations heading.
+
 ## 1.17.91
 
 - Refresh the README and Marketplace preview with the current TRINITY Agent conversation screen.

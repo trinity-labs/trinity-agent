@@ -185,3 +185,21 @@ test('webview header uses fully opaque dedicated light and dark logos', () => {
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json')))
     .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.png');
 });
+
+test('mount point setting controls both the archive path and its storage usage', () => {
+  const root = path.resolve(__dirname, '..');
+  const extensionUri = {fsPath: root};
+  const joinPath = (base, ...parts) => ({fsPath: path.join(base.fsPath, ...parts)});
+  const webview = {cspSource: 'webview-resource:', asWebviewUri: uri => `webview:${uri.fsPath}`};
+  const render = value => buildChatHtml({extensionUri, brand:'TRINITY Agent', performanceMode:'max',
+    env:{OVH_AGENT_SHOW_MOUNT_POINT:value}, joinPath}, webview);
+  const shown = render('true');
+  assert.match(shown, /id="archive-path"/);
+  assert.match(shown, /id="archive-used"/);
+  const hidden = render('false');
+  assert.match(hidden, /id="archive-banner"/);
+  assert.match(hidden, /class="archive-title">Conversations/);
+  assert.doesNotMatch(hidden, /id="archive-path"/);
+  assert.doesNotMatch(hidden, /id="archive-mount-separator"/);
+  assert.doesNotMatch(hidden, /id="archive-used"/);
+});
