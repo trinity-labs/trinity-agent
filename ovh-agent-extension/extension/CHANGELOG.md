@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.91
+
+- Refresh the README and Marketplace preview with the current TRINITY Agent conversation screen.
+
 ## 1.17.90
 
 - Keep the chat-icon project counters covered by the complete drag-and-drop test suite.
