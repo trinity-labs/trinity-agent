@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.85
+
+- Add a bold TRINITY button to editor title bars that opens TRINITY Agent directly in the sidebar.
+
 ## 1.17.84
 
 - Replace the activity-bar menu logo with the bolder TRINITY variant while preserving the dedicated light and dark header logos.

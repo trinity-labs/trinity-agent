@@ -56,6 +56,11 @@ test('packaged local icon matches the theme before installation; Marketplace sta
             fs.readFileSync(path.resolve(__dirname, '..', expected)));
           assert.equal(manifest.ovhAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
           assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.png');
+          const start = manifest.contributes.commands.find(item => item.command === 'ovhAgent.start');
+          assert.deepEqual(start.icon, {light:'media/trinity-menu.png', dark:'media/trinity-menu.png'});
+          assert.deepEqual(manifest.contributes.menus['editor/title'], [
+            {command:'ovhAgent.start', group:'navigation'},
+          ]);
           inspected = true;
           throw stopped;
         },
