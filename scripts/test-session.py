@@ -827,13 +827,30 @@ class Sessions(unittest.TestCase):
         before = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
         with a.backend_session():
             result = subprocess.run([sys.executable, str(ROOT / 'ovh-agent.py'), '--json-lines'],
-                                    env={**os.environ, 'OVH_AGENT_DATA_ROOT': str(self.root)},
+                                    env={**os.environ, 'OVH_AGENT_DATA_ROOT': str(self.root),
+                                         'OVH_AGENT_WORKSPACE': str(ROOT)},
                                     capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)['type'], 'session_busy')
         self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
         with a.backend_session():
             pass  # No stale lock after clean shutdown.
+
+    def test_open_window_on_another_workspace_does_not_block_relay(self):
+        other_workspace = self.root / 'other-project'
+        other_workspace.mkdir()
+        with a.backend_session():
+            result = subprocess.run(
+                [sys.executable, str(ROOT / 'ovh-agent.py'), '--json-lines'],
+                env={**os.environ, 'OVH_AGENT_DATA_ROOT': str(self.root),
+                     'OVH_AGENT_WORKSPACE': str(other_workspace)},
+                input=json.dumps({'type': 'shutdown'}) + '\n',
+                capture_output=True, text=True, timeout=15,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertTrue(any(event.get('type') == 'ready' for event in events), events)
+        self.assertFalse(any(event.get('type') == 'session_busy' for event in events), events)
 
 
 if __name__ == '__main__':

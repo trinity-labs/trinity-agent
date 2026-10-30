@@ -147,6 +147,19 @@ class Preparation(unittest.TestCase):
                 with self.subTest(prompt=prompt, previous=previous):
                     self.assertTrue(r.read_only_policy(prompt, previous))
 
+    def test_unchanged_style_does_not_block_an_authorized_text_edit(self):
+        prompt = 'Modifie uniquement le texte. Le style ne change pas ; aucun test à modifier.'
+        for previous in (False, True):
+            with self.subTest(previous=previous):
+                self.assertFalse(r.read_only_policy(prompt, previous))
+                self.assertEqual(r.analyze_request(prompt).intent, 'edit')
+        self.assertTrue(r.read_only_policy('Le style ne change pas.', True))
+        for restriction in ('Lecture seule.', 'Ne change pas les fichiers.',
+                            'Ne modifie pas app.py.'):
+            with self.subTest(restriction=restriction):
+                self.assertTrue(r.read_only_policy(
+                    'Modifie app.py. Le style ne change pas. ' + restriction))
+
     def test_edit_mentions_and_global_refusals_do_not_grant_write_access(self):
         for prompt in [
             'Comment corriger app.py sans modifier les tests ?',

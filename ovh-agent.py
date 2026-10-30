@@ -4458,14 +4458,17 @@ class SessionInUse(RuntimeError):
 
 @contextmanager
 def backend_session():
-    # Also cover orphaned backends after a window/extension-host crash.
-    identity = hashlib.sha256(f"{os.getuid()}:{DATA_ROOT.resolve()}".encode()).hexdigest()[:40]
+    # Exclude concurrent writers for this project only. A window left open on
+    # another workspace must not block the one-shot relay, whose archives live
+    # under a different SESSION_ID. Abstract sockets still disappear after a
+    # window/extension-host crash, so no stale PID or lock file is involved.
+    identity = hashlib.sha256(f"{os.getuid()}:{DATA_ROOT.resolve()}:{WORKSPACE.resolve()}".encode()).hexdigest()[:40]
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as owner:
         try:
             owner.bind("\0trinity-agent-backend-" + identity)
         except OSError as error:
             if error.errno == errno.EADDRINUSE:
-                raise SessionInUse("Un agent utilise déjà cette installation. Ferme l’autre fenêtre ou attends son arrêt avant de réessayer.") from error
+                raise SessionInUse("Un agent exécute déjà ce projet. Attends sa fin ou arrête cette tâche avant de réessayer.") from error
             raise
         yield
 

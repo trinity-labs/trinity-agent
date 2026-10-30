@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.97
+
+- Scope backend exclusion to the active workspace so an idle TRINITY Agent window no longer blocks one-shot work on another project.
+- Preserve same-project write exclusion and clarify its busy-state diagnostic.
+
 ## 1.17.96
 
 - Clear the selected conversation folder and its persisted next-conversation destination when clicking outside folder rows.

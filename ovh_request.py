@@ -202,7 +202,7 @@ def read_only_policy(prompt, previous=False):
     # A statement about an unchanged result is not an imperative addressed to
     # the agent ("cela ne change pas la liste des fichiers"). Keep any earlier
     # actual restriction, and still parse subsequent explicit prohibitions.
-    text = re.sub(r'\b(?:cela|ceci|ca)\s+ne\s+(?:change|modifie)\s+pas\b', '', text)
+    text = re.sub(r'\b(?:cela|ceci|ca|(?:le|ce) style(?: css)?)\s+ne\s+(?:change|modifie)\s+pas\b', '', text)
     execution = execution_requested(text)
     if execution:
         # Preserving source files does not prohibit an explicitly requested
