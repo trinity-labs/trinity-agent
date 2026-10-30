@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.3.3
+
+- Switch the Activity Bar logo automatically: purple in light themes and white in dark themes.
+
 ## 5.3.2
 
 - Restore the TRINITY Activity Bar icon after the extension identifier refactor by shipping the requested menu artwork through a VS Code-compatible SVG asset.

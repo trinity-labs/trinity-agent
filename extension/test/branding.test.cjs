@@ -186,7 +186,10 @@ test('webview header uses fully opaque dedicated light and dark logos', () => {
     .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.svg');
   const menu = fs.readFileSync(path.join(root, 'media/trinity-menu.svg'), 'utf8');
   assert.match(menu, /^<svg[^>]+viewBox="0 0 1254 1254"/);
-  assert.match(menu, /href="data:image\/png;base64,[A-Za-z0-9+/=]+"/);
+  assert.match(menu, /prefers-color-scheme:dark/);
+  assert.equal((menu.match(/href="data:image\/png;base64,/g) || []).length, 2);
+  assert.match(menu, /class="light"/);
+  assert.match(menu, /class="dark"/);
 });
 
 test('mount point setting controls both the archive path and its storage usage', () => {
