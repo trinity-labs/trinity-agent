@@ -15,13 +15,15 @@ const { validMessage, localLink, escapeHtml: escapeBrand } = require("./security
 const { renderMarkdown, createMarkdownRenderer } = require("./markdown-renderer");
 const { BillingChannel } = require("./billing-channel");
 const { NdjsonDecoder } = require("./backend-protocol");
+const { resolveBackendPath } = require("./backend-path");
 
 const BRAND_NAME = [process.env.OVH_AGENT_NAME, require("./package.json").displayName, "TRINITY Agent"]
   .map(name => String(name || "").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 80)).find(Boolean);
 
 
 function agentPath() {
-  return process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/trinity-agent.sh";
+  const configured = process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/trinity-agent.sh";
+  return resolveBackendPath(configured, fs.existsSync);
 }
 const OVH_SECRET_DIRECTORY = "/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity";
 const BILLING_SECRETS = {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0
+
+- Migrate saved `ovh-agent.sh` and `ovh-agent.local.sh` backend paths to the renamed TRINITY launchers when the legacy file no longer exists.
+- Restore conversation opening immediately for existing installations that retained the old backend path in VS Code settings.
+
 ## 3.0.0
 
 - Remove the remaining legacy `ovh-agent` source names from the repository root: launchers, extension sources, branding and verification configuration now use TRINITY names and dedicated folders.

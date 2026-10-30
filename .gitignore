@@ -22,6 +22,7 @@
 !/trinity-agent-extension/extension/archive-store.js
 !/trinity-agent-extension/extension/window-lock.js
 !/trinity-agent-extension/extension/extension.js
+!/trinity-agent-extension/extension/backend-path.js
 !/trinity-agent-extension/extension/media/DOMPurify.LICENSE
 !/trinity-agent-extension/extension/media/chat.css
 !/trinity-agent-extension/extension/media/chat.js
