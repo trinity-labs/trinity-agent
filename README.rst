@@ -67,7 +67,7 @@ it resolves the latest Node release accepted by ``code-server@latest`` from its 
 metadata, pulls the matching Alpine image and refreshes Docker's cached layers.
 This avoids forcing an incompatible Node major or maintaining a numeric version pin.
 For an existing backend, run ``/opt/trinity-agent/bin/python -m pip install --upgrade
---upgrade-strategy eager 'pydantic-ai-slim[openai]'``. Existing agent processes keep
+--upgrade-strategy eager 'pydantic-ai-slim[openai]==2.62.0'``. Existing agent processes keep
 their loaded modules until they exit; the next process uses the updated runtime.
 Persistent data directories must exist before starting Docker bind mounts.
 

@@ -186,7 +186,7 @@ RUN echo "============================================================" \
 
 RUN python3 -m venv /opt/trinity-agent \
     && /opt/trinity-agent/bin/pip install --upgrade --upgrade-strategy eager \
-        'pydantic-ai-slim[openai]'
+        'pydantic-ai-slim[openai]==2.62.0'
 
 # =============================================================================
 # ENTRYPOINT

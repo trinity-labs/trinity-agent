@@ -39,7 +39,7 @@ jobs:
           PYDANTIC_AI_NO_BANNER: '1'
         run: |
           python3 -m venv "$RUNNER_TEMP/agent-verification"
-          "$RUNNER_TEMP/agent-verification/bin/pip" install --upgrade --upgrade-strategy eager 'pydantic-ai-slim[openai]'
+          "$RUNNER_TEMP/agent-verification/bin/pip" install --upgrade --upgrade-strategy eager 'pydantic-ai-slim[openai]==2.62.0'
           "$RUNNER_TEMP/agent-verification/bin/python" ../scripts/check-backend.py
       - name: Evaluate independent autonomy scenarios without paid calls
         env:
