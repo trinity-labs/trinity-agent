@@ -32,7 +32,8 @@ class OpenAIProviderTests(unittest.TestCase):
 
     def test_codex_uses_responses_api_with_reviewed_limits_and_price(self):
         model = agent.get_budgeted_model('gpt-5.3-codex')
-        self.assertEqual(type(model).__name__, 'OpenAIResponsesModel')
+        self.assertEqual(type(model).__name__, 'BudgetedModel')
+        self.assertEqual(type(model.wrapped).__name__, 'OpenAIResponsesModel')
         card = agent.normalise_model({'id':'gpt-5.3-codex'}, 'openai')
         self.assertEqual(card['context_length'], 400000)
         self.assertEqual(card['max_completion_tokens'], 128000)

@@ -12,7 +12,7 @@ from trinity_agent.cache import CACHE, read_text_cached
 from trinity_agent.resources import resource_profile, set_performance_mode
 from dataclasses import asdict, replace
 from trinity_agent.request import prepare_request, strip_prepared_context, analyze_request, recent_context, SourceReview, REVIEW_INSTRUCTIONS, refresh_reader_limits
-from trinity_agent.budget import BudgetLedger, ProviderBalanceLedger
+from trinity_agent.budget import AvailableBalanceLedger, BudgetLedger, ProviderBalanceLedger
 from trinity_agent.budget_model import BudgetedModel, ProviderRateLimiter, IncompleteModelResponseError, transport_failure
 from trinity_agent.vision import read_images, parse_reading, visual_context, without_historical_images, is_image_generation_request
 from trinity_agent.evaluation import load_evidence, routing_domain, prefer_evaluated, measured_latency, measured_settings, routing_price_factor
@@ -2981,6 +2981,11 @@ class ResponseStream:
 
 
 def budget_ledger():
+    if AI_PROVIDER in {'openai', 'deepseek'}:
+        currency = 'USD' if AI_PROVIDER == 'openai' else 'EUR'
+        return AvailableBalanceLedger(
+            DATA_ROOT / 'budgets' / f'available-{AI_PROVIDER}-{currency.lower()}.json',
+            AI_PROVIDER, currency, lambda: fetch_billing_status(force=True))
     limits = {period: os.environ.get(f"TRINITY_AGENT_BUDGET_{period.upper()}_EUR", default)
               for period, default in (("daily", "2"), ("weekly", "15"), ("monthly", "60"))}
     return ProviderBalanceLedger.from_provider(DATA_ROOT / "budgets" / "usage-provider-eur.json", limits,
@@ -3017,11 +3022,16 @@ def report_unreported_usage():
         outgoing = max(0, sum(row['output_tokens'] or 0 for row in rows) - previous.get('output_tokens', 0))
         unknown = sum(not row['usage_known'] for row in rows)
         record_model_usage(model, incoming, outgoing)
-        cost = max(0, sum(row['cost_eur'] or 0 for row in rows) - previous.get('cost_eur', 0))
+        currency = str(rows[-1].get('currency') or 'EUR').upper()
+        cost_key = 'cost_' + currency.lower()
+        reserved_key = 'reserved_upper_bound_' + currency.lower()
+        cost = max(0, sum(row.get(cost_key) or 0 for row in rows) - previous.get(cost_key, 0))
         emit({'type': 'usage', 'purpose': 'interrupted_attempt', 'model': model,
+              'provider': AI_PROVIDER,
               'requests': requests, 'input_tokens': incoming, 'output_tokens': outgoing,
-              'cost_eur': cost, 'currency': 'EUR', 'unknown_requests': unknown,
-              'unknown_cost_upper_bound_eur': sum(row['reserved_upper_bound_eur'] for row in rows if not row['usage_known'])})
+              cost_key: cost, 'currency': currency, 'unknown_requests': unknown,
+              'unknown_cost_upper_bound_' + currency.lower():
+                  sum(row.get(reserved_key, 0) for row in rows if not row['usage_known'])})
 
 
 def publish_budget(status):
@@ -3029,9 +3039,6 @@ def publish_budget(status):
 
 
 def current_budget_status():
-    if AI_PROVIDER == 'deepseek':
-        return {'provider': 'deepseek', 'currency': 'USD', 'blocked': False,
-                'enforced': False, 'periods': {}, 'pending_requests': 0}
     try:
         return budget_ledger().status()
     except (OSError, ValueError, RuntimeError) as error:
@@ -3162,10 +3169,21 @@ def get_budgeted_model(model_id):
         # SDK 2.56 predates the new Flash alias. Keep V4's documented thinking
         # and tool-return contract when using the current official model ID.
         profile = provider.model_profile('deepseek-v4-flash' if model_id == 'deepseek-flash' else model_id)
-        return OpenAIChatModel(model_id, provider=provider, profile=profile)
+        model = OpenAIChatModel(model_id, provider=provider, profile=profile)
+        def card(name):
+            value = next(c for c in fetch_model_catalog() if c['id'] == name)
+            rate = Decimal(str(fetch_euro_rates()['rates']['USD']))
+            return {**value, 'currency': 'EUR',
+                    'input_per_million': float(Decimal(str(value['input_per_million'])) / rate),
+                    'output_per_million': float(Decimal(str(value['output_per_million'])) / rate)}
+        return BudgetedModel(model, ledger=budget_ledger, catalog_card=card,
+                             publish=publish_budget, record=record_provider_request)
     if AI_PROVIDER == 'openai':
-        return OpenAIResponsesModel(model_id, provider=OpenAIProvider(
-            api_key=PROVIDER_CONFIG.require_api_key(), base_url=AI_API_BASE_URL))
+        return BudgetedModel(OpenAIResponsesModel(model_id, provider=OpenAIProvider(
+            api_key=PROVIDER_CONFIG.require_api_key(), base_url=AI_API_BASE_URL)),
+            ledger=budget_ledger,
+            catalog_card=lambda name: next(c for c in fetch_model_catalog() if c['id'] == name),
+            publish=publish_budget, record=record_provider_request)
     return BudgetedModel(OpenAIChatModel(
                 model_id,
                 provider=ConfiguredOVHProvider(api_key=os.environ.get("TRINITY_OVHCLOUD_API_KEY")),

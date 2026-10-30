@@ -220,8 +220,8 @@ class BudgetedModel(WrapperModel):
             incoming = Decimal(str(card['input_per_million'])) / 1000000
             outgoing = Decimal(str(card['output_per_million'])) / 1000000
             window = int(card['context_length'])
-            output = int((settings or {})['max_tokens'])
-            if currency != 'EUR' or window <= 0 or not 0 < output <= window:
+            output = int((settings or {}).get('max_tokens') or card['max_completion_tokens'])
+            if currency not in {'EUR', 'USD'} or window <= 0 or not 0 < output <= window:
                 raise ValueError('Paramètres de coût inconnus')
             if not all(p.is_finite() and p >= 0 for p in (incoming, outgoing)):
                 raise ValueError('Tarifs invalides')
@@ -233,6 +233,8 @@ class BudgetedModel(WrapperModel):
         # It does not rely on the approximate context tokenizer or image estimator.
         maximum = window * incoming + output * max(Decimal(0), outgoing - incoming)
         ledger = self.ledger_factory()
+        if getattr(ledger, 'currency', currency) != currency:
+            raise ValueError('Budget : devise du solde incompatible avec le tarif du modèle.')
         try:
             reservation = ledger.reserve(maximum, metadata={
                 'model': self.model_name, 'currency': currency,
@@ -271,10 +273,10 @@ class BudgetedModel(WrapperModel):
                     'provider_response_id': getattr(response, 'provider_response_id', None),
                     'input_tokens': response.usage.input_tokens if amount is not None else None,
                     'output_tokens': response.usage.output_tokens if amount is not None else None,
-                    'cost_eur': float(amount) if amount is not None else None,
-                    'reserved_upper_bound_eur': float(maximum),
+                    'cost_' + self.catalog_card(self.model_name)['currency'].lower(): float(amount) if amount is not None else None,
+                    'reserved_upper_bound_' + self.catalog_card(self.model_name)['currency'].lower(): float(maximum),
                     'usage_known': amount is not None, 'completed': completed,
-                    'currency': 'EUR',
+                    'currency': self.catalog_card(self.model_name)['currency'],
                 }, response)
         self.publish(status)
 

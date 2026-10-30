@@ -44,7 +44,7 @@ class DeepSeekIntegration(unittest.TestCase):
         self.assertEqual(card['provider'], 'deepseek')
         self.assertEqual(a.AI_API_BASE_URL, 'https://api.deepseek.com')
         self.assertIsNone(a.REQUEST_LIMIT)
-        self.assertFalse(a.current_budget_status()['enforced'])
+        self.assertTrue(a.current_budget_status()['blocked'])
         with patch.dict(os.environ, {'TRINITY_AGENT_CONTEXT_TOKENS':'4096','TRINITY_AGENT_OUTPUT_TOKENS':'512'}):
             limits = a.current_limits(card, overhead=1024)
         self.assertEqual(limits.output_tokens, 393216)
@@ -63,8 +63,9 @@ class DeepSeekIntegration(unittest.TestCase):
         self.assertIn('TRINITY_DEEPSEEK_API_KEY', str(failure.exception))
         self.assertNotIn('OVH-MUST-NOT-LEAK', str(failure.exception))
 
-    def test_balance_is_separate_and_does_not_enforce_spending(self):
+    def test_empty_or_disabled_account_balance_blocks_spending(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
+             patch.object(a, 'DATA_ROOT', Path(folder)), \
              patch.dict(os.environ, {'TRINITY_DEEPSEEK_API_KEY': 'deepseek-fixture'}):
             payload={'is_available':False,'balance_infos':[{'currency':'USD','total_balance':'0'}]}
             with patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(payload).encode())) as get:
@@ -73,9 +74,11 @@ class DeepSeekIntegration(unittest.TestCase):
                 self.assertEqual(status['credit_available'],0)
                 self.assertTrue(status['available'])
                 self.assertFalse(status['account_available'])
-                self.assertFalse(a.current_budget_status()['blocked'])
+                guarded = a.current_budget_status()
+                self.assertTrue(guarded['blocked'])
+                self.assertTrue(guarded.get('enforced', guarded['blocked']))
                 self.assertEqual(a.fetch_billing_status(),status)
-                self.assertEqual(get.call_count,1)
+                self.assertEqual(get.call_count,2)
             self.assertEqual(a.billing_file().name,'billing-deepseek.json')
             self.assertEqual(a.router_file().name,'router-deepseek.json')
 
@@ -196,7 +199,9 @@ class DeepSeekIntegration(unittest.TestCase):
                 for key, value in values.items():stack.enter_context(patch.object(a,key,value))
                 stack.enter_context(patch.object(a,'DeepSeekProvider',return_value=provider))
                 stack.enter_context(patch.dict(os.environ, {'TRINITY_DEEPSEEK_API_KEY':'deepseek-fixture'}))
-                stack.enter_context(patch.object(a,'budget_ledger',side_effect=AssertionError('OVH budget must not run')))
+                stack.enter_context(patch.object(a,'fetch_billing_status',return_value={
+                    'available':True, 'account_available':True, 'currency':'EUR',
+                    'credit_available':100, 'last_update':a.now_iso()}))
                 stack.enter_context(patch.object(a,'fetch_model_catalog',return_value=[a.normalise_model(RAW)]))
                 stack.enter_context(patch.object(a,'request_approval',return_value=True))
                 a.begin_verification('Change VALUE to 2 in app.py and preserve my comment.')

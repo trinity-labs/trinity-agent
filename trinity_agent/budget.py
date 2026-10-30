@@ -37,6 +37,121 @@ class BudgetLedgerError(RuntimeError):
     """The ledger cannot be trusted or updated; callers must not send a request."""
 
 
+class AvailableBalanceLedger:
+    """Reserve against a verified balance and fail closed when it is unavailable."""
+
+    def __init__(self, path: Path, provider: str, currency: str, balance: Callable[[], dict]):
+        self.path, self.provider = Path(path), provider
+        self.currency, self.balance = currency.upper(), balance
+
+    def _snapshot(self):
+        try:
+            value = self.balance()
+            if (not isinstance(value, dict) or not value.get('available') or value.get('stale')
+                    or value.get('balance_error') or str(value.get('currency', '')).upper() != self.currency):
+                raise ValueError('solde absent ou périmé')
+            raw_remaining = value['credit_remaining'] if 'credit_remaining' in value else value['credit_available']
+            remaining = _money(raw_remaining)
+            if value.get('account_available') is False:
+                remaining = ZERO
+            return remaining, str(value.get('last_update') or value.get('cached_at') or '')
+        except (KeyError, TypeError, ValueError, InvalidOperation) as error:
+            raise BudgetLedgerError(
+                f'Budget {self.provider} : solde disponible vérifié indisponible ; appel bloqué.') from error
+
+    def _load(self):
+        try:
+            data = json.loads(self.path.read_text(), object_pairs_hook=_unique_object,
+                              parse_constant=_reject_constant)
+        except FileNotFoundError:
+            return {'version': 1, 'provider': self.provider, 'currency': self.currency,
+                    'namespace': uuid.uuid4().hex, 'sequence': 0, 'reported': None,
+                    'pending_spent': '0', 'reservations': {}}
+        try:
+            if (data.get('version') != 1 or data.get('provider') != self.provider
+                    or data.get('currency') != self.currency
+                    or len(bytes.fromhex(data['namespace'])) != 16
+                    or type(data['sequence']) is not int or not 0 <= data['sequence'] < 2**48
+                    or not isinstance(data['reservations'], dict)):
+                raise ValueError
+            _money(data['pending_spent'])
+            if data['reported'] is not None:
+                _money(data['reported']['remaining'])
+            for token, item in data['reservations'].items():
+                if not BudgetLedger._valid_id(token, data):
+                    raise ValueError
+                _money(item['amount'])
+            return data
+        except (KeyError, TypeError, ValueError) as error:
+            raise BudgetLedgerError(f'Registre du solde {self.provider} invalide ; appels bloqués.') from error
+
+    @contextmanager
+    def _transaction(self, refresh=True):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            descriptor = os.open(self.path.with_name(self.path.name + '.lock'), os.O_CREAT | os.O_RDWR, 0o600)
+            with os.fdopen(descriptor, 'r+') as lock:
+                os.fchmod(lock.fileno(), 0o600)
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                data = self._load()
+                if refresh:
+                    remaining, observed_at = self._snapshot()
+                    old = data.get('reported')
+                    if old:
+                        reflected = max(ZERO, _difference(_money(old['remaining']), remaining))
+                        data['pending_spent'] = str(max(ZERO, _difference(
+                            _money(data['pending_spent']), reflected)))
+                    data['reported'] = {'remaining': str(remaining), 'observed_at': observed_at}
+                yield data
+                serialized = json.dumps(data, sort_keys=True, separators=(',', ':'), allow_nan=False)
+                temporary = self.path.with_name('.' + self.path.name + '.' + uuid.uuid4().hex)
+                temporary.write_text(serialized, encoding='utf-8')
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, self.path)
+        except BudgetLedgerError:
+            raise
+        except OSError as error:
+            raise BudgetLedgerError(f'Registre du solde {self.provider} inaccessible ; appels bloqués.') from error
+
+    def _status(self, data):
+        reported = _money(data['reported']['remaining']) if data.get('reported') else ZERO
+        pending = _money(data['pending_spent'])
+        reserved = _total(_money(item['amount']) for item in data['reservations'].values())
+        available = max(ZERO, _difference(reported, _total((pending, reserved))))
+        return {'provider': self.provider, 'currency': self.currency, 'enforced': True,
+                'blocked': available <= ZERO, 'provider_balance': float(reported),
+                'pending_spent': float(pending), 'reserved': float(reserved),
+                'available_to_reserve': float(available),
+                'pending_requests': len(data['reservations']), 'periods': {}}
+
+    def status(self):
+        with self._transaction() as data:
+            return self._status(data)
+
+    def reserve(self, amount, metadata=None):
+        amount = _money(amount)
+        with self._transaction() as data:
+            status = self._status(data)
+            if amount > _money(status['available_to_reserve']):
+                status.update(blocked=True, exceeded_periods=['provider'], requested=float(amount))
+                raise BudgetExceeded(status, amount)
+            data['sequence'] += 1
+            token = BudgetLedger._reservation_id(data['sequence'], data['namespace'])
+            data['reservations'][token] = {'amount': str(amount), 'metadata': metadata or {}}
+            return token
+
+    def settle(self, reservation_id, actual_amount):
+        actual = _money(actual_amount) if actual_amount is not None else None
+        with self._transaction(refresh=False) as data:
+            if not BudgetLedger._valid_id(reservation_id, data):
+                raise BudgetLedgerError('Réservation de solde inconnue ; appels bloqués.')
+            reservation = data['reservations'].pop(reservation_id, None)
+            if reservation is not None:
+                charge = _money(reservation['amount']) if actual is None else actual
+                data['pending_spent'] = str(_total((_money(data['pending_spent']), charge)))
+            return self._status(data)
+
+
 class BudgetExceeded(BudgetLedgerError):
     def __init__(self, status: dict, amount: Decimal):
         self.status = status
@@ -47,9 +162,12 @@ class BudgetExceeded(BudgetLedgerError):
             for name, period in status["periods"].items()
             if (period["limit"] > 0 or name == "provider") and name in status.get("exceeded_periods", [])
         ]
+        if 'provider' in status.get('exceeded_periods', []) and not exceeded:
+            exceeded = ['solde fournisseur disponible']
+        currency = status.get('currency', 'EUR')
         super().__init__(
             f"Budget {' / '.join(exceeded)} insuffisant : "
-            f"la requête nécessite une réservation de {amount} €."
+            f"la requête nécessite une réservation de {amount} {currency}."
         )
 
 
@@ -112,6 +230,8 @@ def _iso(value: datetime) -> str:
 
 
 class BudgetLedger:
+    currency = 'EUR'
+
     def __init__(self, path: Path, limits: dict, now: Callable[[], datetime] | None = None, credit: dict | None = None):
         self.path = Path(path)
         unknown = set(limits) - set(PERIODS)
