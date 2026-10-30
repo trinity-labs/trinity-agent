@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json')));
 const publisher = process.env.MARKETPLACE_PUBLISHER || 'stopyz';
-const {configuredDarkTheme} = require(path.resolve(__dirname, '../../../branding/trinity-branding.cjs'));
+const {configuredDarkTheme} = require(path.resolve(__dirname, '../../branding/trinity-branding.cjs'));
 const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.HistoryDemo';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
@@ -36,12 +36,12 @@ try {
   }
   // Generate from readable sources in the isolated stage: never trust stale build output.
   execFileSync(process.execPath,[path.join(root,'scripts/build-frontend.cjs'),'--out',path.join(stage,'media')],{cwd:root,stdio:'inherit'});
-  fs.copyFileSync(path.resolve(root, '../../LICENSE'), path.join(stage, 'LICENSE'));
+  fs.copyFileSync(path.resolve(root, '../LICENSE'), path.join(stage, 'LICENSE'));
   if (publisher === 'trinity') {
     const crypto = require('node:crypto');
     const backend = {};
-    for (const name of ['trinity-agent.py', 'trinity_agent/agent.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'trinity-agent.sh']) {
-      backend[name] = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(root, '../..', name))).digest('hex');
+    for (const name of ['trinity_agent/__main__.py', 'trinity_agent/agent.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'scripts/trinity-agent.sh']) {
+      backend[name] = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(root, '..', name))).digest('hex');
     }
     fs.writeFileSync(path.join(stage, 'local-update.json'), JSON.stringify({backend}));
   }
@@ -60,8 +60,8 @@ try {
   const output = path.join(root,'dist',`trinity-agent-${publisher === 'trinity' ? 'local-' : ''}${manifest.version}.vsix`);
   fs.mkdirSync(path.dirname(output), {recursive:true});
   execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
-    '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/trinity-agent-extension/extension',
-    '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/trinity-agent-extension/extension'], {cwd:stage,stdio:'inherit'});
+    '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/extension',
+    '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/extension'], {cwd:stage,stdio:'inherit'});
   if (publisher !== 'trinity') {
     const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-finalize-'));
     try {

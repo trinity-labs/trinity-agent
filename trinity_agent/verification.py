@@ -260,10 +260,11 @@ class ChangeGuard:
             folder = path if path.is_dir() else path.parent
             # External projects retain their own checks; never widen the default workspace.
             while self.allow_external or folder.is_relative_to(self.workspace):
-                if any((folder / name).exists() for name in (".trinity-agent-checks.json", "package.json", ".git", "pyproject.toml")):
+                policy_candidates = (folder / "config/trinity-agent-checks.json", folder / ".trinity-agent-checks.json")
+                if any(candidate.exists() for candidate in policy_candidates) or any((folder / name).exists() for name in ("package.json", ".git", "pyproject.toml")):
                     if folder in self.projects:
                         return
-                    policy = folder / ".trinity-agent-checks.json"
+                    policy = next((candidate for candidate in policy_candidates if candidate.is_file()), policy_candidates[0])
                     definitions = []
                     if policy.is_file():
                         self.explicit_policies.add(folder)
@@ -314,7 +315,8 @@ class ChangeGuard:
                         if not isinstance(kind, str) or kind not in {"functional", "syntax"}:
                             raise VerificationError("kind doit être functional ou syntax.")
                         protected = {}
-                        for pattern in [".trinity-agent-checks.json", *protections]:
+                        policy_pattern = str(policy.relative_to(folder))
+                        for pattern in [policy_pattern, *protections]:
                             if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
                                 raise VerificationError("Chemin de contrôle protégé invalide.")
                             for item in folder.glob(pattern):
@@ -357,7 +359,7 @@ class ChangeGuard:
         # turn an uncovered file into an unrestricted bootstrap.
         folder = path.parent
         while self.allow_external or folder.is_relative_to(self.workspace):
-            if (folder / ".trinity-agent-checks.json").exists():
+            if (folder / "config/trinity-agent-checks.json").exists() or (folder / ".trinity-agent-checks.json").exists():
                 return True
             if folder == self.workspace or folder == folder.parent:
                 break

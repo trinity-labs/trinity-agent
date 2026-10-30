@@ -239,7 +239,7 @@ fabriquer une preuve absente.
 
 ### Déclarer un contrat
 
-Le fichier existant `.trinity-agent-checks.json` peut contenir une section optionnelle :
+Le fichier existant `config/trinity-agent-checks.json` peut contenir une section optionnelle :
 
 ```json
 {

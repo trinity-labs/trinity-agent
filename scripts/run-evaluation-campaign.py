@@ -55,7 +55,7 @@ def main():
         if args.dry_run:
             print(json.dumps({'plan':selected,'budget':status,'date':day}));return
         # The provider balance can decrease independently of our local ledger.
-        result=subprocess.run([str(ROOT/'trinity-agent.local.sh'),'--billing-status'],
+        result=subprocess.run([str(ROOT/'scripts/trinity-agent.local.sh'),'--billing-status'],
                               capture_output=True,text=True,timeout=90)
         if result.returncode:
             raise RuntimeError('Impossible de vérifier le crédit OVH ; aucun test lancé.')

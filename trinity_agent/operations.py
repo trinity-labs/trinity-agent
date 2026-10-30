@@ -90,7 +90,8 @@ class OperationSuite:
         self._latest_probes = {}
         self.error = None
         self.policy = None
-        self.policy_name = '.trinity-agent-checks.json'
+        primary_policy = 'config/trinity-agent-checks.json'
+        self.policy_name = primary_policy if (self.workspace / primary_policy).is_file() else '.trinity-agent-checks.json'
         directory = Path.home() / '.ovh-agent' / 'operation-journals' / _hash(str(self.workspace))[:24]
         self.journal = journal if journal is not None else TaskJournal(directory)
         previous = self.journal.verifier

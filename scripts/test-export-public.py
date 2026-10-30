@@ -24,14 +24,14 @@ class PublicExport(unittest.TestCase):
             subprocess.run(['git', '-C', str(source), 'add', '.gitignore', 'scripts/export-public.py'], check=True)
             new_files = ['trinity_agent/project_memory.py', 'scripts/test-project-memory.py', 'trinity_agent/verification.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py',
                          'trinity_agent/context.py', 'trinity_agent/vision.py', 'scripts/test-vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/request.py',
-                         '.trinity-agent-checks.json', 'scripts/test-verification.py',
+                         'config/trinity-agent-checks.json', 'scripts/test-verification.py',
                          'scripts/test-export-public.py', 'scripts/test-resources.py',
-                         'trinity-agent-extension/extension/test/activity.test.cjs']
+                         'extension/test/activity.test.cjs']
             for relative in new_files:
                 file = source / relative
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text('reviewed source\n')
-            for relative in ['.env', 'trinity-agent.local.sh', 'private/token',
+            for relative in ['.env', 'scripts/trinity-agent.local.sh', 'private/token',
                              'local-recovery/backup.py', 'archive/conversation.json']:
                 file = source / relative
                 file.parent.mkdir(parents=True, exist_ok=True)
@@ -66,7 +66,7 @@ class PublicExport(unittest.TestCase):
             self.assertEqual((source / '.git/index').read_bytes(), index)
             self.assertFalse((target / 'docker-compose.yml').exists())
             self.assertFalse((target / '.env').exists())
-            self.assertFalse((target / 'trinity-agent.local.sh').exists())
+            self.assertFalse((target / 'scripts/trinity-agent.local.sh').exists())
             compose = (target / 'docker-compose.example.yml').read_text()
             for period, amount in [('DAILY',2),('WEEKLY',15),('MONTHLY',60)]:
                 self.assertIn(f'OVH_AGENT_BUDGET_{period}_EUR:-{amount}', compose)

@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: trinity-agent-extension/extension
+        working-directory: extension
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -23,26 +23,26 @@ jobs:
         with:
           node-version: '*'
           cache: npm
-          cache-dependency-path: trinity-agent-extension/extension/package-lock.json
+          cache-dependency-path: extension/package-lock.json
       - name: Install system search dependency
         run: sudo apt-get update && sudo apt-get install -y ripgrep
         working-directory: .
       - run: npm run dependencies:latest
       - run: npm test
-      - run: python3 ../../scripts/test-auto-update.py
-      - run: python3 ../../scripts/test-export-public.py
+      - run: python3 ../scripts/test-auto-update.py
+      - run: python3 ../scripts/test-export-public.py
       - name: Verify backend changes before packaging
         env:
           PYDANTIC_AI_NO_BANNER: '1'
         run: |
           python3 -m venv "$RUNNER_TEMP/agent-verification"
           "$RUNNER_TEMP/agent-verification/bin/pip" install --upgrade --upgrade-strategy eager 'pydantic-ai-slim[openai]'
-          "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/check-backend.py
+          "$RUNNER_TEMP/agent-verification/bin/python" ../scripts/check-backend.py
       - name: Evaluate independent autonomy scenarios without paid calls
         env:
           PYDANTIC_AI_NO_BANNER: '1'
         run: |
-          "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/evaluate-agent.py --seed 20261019 --output "$RUNNER_TEMP/agent-evaluation.json"
+          "$RUNNER_TEMP/agent-verification/bin/python" ../scripts/evaluate-agent.py --seed 20261019 --output "$RUNNER_TEMP/agent-evaluation.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: autonomy-evaluation
@@ -53,7 +53,7 @@ jobs:
         env:
           PYDANTIC_AI_NO_BANNER: '1'
         run: |
-          "$RUNNER_TEMP/agent-verification/bin/python" ../../scripts/benchmark-performance.py --runs 1 --output "$RUNNER_TEMP/backend-performance.json"
+          "$RUNNER_TEMP/agent-verification/bin/python" ../scripts/benchmark-performance.py --runs 1 --output "$RUNNER_TEMP/backend-performance.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: backend-performance
@@ -76,13 +76,13 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: tested-dependency-resolution
-          path: trinity-agent-extension/extension/package-lock.json
+          path: extension/package-lock.json
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: extension-vsix
-          path: trinity-agent-extension/extension/dist/*.vsix
+          path: extension/dist/*.vsix
           if-no-files-found: error
           retention-days: 14
   local-package:
@@ -99,16 +99,16 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: tested-dependency-resolution
-          path: trinity-agent-extension/extension
+          path: extension
       - run: npm ci --ignore-scripts && npm run build:vendor && npm run package:vsix
-        working-directory: trinity-agent-extension/extension
+        working-directory: extension
         env:
           MARKETPLACE_PUBLISHER: trinity
           RELEASE_TAG: ${{ github.ref_name }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: local-extension-vsix
-          path: trinity-agent-extension/extension/dist/*-local-*.vsix
+          path: extension/dist/*-local-*.vsix
           if-no-files-found: error
   github-release:
     if: startsWith(github.ref, 'refs/tags/v')

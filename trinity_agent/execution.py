@@ -530,7 +530,7 @@ class WorkflowController:
                     total += path.stat().st_size
                 if total > 24_000_000 or self._hash_file(path) != expected:
                     return False
-                policy_present |= path.name == '.trinity-agent-checks.json' and expected is not None
+                policy_present |= (path.name == '.trinity-agent-checks.json' or path.as_posix().endswith('/config/trinity-agent-checks.json')) and expected is not None
             return policy_present
         except (OSError, ValueError, TypeError):
             return False

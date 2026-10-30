@@ -838,7 +838,7 @@ class Sessions(unittest.TestCase):
         other_workspace.mkdir()
         with a.backend_session():
             result = subprocess.run(
-                [sys.executable, str(ROOT / 'trinity-agent.py'), '--json-lines'],
+                [sys.executable, '-m', 'trinity_agent', '--json-lines'],
                 env={**os.environ, 'OVH_AGENT_DATA_ROOT': str(self.root),
                      'OVH_AGENT_WORKSPACE': str(other_workspace)},
                 input=json.dumps({'type': 'shutdown'}) + '\n',

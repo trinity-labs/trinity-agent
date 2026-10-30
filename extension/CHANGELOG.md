@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.0
+
+- Remove all remaining `trinity-*` entries from the repository root: the Python entry point now lives in `trinity_agent`, launchers live in `scripts`, and the VS Code source lives in `extension`.
+- Migrate saved root launcher paths to `scripts/` while preserving conversation startup for existing installations.
+- Update packaging, CI, public export, auto-update, tests and documentation for the final source layout.
+
 ## 3.1.0
 
 - Migrate saved `ovh-agent.sh` and `ovh-agent.local.sh` backend paths to the renamed TRINITY launchers when the legacy file no longer exists.
@@ -13,7 +19,7 @@
 ## 2.0.0
 
 - Move the Python backend from root-level `ovh_*.py` modules into the `trinity_agent` package with concise module names.
-- Keep `trinity-agent.py` as a compatibility launcher while updating deployment integrity checks, public exports, tests and documentation for the package layout.
+- Keep `trinity_agent/__main__.py` as a compatibility launcher while updating deployment integrity checks, public exports, tests and documentation for the package layout.
 
 ## 1.17.100
 

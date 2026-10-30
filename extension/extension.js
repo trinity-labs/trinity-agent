@@ -22,7 +22,7 @@ const BRAND_NAME = [process.env.OVH_AGENT_NAME, require("./package.json").displa
 
 
 function agentPath() {
-  const configured = process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/trinity-agent.sh";
+  const configured = process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/scripts/trinity-agent.sh";
   return resolveBackendPath(configured, fs.existsSync);
 }
 const OVH_SECRET_DIRECTORY = "/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity";

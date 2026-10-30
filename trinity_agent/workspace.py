@@ -52,7 +52,7 @@ class WorkspaceContext:
 
     def project_context(self):
         facts = {'root': str(self.workspace), 'name': self.workspace.name,
-                 'manifests': [p for p in ('package.json','pyproject.toml','requirements.txt','Cargo.toml','go.mod','docker-compose.yml','.trinity-agent-checks.json') if (self.workspace/p).is_file()]}
+                 'manifests': [p for p in ('package.json','pyproject.toml','requirements.txt','Cargo.toml','go.mod','docker-compose.yml','config/trinity-agent-checks.json','.trinity-agent-checks.json') if (self.workspace/p).is_file()]}
         memory=ProjectMemory(self.data,self.id,self.workspace)
         memory.initialise()
         # Keep permanent context bounded. The index and memory tools expose the

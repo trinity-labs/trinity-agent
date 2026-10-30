@@ -106,9 +106,14 @@ class AcceptanceSuite:
         self._budget = MAX_TOTAL_BYTES
         self._observed = {}
         try:
-            supplied = Path(policy_path) if policy_path is not None else Path(".trinity-agent-checks.json")
+            explicit_policy = policy_path is not None
+            if explicit_policy:
+                supplied = Path(policy_path)
+            else:
+                primary = Path("config/trinity-agent-checks.json")
+                supplied = primary if (self.workspace / primary).is_file() else Path(".trinity-agent-checks.json")
             self._policy_name = self._relative(supplied)
-            self._base = PurePosixPath(self._policy_name).parent
+            self._base = PurePosixPath(self._policy_name).parent if explicit_policy else PurePosixPath(".")
             policy = self._snapshot(self._policy_name)
             self._policy_snapshot = self._identity(policy)
             if policy["kind"] == "absent":

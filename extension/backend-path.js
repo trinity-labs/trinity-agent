@@ -1,8 +1,10 @@
 const path = require("path");
 
 const LEGACY_LAUNCHERS = new Map([
-  ["ovh-agent.local.sh", "trinity-agent.local.sh"],
-  ["ovh-agent.sh", "trinity-agent.sh"],
+  ["ovh-agent.local.sh", "scripts/trinity-agent.local.sh"],
+  ["ovh-agent.sh", "scripts/trinity-agent.sh"],
+  ["trinity-agent.local.sh", "scripts/trinity-agent.local.sh"],
+  ["trinity-agent.sh", "scripts/trinity-agent.sh"],
 ]);
 
 function resolveBackendPath(configured, existsSync) {
