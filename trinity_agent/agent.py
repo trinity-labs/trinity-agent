@@ -1951,7 +1951,7 @@ def local_provider_month_usage(provider: str) -> dict[str, object]:
                     try: event = json.loads(line)
                     except ValueError: continue
                     if (not isinstance(event, dict) or event.get('type') != 'usage'
-                            or event.get('provider', provider) != provider
+                            or event.get('provider') != provider
                             or not str(event.get('timestamp', '')).startswith(month)):
                         continue
                     totals['input_tokens'] += max(0, int(event.get('input_tokens', 0) or 0))
@@ -1967,7 +1967,7 @@ def local_provider_month_usage(provider: str) -> dict[str, object]:
 def fetch_billing_status(force: bool = False) -> dict[str, object]:
     if AI_PROVIDER == 'openai':
         key=PROVIDER_CONFIG.api_key()
-        try: credit=Decimal(os.environ.get(PROVIDER_CONFIG.monthly_credit_env,'0') or '0')
+        try: credit=Decimal(os.environ.get(PROVIDER_CONFIG.monthly_credit_env,'100') or '0')
         except InvalidOperation: credit=Decimal(0)
         usage = local_provider_month_usage('openai')
         spent = usage.pop('cost')

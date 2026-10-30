@@ -53,6 +53,21 @@ class OpenAIProviderTests(unittest.TestCase):
         self.assertAlmostEqual(status['current_usage'], .00455)
         self.assertAlmostEqual(status['credit_remaining'], 99.99545)
 
+    def test_default_allowance_excludes_legacy_usage_without_provider(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(agent, 'DATA_ROOT', Path(folder)):
+            target = Path(folder)/'archive'/'workspace'/'conversation'
+            target.mkdir(parents=True)
+            now = datetime.now(timezone.utc).isoformat()
+            (target/'events.jsonl').write_text(json.dumps({'type':'usage','timestamp':now,
+                'input_tokens':999999,'output_tokens':999999,'cost_usd':99})+'\n')
+            with patch.dict(os.environ, {'TRINITY_OPENAI_API_KEY':'openai-fixture'}):
+                os.environ.pop('TRINITY_OPENAI_MONTHLY_CREDIT_USD', None)
+                status = agent.fetch_billing_status()
+        self.assertEqual(status['credit_available'], 100)
+        self.assertEqual(status['credit_remaining'], 100)
+        self.assertEqual(status['input_tokens'], 0)
+        self.assertEqual(status['output_tokens'], 0)
+
     def test_model_panel_can_collect_both_other_provider_catalogues(self):
         payloads = [
             {'data':[{'id':'gpt-oss-120b','owned_by':'openai','pricing':{'currency_unit':'EUR','prompt':'0.000001','completion':'0.000002'}}]},

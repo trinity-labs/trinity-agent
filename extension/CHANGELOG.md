@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.1.0
+
+- Activate OpenAI Codex with a provider-specific key and a real Responses API validation.
+- Default the OpenAI monthly allowance to 100 USD outside Compose and exclude legacy usage events that do not identify OpenAI.
+
 ## 5.0.0
 
 - Refactor TRINITY Agent around provider-specific API configuration and add OpenAI Codex through the Responses API.
