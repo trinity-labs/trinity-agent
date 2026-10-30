@@ -1,5 +1,17 @@
 # Changelog
 
+## 5.3.8
+
+- Add subtle horizontal spacing around mount-point storage units, with slightly more room after each unit.
+
+## 5.3.6
+
+- Keep mount-point storage values and their dimmed units on one line.
+
+## 5.3.5
+
+- Dim storage units in the mount-point usage display while keeping the numeric values fully visible.
+
 ## 5.3.4
 
 - Restore Marketplace upgrade compatibility by publishing to the historical `stopyz.ovh-agent` identifier while keeping the local `trinity.trinity-agent` identity.

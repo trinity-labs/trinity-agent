@@ -2689,14 +2689,28 @@ function updateArchiveMount(data) {
   if(validVolume||validStored) {
     const units=['byte','kilobyte','megabyte','gigabyte','terabyte','petabyte'];
     const symbols=['B','KB','MB','GB','TB','PB'];
-    const format=bytes=>{
+    const formatParts=bytes=>{
       const index=bytes===0?0:Math.min(units.length-1,Math.floor(Math.log10(bytes)/3));
-      return `${new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:1}).format(bytes/1000**index)}${symbols[index]}`;
+      return {
+        value:new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:1}).format(bytes/1000**index),
+        unit:symbols[index]
+      };
     };
-    used.textContent=[validStored&&format(storedBytes),validVolume&&format(volumeBytes)].filter(Boolean).join(' / ');
+    const appendSize=bytes=>{
+      const {value,unit}=formatParts(bytes);
+      used.append(document.createTextNode(value));
+      const unitNode=document.createElement('span');
+      unitNode.className='archive-storage-unit';
+      unitNode.textContent=unit;
+      used.append(unitNode);
+      return `${value}${unit}`;
+    };
+    const storedText=validStored?appendSize(storedBytes):'';
+    if(validStored&&validVolume)used.append(document.createTextNode(' / '));
+    const volumeText=validVolume?appendSize(volumeBytes):'';
     used.title=validStored&&validVolume
-      ?t('Données TRINITY : {0} · espace utilisé sur le volume : {1}',format(storedBytes),format(volumeBytes))
-      :validStored?t('Données TRINITY : {0}',format(storedBytes)):t('Espace utilisé sur le volume : {0}',format(volumeBytes));
+      ?t('Données TRINITY : {0} · espace utilisé sur le volume : {1}',storedText,volumeText)
+      :validStored?t('Données TRINITY : {0}',storedText):t('Espace utilisé sur le volume : {0}',volumeText);
   }
 }
 
