@@ -2110,27 +2110,31 @@ function restoreExecutionEvidence(root, timeline) {
 }
 
 function formatModelCost(value, currency = "EUR", context = {}) {
-  if (isDeepSeekCost(context) && String(currency).toUpperCase() !== "EUR") {
-    const exchange = context.exchange_rates?.rates?.[String(currency).toUpperCase()] > 0
-      ? context.exchange_rates : deepSeekExchangeRates;
-    const rate = Number(exchange?.rates?.[String(currency).toUpperCase()]);
+  const target = String(context.display_currency || displayCurrency || "EUR").toUpperCase();
+  const source = String(currency || "EUR").toUpperCase();
+  if (source !== target) {
+    const exchange = context.exchange_rates?.rates?.[source] > 0 ? context.exchange_rates : currencyExchangeRates;
+    const sourceRate = Number(exchange?.rates?.[source]);
+    const targetRate = Number(exchange?.rates?.[target]);
     const amount = value == null ? NaN : Number(value);
-    if (!exchange?.date || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(amount / rate)) {
-      return t("Conversion en euros indisponible");
+    if (!exchange?.date || !Number.isFinite(sourceRate) || sourceRate <= 0 ||
+        !Number.isFinite(targetRate) || targetRate <= 0 || !Number.isFinite(amount / sourceRate * targetRate)) {
+      return t("Conversion indisponible");
     }
-    return formatMoney(amount / rate, "EUR") + (exchange.stale ? t(" (non actualisé)") : "");
+    return formatMoney(amount / sourceRate * targetRate, target) + (exchange.stale ? t(" (non actualisé)") : "");
   }
-  return formatMoney(value, currency);
+  return formatMoney(value, target);
 }
 
-let deepSeekExchangeRates = null;
+let currencyExchangeRates = null, displayCurrency = "EUR";
 
 function isDeepSeekCost(data) {
   return data?.provider === "deepseek" || String(data?.model || data?.id || "").startsWith("deepseek-");
 }
 
 function rememberExchangeRates(data) {
-  if (data.exchange_rates) deepSeekExchangeRates = data.exchange_rates;
+  if (data.exchange_rates) currencyExchangeRates = data.exchange_rates;
+  if (data.display_currency) displayCurrency = String(data.display_currency).toUpperCase();
 }
 
 function refreshDeepSeekCosts() {
@@ -2176,6 +2180,7 @@ function formatMoney(value, currency = "EUR") {
 }
 
 function applyBillingStatus(data, announce = true) {
+  rememberExchangeRates(data);
   const provider = ["deepseek","openai","ovhcloud"].includes(data.provider) ? data.provider : "ovhcloud";
   const providerLabel = provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI Codex" : "OVHcloud";
   if (document.body.dataset.provider && document.body.dataset.provider !== provider) return;
@@ -2221,13 +2226,13 @@ function applyBillingStatus(data, announce = true) {
     if (available) {
       const amount = document.createElement("span");
       amount.className = "balance-amount";
-      amount.textContent = formatMoney(data.credit_remaining, "USD");
+      amount.textContent = formatModelCost(data.credit_remaining, "USD", data);
       liveBalance.replaceChildren(document.createTextNode("OpenAI Codex · "), amount);
     } else liveBalance.textContent = "OpenAI Codex · —";
     const input = Number(data.input_tokens || 0).toLocaleString(uiLanguage);
     const output = Number(data.output_tokens || 0).toLocaleString(uiLanguage);
     billing.title = liveBalance.title = available
-      ? `Allocation configurée ${formatMoney(data.credit_available, "USD")} · usage local estimé ${formatMoney(data.current_usage, "USD")}\n${input} tokens entrée · ${output} tokens sortie · ${data.requests || 0} requête(s)\nLa facturation de l’organisation OpenAI reste la source officielle.`
+      ? `Allocation configurée ${formatModelCost(data.credit_available, "USD", data)} · usage local estimé ${formatModelCost(data.current_usage, "USD", data)}\n${input} tokens entrée · ${output} tokens sortie · ${data.requests || 0} requête(s)\nConversion ${data.display_currency || displayCurrency} · taux BCE du ${data.exchange_rates?.date || "—"}. La facturation de l’organisation OpenAI reste la source officielle.`
       : (data.configured ? "Suivi local OpenAI indisponible" : "Configurer la clé API OpenAI avec l’icône clé");
     billing.classList.toggle("connected", Boolean(available));
     billing.classList.toggle("failed", !available);

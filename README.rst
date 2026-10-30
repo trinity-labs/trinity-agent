@@ -89,6 +89,9 @@ Configuration
 * ``TRINITY_AGENT_NAME``: public extension name.
 * ``TRINITY_AGENT_PRIMARY_COLOR``: primary color, ``#RRGGBB``.
 * ``TRINITY_AGENT_LANG``: ``auto``, ``fr``, ``en``, ``de`` or ``es``.
+* ``TRINITY_AGENT_DISPLAY_CURRENCY``: devise ISO 4217 d’affichage, ``EUR`` par défaut.
+  Les soldes et coûts sont convertis automatiquement avec le taux de référence BCE,
+  sans modifier la comptabilité ni le verrou du fournisseur dans sa devise native.
 * ``TRINITY_AGENT_SHOW_MOUNT_POINT``: ``false`` removes the history banner entirely.
 * ``TRINITY_OVHCLOUD_BASE_URL``: AI endpoint base URL.
 * ``TRINITY_OVHCLOUD_API_BASE_URL``: separate billing API base URL, loaded from server secrets.

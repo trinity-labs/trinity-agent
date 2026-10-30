@@ -29,10 +29,12 @@ test('OpenAI shows configured allowance, local token usage and official-billing 
   try {
     w.applyBillingStatus({provider:'openai',configured:true,available:true,currency:'USD',
       credit_available:100,current_usage:1.25,credit_remaining:98.75,input_tokens:1200,
-      output_tokens:300,requests:2,refresh_seconds:60});
+      output_tokens:300,requests:2,refresh_seconds:60,display_currency:'EUR',
+      exchange_rates:{date:'2026-10-30',rates:{EUR:1,USD:2}}});
     assert.match(w.liveBalance.textContent,/OpenAI Codex/);
-    assert.match(w.liveBalance.textContent,/98,75/);
-    assert.match(w.liveBalance.title,/1,25/);
+    assert.match(w.liveBalance.textContent,/49,38/);
+    assert.match(w.liveBalance.textContent,/€/);
+    assert.match(w.liveBalance.title,/0,63/);
     assert.match(w.liveBalance.title,/1.?200 tokens entrée/);
     assert.match(w.liveBalance.title,/source officielle/);
     assert.doesNotMatch(w.liveBalance.title,/OVH/);
@@ -117,17 +119,22 @@ test('budget updates do not add an indicator or change OVH credit', () => {
   } finally {dom.window.close();}
 });
 
-test('catalogue and model costs use native currency with cent precision and no conversion', () => {
+test('catalogue and model costs use the selected display currency', () => {
   const dom = billingView(), w = dom.window;
   try {
     const price = w.priceLabel({id: 'native-eur', currency: 'EUR', input_per_million: .08, output_per_million: .32});
     assert.match(price, /0,08\s*€ entrée.*0,32\s*€ sortie/);
     assert.doesNotMatch(price, /\$/);
     assert.match(w.priceLabel({id: 'default-eur', hourly: .126}), /0,13\s*€\/heure/);
-    assert.match(w.priceLabel({id: 'legacy-usd', currency: 'USD', input_per_million: .08}), /0,08\s*\$US entrée/);
+    assert.match(w.priceLabel({id: 'legacy-usd', currency: 'USD', input_per_million: .08,
+      display_currency:'USD'}), /0,08\s*\$US entrée/);
     assert.match(w.formatModelCost(.009), /0,01\s*€/);
     assert.match(w.formatModelCost(0), /0,00\s*€/);
-    assert.match(w.formatModelCost(1.23, 'USD'), /1,23\s*\$US/);
+    assert.match(w.formatModelCost(1.23, 'USD', {display_currency:'USD'}), /1,23\s*\$US/);
+    assert.match(w.formatModelCost(2, 'USD', {display_currency:'EUR',
+      exchange_rates:{date:'2026-10-30',rates:{EUR:1,USD:2}}}), /1,00\s*€/);
+    assert.match(w.formatModelCost(2, 'USD', {display_currency:'GBP',
+      exchange_rates:{date:'2026-10-30',rates:{EUR:1,USD:2,GBP:.8}}}), /0,80\s*£GB/);
   } finally {dom.window.close();}
 });
 
@@ -243,7 +250,7 @@ test('DeepSeek prices and costs convert USD and CNY, keeping OVH prices native',
   assert.match(w.priceLabel({id:'deepseek-flash',currency:'USD',input_per_million:.3,output_per_million:1.2,...context}),/0,15\s*€ entrée.*0,60\s*€ sortie/);
   assert.match(w.formatModelCost(16,'CNY',context),/2,00\s*€/);
   assert.match(w.formatModelCost(0,'USD',context),/0,00\s*€/);
-  assert.match(w.formatModelCost(2,'USD'),/2,00\s*\$US/);
+  assert.match(w.formatModelCost(2,'USD',{display_currency:'USD'}),/2,00\s*\$US/);
   assert.match(w.formatModelCost(2,'USD',{...context,exchange_rates:{date:'2026-10-28',rates:{}}}),/indisponible/);
   assert.match(w.formatModelCost(2,'USD',{...context,exchange_rates:{...eurRates,stale:true}}),/1,00.*non actualisé/);
  } finally {dom.window.close();}

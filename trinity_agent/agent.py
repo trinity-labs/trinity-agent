@@ -89,6 +89,9 @@ STATE_ROOT = DATA_ROOT / "sessions"
 PROVIDER_CONFIG = selected_provider()
 AI_PROVIDER = PROVIDER_CONFIG.id
 PROVIDER_CURRENCY = PROVIDER_CONFIG.currency
+DISPLAY_CURRENCY = os.environ.get('TRINITY_AGENT_DISPLAY_CURRENCY', 'EUR').strip().upper()
+if not re.fullmatch(r'[A-Z]{3}', DISPLAY_CURRENCY):
+    raise ValueError('TRINITY_AGENT_DISPLAY_CURRENCY doit être un code ISO 4217 de trois lettres.')
 USAGE_COST_FIELD = 'cost_eur' if PROVIDER_CURRENCY == 'EUR' else 'cost_usd'
 DEFAULT_MODEL = PROVIDER_CONFIG.default_model
 AUTO_MODEL = "auto-balanced"
@@ -414,8 +417,8 @@ def emit(payload: dict[str, object]) -> None:
     # their original meaning. Never feed converted prices back into routing.
     if payload.get('type') in {'usage', 'model_routed'}:
         payload.setdefault('provider', AI_PROVIDER)
-    if payload.get('type') in {'models', 'usage', 'model_routed', 'archive_loaded', 'snapshot_loaded'}:
-        payload = with_euro_display(payload)
+    if payload.get('type') in {'models', 'usage', 'model_routed', 'billing_status', 'archive_loaded', 'snapshot_loaded'}:
+        payload = with_currency_display(payload)
     if payload.get('type') == 'usage':
         total = run_dependencies().usage_reported.setdefault(str(payload.get('model', '')), {})
         for key in ('requests', 'input_tokens', 'output_tokens'):
@@ -1796,11 +1799,12 @@ def validated_euro_rates(data: dict) -> dict:
     age = (datetime.now(timezone.utc).date() - date.date()).days
     if not 0 <= age <= 7:
         raise ValueError('Taux de change trop ancien ou futur')
-    rates = {currency: Decimal(str(data['rates'][currency])) for currency in ('USD', 'CNY')}
+    rates = {str(currency).upper(): Decimal(str(value)) for currency, value in data['rates'].items()}
+    rates.setdefault('EUR', Decimal(1))
     if not all(value.is_finite() and value > 0 and math.isfinite(float(value)) and float(value) > 0
                for value in rates.values()):
         raise ValueError('Taux de change invalide')
-    return {**data, 'rates': {'EUR': 1, **{k: float(v) for k, v in rates.items()}}}
+    return {**data, 'rates': {k: float(v) for k, v in rates.items()}}
 
 
 def fetch_euro_rates() -> dict:
@@ -1830,7 +1834,7 @@ def fetch_euro_rates() -> dict:
             day = next(node for node in tree.iter() if node.get('time'))
             data = validated_euro_rates({'source': ECB_RATES_URL, 'date': day.attrib['time'],
                 'rates': {node.attrib['currency']: node.attrib['rate'] for node in day
-                          if node.get('currency') in {'USD', 'CNY'}},
+                          if re.fullmatch(r'[A-Z]{3}', node.get('currency', ''))},
                 'cached_at': time.time(), 'stale': False})
             try:
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1844,26 +1848,24 @@ def fetch_euro_rates() -> dict:
         return data
 
 
-def with_euro_display(payload: dict) -> dict:
-    """Attach exchange evidence to DeepSeek views, including old USD events."""
+def with_currency_display(payload: dict) -> dict:
+    """Attach one display currency without changing native accounting values."""
     result = dict(payload)
+    result['display_currency'] = DISPLAY_CURRENCY
     if payload.get('type') == 'models':
         cards = payload.get('items', [])
-        if any(card.get('provider') == 'deepseek' for card in cards):
-            rates = fetch_euro_rates()
-            result['exchange_rates'] = rates
-            result['items'] = [dict(card, exchange_rates=rates) if card.get('provider') == 'deepseek'
-                               else card for card in cards]
+        rates = fetch_euro_rates()
+        result['exchange_rates'] = rates
+        result['items'] = [dict(card, exchange_rates=rates, display_currency=DISPLAY_CURRENCY) for card in cards]
     elif payload.get('type') in {'archive_loaded', 'snapshot_loaded'}:
         key = 'messages' if payload['type'] == 'archive_loaded' else 'timeline'
-        result[key] = [with_euro_display(event) for event in payload.get(key, [])]
-    elif (payload.get('type') in {'usage', 'model_routed'}
-          and (payload.get('provider') == 'deepseek' or str(payload.get('model', '')).startswith('deepseek-'))):
-        # Keep a conversion recorded with the event; old events use today's
-        # dated reference for presentation without rewriting their archive.
-        if 'exchange_rates' not in result:
-            result['exchange_rates'] = fetch_euro_rates()
+        result[key] = [with_currency_display(event) for event in payload.get(key, [])]
+    if payload.get('type') in {'models', 'usage', 'model_routed', 'billing_status'}:
+        result.setdefault('exchange_rates', fetch_euro_rates())
     return result
+
+
+with_euro_display = with_currency_display
 
 
 def deepseek_euro_balance(payload: dict, rates: dict) -> dict:

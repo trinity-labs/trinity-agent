@@ -2,7 +2,7 @@
   "name": "trinity-agent",
   "displayName": "TRINITY Agent",
   "description": "Open-source coding assistant and multi-provider model API relay for OpenAI Codex, OVHcloud AI Endpoints and DeepSeek.",
-  "version": "5.2.1",
+  "version": "5.3.0",
   "icon": "media/trinity-icon.png",
   "trinityAgentBranding": {
     "lightThemeIcon": "media/trinity-icon.png",

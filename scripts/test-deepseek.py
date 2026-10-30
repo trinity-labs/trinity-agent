@@ -148,7 +148,8 @@ class DeepSeekIntegration(unittest.TestCase):
         display = a.with_euro_display({'type': 'models', 'items': [card, ovh]})
         self.assertEqual(display['items'][0]['input_per_million'], card['input_per_million'])
         self.assertEqual(display['items'][0]['exchange_rates'], RATES)
-        self.assertNotIn('exchange_rates', display['items'][1])
+        self.assertEqual(display['items'][1]['display_currency'], 'EUR')
+        self.assertEqual(display['items'][1]['exchange_rates'], RATES)
         self.assertNotIn('exchange_rates', card)
 
     def test_real_sdk_preserves_reasoning_across_read_edit_verify_and_answer(self):

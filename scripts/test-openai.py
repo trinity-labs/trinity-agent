@@ -41,6 +41,19 @@ class OpenAIProviderTests(unittest.TestCase):
         self.assertEqual(card['output_per_million'], 14.0)
         self.assertTrue(agent.model_capabilities('gpt-5.3-codex')['tools'])
 
+    def test_display_currency_keeps_native_accounting_and_accepts_ecb_currencies(self):
+        rates = agent.validated_euro_rates({'source': agent.ECB_RATES_URL,
+            'date': datetime.now(timezone.utc).date().isoformat(),
+            'rates': {'USD': 2, 'GBP': .8}, 'cached_at': 1, 'stale': False})
+        self.assertEqual(rates['rates']['GBP'], .8)
+        with patch.object(agent, 'DISPLAY_CURRENCY', 'GBP'), patch.object(agent, 'fetch_euro_rates', return_value=rates):
+            displayed = agent.with_currency_display({'type':'usage','provider':'openai',
+                'currency':'USD','cost_usd':2})
+        self.assertEqual(displayed['currency'], 'USD')
+        self.assertEqual(displayed['cost_usd'], 2)
+        self.assertEqual(displayed['display_currency'], 'GBP')
+        self.assertEqual(displayed['exchange_rates']['rates']['GBP'], .8)
+
     def test_monthly_allowance_uses_observed_local_tokens_and_cost(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(agent, 'DATA_ROOT', Path(folder)):
             target = Path(folder)/'archive'/'workspace'/'conversation'

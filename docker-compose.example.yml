@@ -63,6 +63,8 @@ services:
       TRINITY_AGENT_ARCHIVE_CACHE_MB: "${TRINITY_AGENT_ARCHIVE_CACHE_MB:-auto}"
       # Solde estimé : crédit OVH moins consommation courante, affichage au centime
       TRINITY_AGENT_BILLING_CACHE_SECONDS: "${TRINITY_AGENT_BILLING_CACHE_SECONDS:-60}"
+      # Devise d'affichage ISO 4217 ; comptes et verrous restent dans leur devise native
+      TRINITY_AGENT_DISPLAY_CURRENCY: "${TRINITY_AGENT_DISPLAY_CURRENCY:-EUR}"
       # Budgets de toute l’installation, périodes calendaires UTC ; 0 = illimité
       TRINITY_AGENT_BUDGET_DAILY_EUR: "${TRINITY_AGENT_BUDGET_DAILY_EUR:-2}"
       TRINITY_AGENT_BUDGET_WEEKLY_EUR: "${TRINITY_AGENT_BUDGET_WEEKLY_EUR:-15}"
