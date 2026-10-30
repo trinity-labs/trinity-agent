@@ -27,5 +27,5 @@ export OVHCLOUD_API_KEY="$OVH_AI_API_KEY"
 export OVH_AGENT_WORKSPACE="${OVH_AGENT_WORKSPACE:-$PWD}"
 
 exec /opt/ovh-agent/bin/python \
-  /home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-agent.py \
+  /home/coder/TRINITY-DOCKER/var/docker/docker_ide/trinity-agent.py \
   "$@"

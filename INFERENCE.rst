@@ -158,7 +158,7 @@ au maximum huit extraits dans 24 000 caractères. Son attente reste limitée
 à 2,5 secondes ; les outils peuvent ensuite poursuivre une lecture ciblée.
 Le parcours reste limité aux racines de projet sélectionnées.
 
-Le fichier local ``.env`` est relu par ``ovh-agent.local.sh`` au lancement du
+Le fichier local ``.env`` est relu par ``trinity-agent.local.sh`` au lancement du
 backend, avec les cinq paramètres ci-dessus positionnés sur ``auto``. Les
 plafonds de dépenses et de génération ne changent pas.
 L'inférence du grand modèle reste hébergée ; la RAM et le CPU locaux servent
@@ -302,7 +302,7 @@ Le chat accepte les captures collées avec Ctrl+V / Cmd+V, via les fichiers ou l
 sérialisées pour respecter cinq images maximum ; l'envoi attend leur fin.
 
 Validation hors ligne complète : ``python scripts/check-backend.py`` et
-``npm --prefix ovh-agent-extension/extension test``. Les benchmarks payants ne
+``npm --prefix trinity-agent-extension/extension test``. Les benchmarks payants ne
 sont jamais lancés par la CI. Le cron Git existant reste inchangé.
 
 La méthode 2 ferme les clients HTTP dans leur boucle, garde la même boucle lors

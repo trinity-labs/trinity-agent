@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXTENSIONS = Path.home() / '.local/share/code-server/extensions'
 API = 'https://api.github.com/repos/trinity-labs/trinity-agent/releases/latest'
 PREFIX = 'https://github.com/trinity-labs/trinity-agent/releases/download/'
-BACKEND_FILES = {'ovh-agent.py', 'trinity_agent/agent.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'ovh-agent.sh'}
+BACKEND_FILES = {'trinity-agent.py', 'trinity_agent/agent.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'trinity-agent.sh'}
 
 
 def version(value):
@@ -115,9 +115,9 @@ def update():
         validate(package, target)
         branding = branding_environment(directory)
         # Validate/sanitize custom assets before modifying the installed extension.
-        subprocess.run(['node', str(ROOT / 'ovh-branding.cjs')], env=branding, check=True, timeout=30)
+        subprocess.run(['node', str(ROOT / 'branding/trinity-branding.cjs')], env=branding, check=True, timeout=30)
         subprocess.run(['code-server', '--install-extension', str(package), '--force'], check=True, timeout=180)
-        subprocess.run(['node', str(ROOT / 'ovh-branding.cjs')], env=branding, check=True, timeout=30)
+        subprocess.run(['node', str(ROOT / 'branding/trinity-branding.cjs')], env=branding, check=True, timeout=30)
     if current() != target:
         raise ValueError('Installation verification failed')
     print('Auto-update: installed ' + target + '; reload the editor to activate. No task interrupted.', flush=True)

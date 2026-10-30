@@ -22,7 +22,7 @@ class AcceptanceTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.workspace = self.root / "project"
         self.workspace.mkdir()
-        self.policy = self.workspace / ".ovh-agent-checks.json"
+        self.policy = self.workspace / ".trinity-agent-checks.json"
         self.source = self.workspace / "result.json"
         self.source.write_text('{"ready":false,"nested":{"a/b":[true]},"~value":12}')
         self.check = self.workspace / "check.py"
@@ -302,7 +302,7 @@ class AcceptanceTests(unittest.TestCase):
         sub = self.workspace / "component"
         sub.mkdir()
         (sub / "value.txt").write_text("ok")
-        policy = sub / ".ovh-agent-checks.json"
+        policy = sub / ".trinity-agent-checks.json"
         policy.write_text(json.dumps({"version": 1, "checks": [], "acceptance": {"version": 1,
              "criteria": [{"id": "exists", "type": "file_exists", "path": "value.txt"}]}}))
         report = AcceptanceSuite(self.workspace, policy).evaluate()

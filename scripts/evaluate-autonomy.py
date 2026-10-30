@@ -35,7 +35,7 @@ def dump(path, value):
 
 
 def policy(root, criteria):
-    dump(root / ".ovh-agent-checks.json", {"version":1, "checks":[],
+    dump(root / ".trinity-agent-checks.json", {"version":1, "checks":[],
          "acceptance":{"version":1,"criteria":criteria}})
 
 

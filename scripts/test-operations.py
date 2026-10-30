@@ -50,7 +50,7 @@ class Transactions(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.workspace = self.root / 'project'
         self.workspace.mkdir()
-        self.policy = self.workspace / '.ovh-agent-checks.json'
+        self.policy = self.workspace / '.trinity-agent-checks.json'
         self.row = {'name': 'deploy', 'kind': 'service', 'scope': 'local', 'cwd': '.', 'timeout': 5,
                     'apply': ['apply'], 'verify': ['verify'], 'rollback': ['rollback'],
                     'verify_rollback': ['verify_rollback'], 'verify_idle': ['verify_idle']}
@@ -220,7 +220,7 @@ class Transactions(unittest.TestCase):
             with self.subTest(changed=changed):
                 isolated = self.root / changed
                 isolated.mkdir()
-                policy = isolated / '.ovh-agent-checks.json'
+                policy = isolated / '.trinity-agent-checks.json'
                 proof = isolated / 'expected.json'
                 proof.write_text('{"version":"original"}')
                 plan = {**self.row, 'protect': ['expected.json']}

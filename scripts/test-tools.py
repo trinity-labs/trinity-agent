@@ -159,7 +159,7 @@ class RecoveryDiscovery(unittest.TestCase):
         plan = dict(name='install', kind='service', scope='local',
                     apply=['apply'], verify=['verify'], rollback=['rollback'],
                     verify_rollback=['baseline'], verify_idle=['idle'])
-        (self.workspace/'.ovh-agent-checks.json').write_text(json.dumps(
+        (self.workspace/'.trinity-agent-checks.json').write_text(json.dumps(
             {'version': 1, 'operations': {'version': 1, 'plans': [plan]}}))
         self.calls = []
         def runner(argv, cwd, timeout, **kwargs):
@@ -270,7 +270,7 @@ class VerificationIntent(unittest.TestCase):
         root=Path(temporary.name);workspace=root/'project';workspace.mkdir()
         (workspace/'value.py').write_text('value = 1\n')
         (workspace/'check.py').write_text('assert True\n')
-        (workspace/'.ovh-agent-checks.json').write_text(json.dumps({'version':1,'checks':[
+        (workspace/'.trinity-agent-checks.json').write_text(json.dumps({'version':1,'checks':[
             {'name':'Fixture','paths':['value.py'],'argv':['{python}','check.py'],'protect':['check.py']}]}))
         self.a=self.backend;self.a.WORKSPACE=workspace;self.a.DATA_ROOT=root/'data'
         self.a.ARCHIVE_ROOT=root/'archive';self.a.STATE_ROOT=root/'state'

@@ -30,7 +30,7 @@ class Verification(unittest.TestCase):
         self.file.write_text('VALUE = 1\n# existing user change\n')
         self.check = self.workspace / 'check.py'
         self.check.write_text("from pathlib import Path\nnamespace={}\nexec(compile(Path('app.py').read_text(), 'app.py', 'exec'), namespace)\nassert namespace['VALUE'] == 2, namespace['VALUE']\nprint('VALUE verified')\n")
-        self.policy = self.workspace / '.ovh-agent-checks.json'
+        self.policy = self.workspace / '.trinity-agent-checks.json'
         self.policy.write_text(json.dumps({'version':1,'checks':[
             {'name':'Behavior','paths':['app.py'], 'argv':['{python}','check.py'],'protect':['check.py']}]}))
         self.events = []
@@ -274,7 +274,7 @@ class Verification(unittest.TestCase):
                 checker.write_text("from pathlib import Path\nassert Path('logo.css').read_text() == '.logo { opacity: .5; }\\n'\n")
                 policy = {'version': 1, 'checks': [{'name': 'CSS final', 'kind': kind,
                     'argv': ['{python}', 'check.py'], 'paths': ['logo.css'], 'protect': ['check.py']}]}
-                (work / '.ovh-agent-checks.json').write_text(json.dumps(policy))
+                (work / '.trinity-agent-checks.json').write_text(json.dumps(policy))
                 guard = ChangeGuard(work, self.root / (kind + '-receipts'))
                 guard.write(css, css.read_text(), '.logo { opacity: .5; }\n')
                 report = guard.require_verified()
@@ -890,7 +890,7 @@ class TestEvidence(unittest.TestCase):
             output = f'Ran {count} tests in 0.1s\n\nOK' if count is not None else 'PASS: configured checks'
             script.write_text('print('+repr(output)+')\n')
             checks.append({'name':f'Control {i}', 'argv':['{python}',script.name], 'paths':['*.py'], 'protect':[script.name]})
-        (work/'.ovh-agent-checks.json').write_text(json.dumps({'version':1,'checks':checks}))
+        (work/'.trinity-agent-checks.json').write_text(json.dumps({'version':1,'checks':checks}))
         guard = ChangeGuard(work, Path(temp.name)/'receipts')
         guard.observe(work)
         return work, guard

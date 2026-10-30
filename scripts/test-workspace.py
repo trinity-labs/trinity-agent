@@ -147,7 +147,7 @@ class WorkspaceTests(unittest.TestCase):
         from trinity_agent.verification import ChangeGuard
         import shlex
         (self.work/'check.py').write_text('print("passed")\n')
-        (self.work/'.ovh-agent-checks.json').write_text(json.dumps({'version':1,'checks':[{'name':'check','argv':['{python}','check.py'],'paths':['*.py'],'protect':['check.py']}]}))
+        (self.work/'.trinity-agent-checks.json').write_text(json.dumps({'version':1,'checks':[{'name':'check','argv':['{python}','check.py'],'paths':['*.py'],'protect':['check.py']}]}))
         guard=ChangeGuard(self.work,self.root/'receipts',require_checks=True);guard.observe(self.work)
         guard.execute_configured(shlex.join([sys.executable,'check.py']),self.work)
         self.assertEqual(guard.verify()['status'],'passed');self.assertEqual(len(guard.state['receipts']),1)

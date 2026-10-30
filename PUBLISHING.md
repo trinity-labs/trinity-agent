@@ -58,7 +58,7 @@ policy. CI refreshes npm dependencies before testing and passes the resolved
 lockfile to both package jobs, so both VSIX files use the tested dependency set.
 Public exports include tracked files and new source paths explicitly allowed by
 the deny-by-default `.gitignore`; inspect the export before committing it.
-`.env`, `ovh-agent.local.sh`, live archives and the live Compose are excluded.
+`.env`, `trinity-agent.local.sh`, live archives and the live Compose are excluded.
 The generated Compose example retains the €2/day, €15/week and €60/month defaults.
 The verification module, project check configuration and regression scripts belong
 in the companion backend source release. The Marketplace VSIX contains the client,
@@ -67,10 +67,10 @@ so existing deployments must update their backend as well to enforce the new che
 Example for a new version:
 
 ```sh
-cd ovh-agent-extension/extension
+cd trinity-agent-extension/extension
 npm version patch --no-git-tag-version
 cd ../..
-git add ovh-agent-extension/extension/package.json ovh-agent-extension/extension/package-lock.json
+git add trinity-agent-extension/extension/package.json trinity-agent-extension/extension/package-lock.json
 git commit -m 'Release new extension version'
 git tag vX.Y.Z
 git push origin main
@@ -101,7 +101,7 @@ The Marketplace VSIX alone does not update the companion Python backend.
 ## Local packaging
 
 ```sh
-cd ovh-agent-extension/extension
+cd trinity-agent-extension/extension
 npm run dependencies:latest
 npm test
 npm run package:vsix
@@ -135,7 +135,7 @@ part of the package and are never overwritten.
 
 Only the extension client is updated automatically. A release with changed backend
 sources is deferred until the deployment's `trinity_agent/agent.py`, `trinity_agent/memory.py` and
-`ovh-agent.sh` match that release. This avoids silently replacing custom backend
+`trinity-agent.sh` match that release. This avoids silently replacing custom backend
 code or installing a client for a different backend. Docker images and Python
 dependencies remain deployment-managed. Marketplace installations use the editor's
 normal extension update mechanism; this local updater never installs a second ID.

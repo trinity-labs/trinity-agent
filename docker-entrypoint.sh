@@ -34,7 +34,7 @@ if [ "${CODE_SERVER_DISABLE_BUILTIN_GIT:-1}" = "1" ]; then
 fi
 
 # Apply the public extension name before code-server scans its manifests.
-node /home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-branding.cjs
+node /home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/trinity-branding.cjs
 
 # One updater per container; installs on disk without interrupting the editor.
 python3 /home/coder/TRINITY-DOCKER/var/docker/docker_ide/scripts/auto-update.py --watch &

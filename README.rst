@@ -14,7 +14,7 @@ the source-code license does not grant trademark rights.
 Preview
 -------
 
-.. image:: ovh-agent-extension/extension/media/trinity_agent_screenshot.png
+.. image:: trinity-agent-extension/extension/media/trinity_agent_screenshot.png
    :alt: TRINITY Agent conversation history with AI workspace folders and demonstration titles
 
 The screenshot uses fictional conversation titles and a fictional mount path.
@@ -33,12 +33,12 @@ Features
 Repository layout
 -----------------
 
-``ovh-agent-extension/extension/`` contains the VS Code extension and tests.
+``trinity-agent-extension/extension/`` contains the VS Code extension and tests.
 The ``trinity_agent`` package contains the Python backend and its memory,
-execution, verification, routing and provider layers. ``ovh-agent.py`` remains
+execution, verification, routing and provider layers. ``trinity-agent.py`` remains
 only as a compatibility launcher for deployments predating version 2.0.
-``ovh-agent.sh`` loads credentials from server secret files.
-``ovh-branding.cjs`` applies deployment branding before code-server starts.
+``trinity-agent.sh`` loads credentials from server secret files.
+``branding/trinity-branding.cjs`` applies deployment branding before code-server starts.
 ``Dockerfile`` describes the development container.
 ``docker-compose.example.yml`` is a parameterized deployment example, not the
 private production Compose file. Review its mounts before using it.
@@ -54,7 +54,7 @@ is insufficient to install and register the extension in a fresh code-server.
 
 The production layout keeps source files under ``/var/docker/docker_ide`` on
 the Docker host and exposes them inside the IDE through its host-root mount.
-Install the extension from ``ovh-agent-extension/extension``; its production
+Install the extension from ``trinity-agent-extension/extension``; its production
 Node dependencies follow the npm ``latest`` tag. Run ``npm run dependencies:latest``
 before testing and packaging to refresh the dependency resolution and bundled browser
 libraries. The lockfile records that tested resolution; packaging uses it so it does
@@ -123,7 +123,7 @@ remain unchanged. Actual charges may be lower because of caching or off-peak pri
 Development checks
 ------------------
 
-From ``ovh-agent-extension/extension``::
+From ``trinity-agent-extension/extension``::
 
     npm run dependencies:latest
     npm test
@@ -169,7 +169,7 @@ observed test failures; this is distinguished from successful checks.
 An audit without configured tests can conclude after actual local inspection,
 with an explicit notice that these observations do not verify runtime behaviour.
 
-Configure a trusted project's checks in ``.ovh-agent-checks.json``::
+Configure a trusted project's checks in ``.trinity-agent-checks.json``::
 
     {
       "version": 1,
@@ -247,7 +247,7 @@ the separate licenses of dependencies or grant rights to third-party marks.
 
 
 DOMPurify is vendored with its license in
-``ovh-agent-extension/extension/media/DOMPurify.LICENSE``.
+``trinity-agent-extension/extension/media/DOMPurify.LICENSE``.
 Other dependencies and their exact versions are recorded in package-lock.json
 and the Dockerfile; their licenses continue to apply. Downloaded packages,
 including optional development tools, retain their own licenses and ownership.
@@ -292,7 +292,7 @@ Native command icons have light/dark variants; the native status bar uses text.
 
 Rebuild the versioned assets with::
 
-    cd ovh-agent-extension/extension
+    cd trinity-agent-extension/extension
     npm run dependencies:latest
     npm test
 
@@ -336,7 +336,7 @@ Offline backend verification (using the runtime Pydantic AI environment)::
 
 Extension UI, bridge validation and sanitization tests::
 
-    cd ovh-agent-extension/extension
+    cd trinity-agent-extension/extension
     npm test
 
 
@@ -804,7 +804,7 @@ Verification:
 
 * python scripts/test-inference.py (offline)
 * python scripts/test-followups.py (offline)
-* node --test ovh-agent-extension/extension/test/*.test.cjs
+* node --test trinity-agent-extension/extension/test/*.test.cjs
 * python scripts/evaluate-cyber-models.py --live --output /path/to/report.json
 
 The optional live evaluation generates answers to three synthetic lab prompts
@@ -939,7 +939,7 @@ La syntaxe est distinguée des tests fonctionnels : chaque fichier modifié port
 un reçu sur son contenu final ou un statut de contrôle indisponible. Un format
 sans validateur, comme CSS par défaut, ne peut pas être annoncé « syntaxe vérifiée ».
 Une commande de validation syntaxique existante peut être déclarée avec
-``kind: "syntax"`` dans ``.ovh-agent-checks.json`` ; elle reste soumise aux mêmes
+``kind: "syntax"`` dans ``.trinity-agent-checks.json`` ; elle reste soumise aux mêmes
 protections et exigences de fraîcheur que les autres contrôles.
 Les totaux explicites non justifiés et certaines conclusions absolues sont
 refusés par le validateur. Cette détection textuelle reste limitée : elle ne

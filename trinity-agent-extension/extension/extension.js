@@ -21,7 +21,7 @@ const BRAND_NAME = [process.env.OVH_AGENT_NAME, require("./package.json").displa
 
 
 function agentPath() {
-  return process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/ovh-agent.sh";
+  return process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/trinity-agent.sh";
 }
 const OVH_SECRET_DIRECTORY = "/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity";
 const BILLING_SECRETS = {

@@ -354,7 +354,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         target=self.workspace/'current.txt';target.write_text('before')
         policy={'version':1,'checks':[], 'acceptance':{'version':1,'criteria':[
             {'id':'desired','type':'text_contains','path':'current.txt','text':'after'}]}}
-        (self.workspace/'.ovh-agent-checks.json').write_text(json.dumps(policy))
+        (self.workspace/'.trinity-agent-checks.json').write_text(json.dumps(policy))
         self.engine=WorkflowController(self.workspace,self.directory)
         self.engine.focus('Update the current file; the supplied old path may be obsolete.')
         def write_file(path: str, content: str) -> str:
@@ -597,7 +597,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         policy = {'version': 1, 'acceptance': {'version': 1, 'criteria': [
             {'id': 'expected-setting', 'type': 'json_equals', 'path': 'result.json', 'pointer': '/value',
              'value': 'private-expected-fixture-value'}]}}
-        (self.workspace / '.ovh-agent-checks.json').write_text(json.dumps(policy))
+        (self.workspace / '.trinity-agent-checks.json').write_text(json.dumps(policy))
         self.engine = WorkflowController(self.workspace, self.directory)
         self.engine.focus('Keep user changes; inspect actual JSON values.')
         self.engine.evaluate()
@@ -650,7 +650,7 @@ engine.invoke(write_file, 'app.txt', 'after')
     def test_final_model_success_is_retried_until_independent_criterion_passes(self):
         policy = {"version": 1, "checks": [], "acceptance": {"version": 1, "criteria": [
             {"id": "ready", "type": "json_equals", "path": "result.json", "pointer": "/ready", "value": True}]}}
-        (self.workspace / ".ovh-agent-checks.json").write_text(json.dumps(policy))
+        (self.workspace / ".trinity-agent-checks.json").write_text(json.dumps(policy))
         (self.workspace / "result.json").write_text('{"ready":false}')
         self.engine = WorkflowController(self.workspace, self.root / "acceptance-execution")
         self.engine.focus("Set ready to true.")
@@ -707,7 +707,7 @@ engine.invoke(write_file, 'app.txt', 'after')
                     'argv': ['{python}', 'check.py'], 'protect': ['check.py']}],
                   'acceptance': {'version': 1, 'criteria': [
                     {'id': 'behavior', 'type': 'configured_check', 'check': 'value-check'}]}}
-        (self.workspace / '.ovh-agent-checks.json').write_text(json.dumps(policy))
+        (self.workspace / '.trinity-agent-checks.json').write_text(json.dumps(policy))
         guard = ChangeGuard(self.workspace, self.root / 'guard')
         guard.observe(source)
         self.engine = WorkflowController(self.workspace, self.root / 'checks-engine', receipts=lambda: guard.state['receipts'])
@@ -740,7 +740,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         source = nested / 'value.py'
         source.write_text('VALUE = 1\n')
         (nested / 'check.py').write_text('raise SystemExit(1)\n')
-        (nested / '.ovh-agent-checks.json').write_text(json.dumps({'version': 1, 'checks': [
+        (nested / '.trinity-agent-checks.json').write_text(json.dumps({'version': 1, 'checks': [
             {'name': 'nested-behavior', 'paths': ['value.py'], 'argv': ['{python}', 'check.py'], 'protect': ['check.py']}]}))
         guard = ChangeGuard(self.workspace, self.root / 'nested-guard')
         guard.observe(source)
@@ -760,7 +760,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         source = self.workspace / 'value.py'
         source.write_text('VALUE = 1\n')
         (self.workspace / 'check.py').write_text('raise SystemExit(1)\n')
-        (self.workspace / '.ovh-agent-checks.json').write_text(json.dumps({'version': 1, 'checks': [
+        (self.workspace / '.trinity-agent-checks.json').write_text(json.dumps({'version': 1, 'checks': [
             {'name': 'behavior', 'paths': ['value.py'], 'argv': ['{python}', 'check.py'], 'protect': ['check.py']}]}))
         for mode in ('timeout', 'changed', 'forged'):
             with self.subTest(mode=mode):

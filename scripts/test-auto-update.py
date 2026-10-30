@@ -19,7 +19,7 @@ class Validation(unittest.TestCase):
         # a self-generated fixture alone cannot detect a missing backend module.
         import ast
         import re
-        source = (Path(__file__).resolve().parents[1] / 'ovh-agent-extension/extension/scripts/package-vsix.cjs').read_text()
+        source = (Path(__file__).resolve().parents[1] / 'trinity-agent-extension/extension/scripts/package-vsix.cjs').read_text()
         lists = re.findall(r"for \(const name of (\[[^\]]+\])\)", source)
         backend = next(ast.literal_eval(value) for value in lists if 'trinity_agent/agent.py' in value)
         self.assertEqual(set(backend), u.BACKEND_FILES)

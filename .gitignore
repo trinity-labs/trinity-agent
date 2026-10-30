@@ -1,46 +1,48 @@
 # Deny by default: only application sources and deployment files are backed up.
 *
-!/ovh-agent-extension/
-!/ovh-agent-extension/extension/
-!/ovh-agent-extension/extension/media/
-!/ovh-agent-extension/extension/test/
+!/trinity-agent-extension/
+!/trinity-agent-extension/extension/
+!/trinity-agent-extension/extension/media/
+!/trinity-agent-extension/extension/test/
 !/.gitignore
+!/branding/
+!/config/
 !/.dockerignore
 !/Dockerfile
 !/docker-compose.yml
 !/docker-entrypoint.sh
-!/ovh-agent.py
+!/trinity-agent.py
 !/trinity_agent/
 !/trinity_agent/*.py
-!/.ovh-agent-checks.json
+!/.trinity-agent-checks.json
 !/scripts/test-verification.py
 !/scripts/test-export-public.py
-!/ovh-agent.sh
-!/ovh-branding.cjs
-!/ovh-agent-extension/extension/archive-store.js
-!/ovh-agent-extension/extension/window-lock.js
-!/ovh-agent-extension/extension/extension.js
-!/ovh-agent-extension/extension/media/DOMPurify.LICENSE
-!/ovh-agent-extension/extension/media/chat.css
-!/ovh-agent-extension/extension/media/chat.js
-!/ovh-agent-extension/extension/media/i18n.js
-!/ovh-agent-extension/extension/media/ovh-activity.svg
-!/ovh-agent-extension/extension/media/ovh-agent-brand-000e9c.svg
-!/ovh-agent-extension/extension/media/ovh-agent.svg
-!/ovh-agent-extension/extension/media/purify.min.js
-!/ovh-agent-extension/extension/media/safe-html.js
-!/ovh-agent-extension/extension/media/translations.json
-!/ovh-agent-extension/extension/package-lock.json
-!/ovh-agent-extension/extension/package.json
-!/ovh-agent-extension/extension/package.nls.de.json
-!/ovh-agent-extension/extension/package.nls.en.json
-!/ovh-agent-extension/extension/package.nls.es.json
-!/ovh-agent-extension/extension/package.nls.fr.json
-!/ovh-agent-extension/extension/package.nls.json
-!/ovh-agent-extension/extension/security.js
-!/ovh-agent-extension/extension/test/security.test.cjs
-!/ovh-agent-extension/extension/test/*.test.cjs
-!/ovh-agent-extension/extension/media/ovh-agent-brand-*.svg
+!/trinity-agent.sh
+!/branding/trinity-branding.cjs
+!/trinity-agent-extension/extension/archive-store.js
+!/trinity-agent-extension/extension/window-lock.js
+!/trinity-agent-extension/extension/extension.js
+!/trinity-agent-extension/extension/media/DOMPurify.LICENSE
+!/trinity-agent-extension/extension/media/chat.css
+!/trinity-agent-extension/extension/media/chat.js
+!/trinity-agent-extension/extension/media/i18n.js
+!/trinity-agent-extension/extension/media/ovh-activity.svg
+!/trinity-agent-extension/extension/media/ovh-agent-brand-000e9c.svg
+!/trinity-agent-extension/extension/media/ovh-agent.svg
+!/trinity-agent-extension/extension/media/purify.min.js
+!/trinity-agent-extension/extension/media/safe-html.js
+!/trinity-agent-extension/extension/media/translations.json
+!/trinity-agent-extension/extension/package-lock.json
+!/trinity-agent-extension/extension/package.json
+!/trinity-agent-extension/extension/package.nls.de.json
+!/trinity-agent-extension/extension/package.nls.en.json
+!/trinity-agent-extension/extension/package.nls.es.json
+!/trinity-agent-extension/extension/package.nls.fr.json
+!/trinity-agent-extension/extension/package.nls.json
+!/trinity-agent-extension/extension/security.js
+!/trinity-agent-extension/extension/test/security.test.cjs
+!/trinity-agent-extension/extension/test/*.test.cjs
+!/trinity-agent-extension/extension/media/ovh-agent-brand-*.svg
 !/scripts/
 !/scripts/check-git-secrets.py
 !/scripts/export-public.py
@@ -51,18 +53,18 @@
 !/scripts/hooks/
 !/scripts/hooks/pre-commit
 
-!/ovh-agent-extension/extension/scripts/
-!/ovh-agent-extension/extension/scripts/build-icons.cjs
-!/ovh-agent-extension/extension/scripts/build-highlighting.cjs
-!/ovh-agent-extension/extension/scripts/build-vendor.cjs
-!/ovh-agent-extension/extension/media/highlight.min.js
-!/ovh-agent-extension/extension/media/monokai.min.css
-!/ovh-agent-extension/extension/media/HighlightJS.LICENSE
-!/ovh-agent-extension/extension/media/icons.min.js
-!/ovh-agent-extension/extension/media/FontAwesome.LICENSE.txt
+!/trinity-agent-extension/extension/scripts/
+!/trinity-agent-extension/extension/scripts/build-icons.cjs
+!/trinity-agent-extension/extension/scripts/build-highlighting.cjs
+!/trinity-agent-extension/extension/scripts/build-vendor.cjs
+!/trinity-agent-extension/extension/media/highlight.min.js
+!/trinity-agent-extension/extension/media/monokai.min.css
+!/trinity-agent-extension/extension/media/HighlightJS.LICENSE
+!/trinity-agent-extension/extension/media/icons.min.js
+!/trinity-agent-extension/extension/media/FontAwesome.LICENSE.txt
 
-!/ovh-agent-extension/extension/media/BootstrapIcons.LICENSE.txt
-!/ovh-agent-extension/extension/media/bi-*.svg
+!/trinity-agent-extension/extension/media/BootstrapIcons.LICENSE.txt
+!/trinity-agent-extension/extension/media/bi-*.svg
 
 !/scripts/test-followups.py
 
@@ -70,23 +72,23 @@
 !/.github/workflows/
 !/.github/workflows/release.yml
 !/PUBLISHING.md
-!/ovh-agent-extension/extension/README.md
-!/ovh-agent-extension/extension/CHANGELOG.md
-!/ovh-agent-extension/extension/scripts/package-vsix.cjs
+!/trinity-agent-extension/extension/README.md
+!/trinity-agent-extension/extension/CHANGELOG.md
+!/trinity-agent-extension/extension/scripts/package-vsix.cjs
 
-!/ovh-agent-extension/extension/media/trinity-icon.png
-!/ovh-agent-extension/extension/media/trinity-activity.png
-!/ovh-agent-extension/extension/media/trinity-menu.png
-!/ovh-agent-extension/extension/media/trinity-header-primary.png
-!/ovh-agent-extension/extension/media/trinity-header-white.png
-!/ovh-agent-extension/extension/media/trinity-title-black.png
+!/trinity-agent-extension/extension/media/trinity-icon.png
+!/trinity-agent-extension/extension/media/trinity-activity.png
+!/trinity-agent-extension/extension/media/trinity-menu.png
+!/trinity-agent-extension/extension/media/trinity-header-primary.png
+!/trinity-agent-extension/extension/media/trinity-header-white.png
+!/trinity-agent-extension/extension/media/trinity-title-black.png
 
-!/ovh-agent-extension/extension/media/history-demo.png
-!/ovh-agent-extension/extension/media/trinity_agent_screenshot.png
+!/trinity-agent-extension/extension/media/history-demo.png
+!/trinity-agent-extension/extension/media/trinity_agent_screenshot.png
 !/img/
 !/img/trinity_agent_screenshot.png
 
-!/ovh-agent-extension/extension/scripts/history-demo.prompt.txt
+!/trinity-agent-extension/extension/scripts/history-demo.prompt.txt
 
 !/scripts/auto-update.py
 !/scripts/test-auto-update.py
@@ -106,7 +108,7 @@
 !/scripts/test-billing.py
 
 !/scripts/test-workspace.py
-!/ovh-agent-extension/extension/project-store.js
+!/trinity-agent-extension/extension/project-store.js
 
 !/scripts/test-project-memory.py
 
@@ -124,12 +126,12 @@
 !/scripts/test-performance.py
 
 # Public flow modules and contributor documentation; generated frontend stays ignored.
-!/ovh-agent-extension/extension/markdown-renderer.js
-!/ovh-agent-extension/extension/backend-protocol.js
-!/ovh-agent-extension/extension/billing-channel.js
-!/ovh-agent-extension/extension/ARCHITECTURE.md
-!/ovh-agent-extension/extension/scripts/build-frontend.cjs
-!/ovh-agent-extension/extension/webview-html.js
+!/trinity-agent-extension/extension/markdown-renderer.js
+!/trinity-agent-extension/extension/backend-protocol.js
+!/trinity-agent-extension/extension/billing-channel.js
+!/trinity-agent-extension/extension/ARCHITECTURE.md
+!/trinity-agent-extension/extension/scripts/build-frontend.cjs
+!/trinity-agent-extension/extension/webview-html.js
 
 !/scripts/test-vision.py
 

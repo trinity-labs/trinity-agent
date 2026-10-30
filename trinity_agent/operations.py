@@ -1,6 +1,6 @@
 """Configured transactions for specific effects, never a universal shell rollback.
 
-At task start .ovh-agent-checks.json may contain::
+At task start .trinity-agent-checks.json may contain::
 
     "operations": {"version": 1, "plans": [{
         "name": "deploy", "kind": "service", "scope": "local",
@@ -90,7 +90,7 @@ class OperationSuite:
         self._latest_probes = {}
         self.error = None
         self.policy = None
-        self.policy_name = '.ovh-agent-checks.json'
+        self.policy_name = '.trinity-agent-checks.json'
         directory = Path.home() / '.ovh-agent' / 'operation-journals' / _hash(str(self.workspace))[:24]
         self.journal = journal if journal is not None else TaskJournal(directory)
         previous = self.journal.verifier

@@ -1,6 +1,6 @@
 """Read-only acceptance contracts, independent of a model's success claims.
 
-An optional ``acceptance`` section in .ovh-agent-checks.json is frozen when the
+An optional ``acceptance`` section in .trinity-agent-checks.json is frozen when the
 task starts. It can contain version=1 and a bounded list of declarative criteria:
 file_exists, file_absent, file_sha256, text_contains, text_absent, json_equals,
 or configured_check. No criterion executes code, imports a module, or runs a shell.
@@ -106,7 +106,7 @@ class AcceptanceSuite:
         self._budget = MAX_TOTAL_BYTES
         self._observed = {}
         try:
-            supplied = Path(policy_path) if policy_path is not None else Path(".ovh-agent-checks.json")
+            supplied = Path(policy_path) if policy_path is not None else Path(".trinity-agent-checks.json")
             self._policy_name = self._relative(supplied)
             self._base = PurePosixPath(self._policy_name).parent
             policy = self._snapshot(self._policy_name)

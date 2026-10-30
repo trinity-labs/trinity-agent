@@ -260,10 +260,10 @@ class ChangeGuard:
             folder = path if path.is_dir() else path.parent
             # External projects retain their own checks; never widen the default workspace.
             while self.allow_external or folder.is_relative_to(self.workspace):
-                if any((folder / name).exists() for name in (".ovh-agent-checks.json", "package.json", ".git", "pyproject.toml")):
+                if any((folder / name).exists() for name in (".trinity-agent-checks.json", "package.json", ".git", "pyproject.toml")):
                     if folder in self.projects:
                         return
-                    policy = folder / ".ovh-agent-checks.json"
+                    policy = folder / ".trinity-agent-checks.json"
                     definitions = []
                     if policy.is_file():
                         self.explicit_policies.add(folder)
@@ -314,7 +314,7 @@ class ChangeGuard:
                         if not isinstance(kind, str) or kind not in {"functional", "syntax"}:
                             raise VerificationError("kind doit être functional ou syntax.")
                         protected = {}
-                        for pattern in [".ovh-agent-checks.json", *protections]:
+                        for pattern in [".trinity-agent-checks.json", *protections]:
                             if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
                                 raise VerificationError("Chemin de contrôle protégé invalide.")
                             for item in folder.glob(pattern):
@@ -357,7 +357,7 @@ class ChangeGuard:
         # turn an uncovered file into an unrestricted bootstrap.
         folder = path.parent
         while self.allow_external or folder.is_relative_to(self.workspace):
-            if (folder / ".ovh-agent-checks.json").exists():
+            if (folder / ".trinity-agent-checks.json").exists():
                 return True
             if folder == self.workspace or folder == folder.parent:
                 break

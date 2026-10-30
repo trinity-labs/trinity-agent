@@ -39,7 +39,7 @@ for relative in paths:
     if re.search(rb'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|\b(?:ghp_|github_pat_)[A-Za-z0-9_]{20,}|https?://[^\s/@:]+:[^\s/@]+@', content):
         raise SystemExit('Potential credential detected in: ' + relative)
     # Custom deployment images stay private; public manifests use bundled defaults.
-    if relative == 'ovh-agent-extension/extension/package.json':
+    if relative == 'trinity-agent-extension/extension/package.json':
         package = json.loads(content)
         if package.get('icon', '').startswith('media/custom-'):
             package['icon'] = 'media/ovh-agent.svg'

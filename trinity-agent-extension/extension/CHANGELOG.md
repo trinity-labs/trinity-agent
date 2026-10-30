@@ -1,9 +1,14 @@
 # Changelog
 
+## 3.0.0
+
+- Remove the remaining legacy `ovh-agent` source names from the repository root: launchers, extension sources, branding and verification configuration now use TRINITY names and dedicated folders.
+- Update Docker startup, release workflows, package integrity metadata, tests and documentation for the renamed paths.
+
 ## 2.0.0
 
 - Move the Python backend from root-level `ovh_*.py` modules into the `trinity_agent` package with concise module names.
-- Keep `ovh-agent.py` as a compatibility launcher while updating deployment integrity checks, public exports, tests and documentation for the package layout.
+- Keep `trinity-agent.py` as a compatibility launcher while updating deployment integrity checks, public exports, tests and documentation for the package layout.
 
 ## 1.17.100
 
