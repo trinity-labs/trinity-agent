@@ -257,6 +257,7 @@ let historyDraft = "";
 let busy = false;
 let stopping = false;
 let activeArchiveId = "";
+let archiveSelectionVisible = true;
 let loadingArchive = null;
 let archivePreviewKey = '';
 let archiveRevision = '';
@@ -1186,12 +1187,15 @@ archiveList.addEventListener('dragover',event=>{
   if(event.dataTransfer)event.dataTransfer.dropEffect=destination?'move':'none';
   if(destination)destination.element.classList.add(archiveDrag.kind==='project'?'project-drop-'+destination.position:'archive-drop-target');
 });
-archiveList.addEventListener('click',event=>{
-  if(!(event.target instanceof Element) || event.target.closest('.archive-project'))return;
+document.addEventListener('click',event=>{
+  if(!(event.target instanceof Element) || event.target.closest('.archive-project,.archive-item'))return;
   const selected=archiveList.querySelectorAll('.archive-project.selected');
-  if(!selected.length)return;
-  selected.forEach(group=>group.classList.remove('selected'));
-  vscode.postMessage({type:'clearProjectSelection'});
+  if(selected.length) {
+    selected.forEach(group=>group.classList.remove('selected'));
+    vscode.postMessage({type:'clearProjectSelection'});
+  }
+  archiveSelectionVisible=false;
+  archiveList.querySelectorAll('.archive-item.current').forEach(row=>row.classList.remove('current'));
 });
 archiveList.addEventListener('dragleave',event=>{
   if(!archiveList.contains(event.relatedTarget)) {clearArchiveDropTargets();archivePointerY=null;}
@@ -1371,7 +1375,7 @@ function renderArchiveRows(items, container, project) {
     const active=item.archive_active ?? (!project || project.active);
     const source=item.archive_project || project?.id;
     const row = document.createElement("div");
-    row.className = `archive-item${item.current && active ? " current" : ""}`;
+    row.className = `archive-item${item.current && active && archiveSelectionVisible ? " current" : ""}`;
     row.dataset.archiveId = item.id;
     if(source)row.dataset.archiveProject=source;
     row.dataset.archiveActive=String(active);
@@ -1406,6 +1410,7 @@ function renderArchiveRows(items, container, project) {
         return;
       }
       loadingArchive = item.id;
+      archiveSelectionVisible = true;
       archiveModelRevision = modelChoiceRevision;
       beginArchiveLoading(item, source, displayTitle, button.closest(".archive-project")?.style.getPropertyValue("--project-color"));
       if(!active && source) {

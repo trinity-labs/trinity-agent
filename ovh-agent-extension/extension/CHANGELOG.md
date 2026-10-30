@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.99
+
+- Clear folder and conversation highlights when clicking anywhere outside their rows, including the Conversations header and mount-point display.
+
 ## 1.17.98
 
 - Keep the workspace-scoped backend lock regression portable across local and hosted Linux runners.

@@ -401,19 +401,34 @@ test('folder plus follows the pencil and creates a conversation directly in that
  } finally {dom.window.close();}
 });
 
-test('clicking outside conversation folders clears their persisted selection',()=>{
+test('clicking anywhere outside folders and conversations clears both selections',()=>{
  const {dom,document,emit,sent}=browser();
  try {
-  const project={id:'a'.repeat(20),name:'Target',root:'/project/a',selected:true,items:[]};
+  const conversation={id:'current',title:'Selected conversation',current:true,updated_at:'2026-10-17T15:00:00Z'};
+  const project={id:'a'.repeat(20),name:'Target',root:'/project/a',active:true,selected:true,items:[conversation]};
   emit({type:'archives',items:[],projects:[project]});
   const group=document.querySelector('.archive-project');
+  const row=group.querySelector('.archive-item');
   assert(group.classList.contains('selected'));
-  document.getElementById('archive-list').click();
+  assert(row.classList.contains('current'));
+
+  group.querySelector('summary').click();
+  assert(group.classList.contains('selected'));
+  assert(row.classList.contains('current'));
+  row.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
+  assert(group.classList.contains('selected'));
+  assert(row.classList.contains('current'));
+
+  document.getElementById('archive-path').click();
   assert(!group.classList.contains('selected'));
+  assert(!row.classList.contains('current'));
   assert.equal(sent.at(-1).type,'clearProjectSelection');
   const count=sent.length;
-  document.getElementById('archive-list').click();
+  document.getElementById('archive-banner').click();
   assert.equal(sent.length,count);
+
+  emit({type:'archives',items:[],projects:[project]});
+  assert(!document.querySelector('.archive-item').classList.contains('current'));
  } finally {dom.window.close();}
 });
 
