@@ -20,10 +20,13 @@ function verifyInstallLayout(output, local) {
   if (forbidden.length) throw Error(`Backend files must not be installed by the VSIX: ${forbidden.join(', ')}`);
   const metadata = entries.includes('extension/local-update.json');
   if (metadata !== local) throw Error('Local compatibility metadata does not match the package identity');
+  for (const required of ['extension/extension.js', 'extension/backend-path.js']) {
+    if (!entries.includes(required)) throw Error(`VSIX is missing required runtime module: ${required}`);
+  }
 }
 try {
   // Explicit allowlist: never copy local backups, credentials, archives or custom branding.
-  const files = ['extension.js','project-store.js','archive-store.js','window-lock.js','security.js','markdown-renderer.js','backend-protocol.js','billing-channel.js','webview-html.js','ARCHITECTURE.md','package.json','package-lock.json','README.md','CHANGELOG.md',
+  const files = ['extension.js','backend-path.js','project-store.js','archive-store.js','window-lock.js','security.js','markdown-renderer.js','backend-protocol.js','billing-channel.js','webview-html.js','ARCHITECTURE.md','package.json','package-lock.json','README.md','CHANGELOG.md',
     'package.nls.json','package.nls.fr.json','package.nls.en.json','package.nls.de.json','package.nls.es.json',
     'media/chat.js','media/chat.css','media/i18n.js','media/translations.json','media/safe-html.js','media/purify.min.js','media/icons.min.js',
     'media/highlight.min.js','media/monokai.min.css','media/HighlightJS.LICENSE',

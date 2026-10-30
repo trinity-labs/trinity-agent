@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
+# A client can close the JSON-lines pipe while Python is still writing. Avoid
+# leaving a large core dump in the repository when that happens.
+ulimit -c 0 2>/dev/null || true
+
 OVH_SECRET_DIRECTORY="/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity"
 for ovh_secret_name in OVH_AI_API_KEY DEEPSEEK_API_KEY OVH_APPLICATION_KEY OVH_APPLICATION_SECRET OVH_CONSUMER_KEY OVH_CLOUD_PROJECT OVH_API_BASE_URL; do
   ovh_secret_file="/run/secrets/$ovh_secret_name"

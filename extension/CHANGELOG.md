@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.0.2
+
+- Restore extension activation by including the backend launcher path resolver in the VSIX.
+- Reject release packages that omit a required runtime module.
+
 ## 4.0.1
 
 - Enforce the VSIX installation boundary during packaging: extension files must remain under the VS Code extension directory, while backend modules, launchers and verification configuration are rejected from both Marketplace and local packages.
