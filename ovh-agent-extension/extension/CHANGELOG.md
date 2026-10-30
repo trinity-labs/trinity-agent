@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.98
+
+- Keep the workspace-scoped backend lock regression portable across local and hosted Linux runners.
+
 ## 1.17.97
 
 - Scope backend exclusion to the active workspace so an idle TRINITY Agent window no longer blocks one-shot work on another project.

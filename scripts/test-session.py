@@ -826,12 +826,9 @@ class Sessions(unittest.TestCase):
     def test_second_backend_refused_before_any_archive_mutation(self):
         before = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
         with a.backend_session():
-            result = subprocess.run([sys.executable, str(ROOT / 'ovh-agent.py'), '--json-lines'],
-                                    env={**os.environ, 'OVH_AGENT_DATA_ROOT': str(self.root),
-                                         'OVH_AGENT_WORKSPACE': str(ROOT)},
-                                    capture_output=True, text=True, timeout=15)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)['type'], 'session_busy')
+            with self.assertRaisesRegex(a.SessionInUse, 'déjà ce projet'):
+                with a.backend_session():
+                    pass
         self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
         with a.backend_session():
             pass  # No stale lock after clean shutdown.
