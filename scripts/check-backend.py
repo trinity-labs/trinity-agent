@@ -22,7 +22,10 @@ def main():
             failed.append(suite.name)
     print(f'{len(suites) - len(failed)}/{len(suites)} suites passed in {time.monotonic()-started:.1f}s', flush=True)
     if failed:
-        print('FAILED: ' + ', '.join(failed), file=sys.stderr)
+        failure_summary = 'FAILED: ' + ', '.join(failed)
+        print(failure_summary, file=sys.stderr)
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            print(f'::error title=Backend verification failed::{failure_summary}', file=sys.stderr)
     return bool(failed)
 
 
