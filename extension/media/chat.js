@@ -2691,7 +2691,7 @@ function updateArchiveMount(data) {
     const symbols=['B','KB','MB','GB','TB','PB'];
     const format=bytes=>{
       const index=bytes===0?0:Math.min(units.length-1,Math.floor(Math.log10(bytes)/3));
-      return `${new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:1}).format(bytes/1000**index)} ${symbols[index]}`;
+      return `${new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:1}).format(bytes/1000**index)}${symbols[index]}`;
     };
     used.textContent=[validStored&&format(storedBytes),validVolume&&format(volumeBytes)].filter(Boolean).join(' / ');
     used.title=validStored&&validVolume

@@ -71,7 +71,8 @@
 !/.github/
 !/.github/workflows/
 !/.github/workflows/release.yml
-!/PUBLISHING.md
+!/docs/
+!/docs/PUBLISHING.md
 !/extension/README.md
 !/extension/CHANGELOG.md
 !/extension/scripts/package-vsix.cjs
@@ -95,7 +96,7 @@
 
 !/scripts/test-inference.py
 !/scripts/benchmark-retrieval.py
-!/INFERENCE.rst
+!/docs/INFERENCE.rst
 !/scripts/evaluate-cyber-models.py
 
 !/scripts/test-resources.py

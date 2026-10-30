@@ -647,7 +647,7 @@ OVH inference tuning
 --------------------
 
 The cross-provider strategy, official references, local CPU/RAM profile and
-offline retrieval measurements are documented in `INFERENCE.rst <INFERENCE.rst>`_.
+offline retrieval measurements are documented in `INFERENCE.rst <docs/INFERENCE.rst>`_.
 Short follow-ups retain the original task difficulty for routing and supported
 reasoning settings. Local retrieval uses BM25 with complementary excerpts and
 a reusable pool of readers; it does not add model calls.

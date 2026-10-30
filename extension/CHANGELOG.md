@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.3.1
+
+- Display OpenAI catalogue prices in the configured currency and install the current UI instead of leaving the IDE on an older package.
+- Render mount storage units compactly, for example `512MB / 51.2GB`.
+
 ## 5.1.0
 
 - Activate OpenAI Codex with a provider-specific key and a real Responses API validation.
