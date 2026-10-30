@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.3
+
+- Display filesystem usage with international byte symbols such as `GB` instead of locale-specific `Go`.
+
 ## 4.0.2
 
 - Restore extension activation by including the backend launcher path resolver in the VSIX.

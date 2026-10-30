@@ -2660,8 +2660,10 @@ function updateArchiveMount(data) {
   used.title='';
   if(valid) {
     const units=['byte','kilobyte','megabyte','gigabyte','terabyte','petabyte'];
+    const symbols=['B','KB','MB','GB','TB','PB'];
     const index=bytes===0?0:Math.min(units.length-1,Math.floor(Math.log10(bytes)/3));
-    used.textContent=new Intl.NumberFormat(uiLanguage,{style:'unit',unit:units[index],unitDisplay:'short',maximumFractionDigits:1}).format(bytes/1000**index);
+    const amount=new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:1}).format(bytes/1000**index);
+    used.textContent=`${amount} ${symbols[index]}`;
     used.title=t('Espace utilisé sur le volume : {0}',new Intl.NumberFormat(uiLanguage,{style:'unit',unit:'byte',unitDisplay:'long'}).format(bytes));
   }
 }
