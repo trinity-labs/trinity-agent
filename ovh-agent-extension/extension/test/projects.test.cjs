@@ -248,6 +248,7 @@ test('history groups only explicit choices, preserving ungrouped archives with i
 });
 test('project history actions validate their IDs and reject traversal',()=>{
  const {validMessage}=require('../security');
+ assert(validMessage({type:'clearProjectSelection'}));
  assert(validMessage({type:'openProject',project:'a'.repeat(20),conversation:'saved'}));
  assert(validMessage({type:'newProjectConversation',project:'a'.repeat(20)}));
  assert(!validMessage({type:'newProjectConversation',project:'../outside'}));
@@ -547,6 +548,19 @@ test('selected folder becomes the workspace and group of the next new conversati
  provider.consumeOutput('{"type":"cleared","conversation":"new"}\n');
  assert.equal(store.assignments()[project.id+':new'],project.id);
  assert.equal(provider.pendingConversationProject,undefined);
+});
+
+test('clearing the selected folder resets the next conversation destination persistently',async t=>{
+ const {root,store,provider,values}=typedPicker(t),project=store.create(root,'selected-folder'),posted=[];
+ provider.post=message=>posted.push(message);
+ await provider.selectConversationFolder(project);
+ assert.equal(provider.newConversationProject,project.id);
+ assert.equal(values['ovhAgent.newConversationProject'],project.id);
+ await provider.clearConversationFolder();
+ assert.equal(provider.newConversationProject,undefined);
+ assert.equal(values['ovhAgent.newConversationProject'],undefined);
+ assert.equal(posted.at(-1).type,'project_selected');
+ assert.equal(posted.at(-1).project,null);
 });
 
 

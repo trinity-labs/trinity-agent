@@ -49,7 +49,7 @@ function validMessage(message) {
     case "setPerformance": return ['auto', 'max'].includes(message.mode);
     case "webviewReady": return message.language === undefined || text(message.language, 32);
     case "listModels": return boolean(message.refresh);
-    case "selectProject": case "clear": case "cancel": case "configureKey": case "billing":
+    case "selectProject": case "clearProjectSelection": case "clear": case "cancel": case "configureKey": case "billing":
     case "billingRefresh": case "listArchives": case "retryWindow": return true;
     default: return false;
   }

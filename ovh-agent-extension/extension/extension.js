@@ -109,6 +109,7 @@ class OvhAgentViewProvider {
       if (message.type === "cancel") await this.stopAgent();
       if (message.type === "setPerformance") await this.setPerformance(message.mode);
       if (message.type === "selectProject") await this.selectProject();
+      if (message.type === "clearProjectSelection") await this.clearConversationFolder();
       if (message.type === "openProject") await this.openProject(message.project, message.conversation);
       if (message.type === "newProjectConversation") await this.newProjectConversation(message.project);
       if (message.type === "openProjectDocument") await this.openProjectDocument(message);
@@ -324,6 +325,12 @@ class OvhAgentViewProvider {
     this.newConversationProject = entry.id;
     await this.state?.update("ovhAgent.newConversationProject", entry.id);
     this.post({type:"project_selected",project:entry.id});
+  }
+
+  async clearConversationFolder() {
+    this.newConversationProject = undefined;
+    await this.state?.update("ovhAgent.newConversationProject", undefined);
+    this.post({type:"project_selected",project:null});
   }
 
   async newProjectConversation(id) {

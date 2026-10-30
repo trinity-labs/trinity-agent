@@ -401,6 +401,22 @@ test('folder plus follows the pencil and creates a conversation directly in that
  } finally {dom.window.close();}
 });
 
+test('clicking outside conversation folders clears their persisted selection',()=>{
+ const {dom,document,emit,sent}=browser();
+ try {
+  const project={id:'a'.repeat(20),name:'Target',root:'/project/a',selected:true,items:[]};
+  emit({type:'archives',items:[],projects:[project]});
+  const group=document.querySelector('.archive-project');
+  assert(group.classList.contains('selected'));
+  document.getElementById('archive-list').click();
+  assert(!group.classList.contains('selected'));
+  assert.equal(sent.at(-1).type,'clearProjectSelection');
+  const count=sent.length;
+  document.getElementById('archive-list').click();
+  assert.equal(sent.length,count);
+ } finally {dom.window.close();}
+});
+
 test('history keeps ungrouped conversations, routes assignments by source and edits project appearance',()=>{
  const {dom,document,emit,sent}=browser();
  try {

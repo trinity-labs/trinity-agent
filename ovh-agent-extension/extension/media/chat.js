@@ -1186,6 +1186,13 @@ archiveList.addEventListener('dragover',event=>{
   if(event.dataTransfer)event.dataTransfer.dropEffect=destination?'move':'none';
   if(destination)destination.element.classList.add(archiveDrag.kind==='project'?'project-drop-'+destination.position:'archive-drop-target');
 });
+archiveList.addEventListener('click',event=>{
+  if(!(event.target instanceof Element) || event.target.closest('.archive-project'))return;
+  const selected=archiveList.querySelectorAll('.archive-project.selected');
+  if(!selected.length)return;
+  selected.forEach(group=>group.classList.remove('selected'));
+  vscode.postMessage({type:'clearProjectSelection'});
+});
 archiveList.addEventListener('dragleave',event=>{
   if(!archiveList.contains(event.relatedTarget)) {clearArchiveDropTargets();archivePointerY=null;}
 });

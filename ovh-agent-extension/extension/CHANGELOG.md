@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.96
+
+- Clear the selected conversation folder and its persisted next-conversation destination when clicking outside folder rows.
+
 ## 1.17.95
 
 - Bound malformed tool-call retries for every provider so the agent can recover with another available tool instead of looping.
