@@ -1817,11 +1817,11 @@
     "de": "Die Nachricht muss 1–16000 Zeichen enthalten.",
     "es": "El mensaje debe contener entre 1 y 16000 caracteres."
   },
-  "Serveur TRINITY absent : configure ovhAgent.backendPath. Consulte le guide d’installation de l’extension.": {
-    "fr": "Serveur TRINITY absent : configure ovhAgent.backendPath. Consulte le guide d’installation de l’extension.",
-    "en": "TRINITY backend missing: configure ovhAgent.backendPath. See the extension installation guide.",
-    "de": "TRINITY-Backend fehlt: Konfiguriere ovhAgent.backendPath. Siehe Installationsanleitung der Erweiterung.",
-    "es": "Falta el servidor TRINITY: configura ovhAgent.backendPath. Consulta la guía de instalación de la extensión."
+  "Serveur TRINITY absent : configure trinityAgent.backendPath. Consulte le guide d’installation de l’extension.": {
+    "fr": "Serveur TRINITY absent : configure trinityAgent.backendPath. Consulte le guide d’installation de l’extension.",
+    "en": "TRINITY backend missing: configure trinityAgent.backendPath. See the extension installation guide.",
+    "de": "TRINITY-Backend fehlt: Konfiguriere trinityAgent.backendPath. Siehe Installationsanleitung der Erweiterung.",
+    "es": "Falta el servidor TRINITY: configura trinityAgent.backendPath. Consulta la guía de instalación de la extensión."
   },
   "Solde estimé : {0}{1}": {
     "fr": "Solde estimé : {0}{1}",

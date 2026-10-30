@@ -12,8 +12,8 @@ from trinity_agent.cache import CACHE, read_text_cached
 from trinity_agent.resources import resource_profile, set_performance_mode
 from dataclasses import asdict, replace
 from trinity_agent.request import prepare_request, strip_prepared_context, analyze_request, recent_context, SourceReview, REVIEW_INSTRUCTIONS, refresh_reader_limits
-from trinity_agent.budget import BudgetLedger, OvhBalanceLedger
-from trinity_agent.budget_model import BudgetedModel, OVHRateLimiter, transport_failure
+from trinity_agent.budget import BudgetLedger, ProviderBalanceLedger
+from trinity_agent.budget_model import BudgetedModel, ProviderRateLimiter, IncompleteModelResponseError, transport_failure
 from trinity_agent.vision import read_images, parse_reading, visual_context, without_historical_images, is_image_generation_request
 from trinity_agent.evaluation import load_evidence, routing_domain, prefer_evaluated, measured_latency, measured_settings, routing_price_factor
 from typing import Annotated, Literal
@@ -55,13 +55,15 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers.ovhcloud import OVHcloudProvider
 from pydantic_ai.providers.deepseek import DeepSeekProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai import Agent, ModelRetry, RunContext, Tool, capture_run_messages
 from pydantic_ai.usage import UsageLimits
 from pydantic_ai.toolsets import FunctionToolset
 from trinity_agent.limits import limit_setting, resolve_limits
+from trinity_agent.providers import PROVIDERS, selected_provider
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import (
@@ -80,25 +82,34 @@ from pydantic_ai.messages import (
 )
 
 
-WORKSPACE = Path(os.environ.get("OVH_AGENT_WORKSPACE", "/home/coder")).resolve()
+WORKSPACE = Path(os.environ.get("TRINITY_AGENT_WORKSPACE", "/home/coder")).resolve()
 ALLOWED_ROOT = Path("/home/coder").resolve()
-DATA_ROOT = Path(os.environ.get("OVH_AGENT_DATA_ROOT", str(Path.home() / ".ovh-agent")))
+DATA_ROOT = Path(os.environ.get("TRINITY_AGENT_DATA_ROOT", str(Path.home() / ".trinity-agent")))
 STATE_ROOT = DATA_ROOT / "sessions"
-AI_PROVIDER = os.environ.get('OVH_AGENT_PROVIDER', 'ovhcloud').strip().lower()
-if AI_PROVIDER not in {'ovhcloud', 'deepseek'}:
-    raise ValueError('OVH_AGENT_PROVIDER doit être ovhcloud ou deepseek.')
-PROVIDER_CURRENCY = 'USD' if AI_PROVIDER == 'deepseek' else 'EUR'
-USAGE_COST_FIELD = 'cost_usd' if AI_PROVIDER == 'deepseek' else 'cost_eur'
-DEFAULT_MODEL = 'deepseek-flash' if AI_PROVIDER == 'deepseek' else 'gpt-oss-120b'
+PROVIDER_CONFIG = selected_provider()
+AI_PROVIDER = PROVIDER_CONFIG.id
+PROVIDER_CURRENCY = PROVIDER_CONFIG.currency
+USAGE_COST_FIELD = 'cost_eur' if PROVIDER_CURRENCY == 'EUR' else 'cost_usd'
+DEFAULT_MODEL = PROVIDER_CONFIG.default_model
 AUTO_MODEL = "auto-balanced"
+
+
+def provider_limit_setting(name: str):
+    value = str(PROVIDER_CONFIG.setting(name, 'auto') or '').strip()
+    if value in {'', 'auto'}:
+        return None
+    if not value.isascii() or not value.isdigit():
+        raise ValueError(f'{PROVIDER_CONFIG.id} {name}: auto ou un plafond entier positif attendu.')
+    return int(value)
+
+
+def provider_integer_setting(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(PROVIDER_CONFIG.setting(name, str(default))))
+    except (TypeError, ValueError):
+        return default
 def configured_ai_base_url() -> str:
-    if AI_PROVIDER == 'deepseek':
-        return 'https://api.deepseek.com'
-    value = os.environ.get("OVH_AI_BASE_URL", "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1").strip().rstrip("/")
-    parsed = urllib.parse.urlsplit(value)
-    if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("OVH_AI_BASE_URL doit être une URL HTTP(S) de base, sans identifiants, paramètres ni fragment.")
-    return value
+    return PROVIDER_CONFIG.base_url()
 
 
 AI_API_BASE_URL = configured_ai_base_url()
@@ -119,15 +130,15 @@ class ConfiguredOVHProvider(OVHcloudProvider):
     def base_url(self) -> str:
         return AI_API_BASE_URL
 
-MODEL_CACHE_FILE = DATA_ROOT / ('model-catalog-deepseek.json' if AI_PROVIDER == 'deepseek' else 'model-catalog.json')
+MODEL_CACHE_FILE = DATA_ROOT / f'model-catalog-{AI_PROVIDER}.json'
 MODEL_CACHE_SECONDS = 300
 MODEL_CATALOG_EXPIRES = 0.0
-BILLING_CACHE_SECONDS = budget_setting("OVH_AGENT_BILLING_CACHE_SECONDS", 60)
+BILLING_CACHE_SECONDS = provider_integer_setting("BILLING_CACHE_SECONDS", 60)
 BILLING_REFRESH_LOCK = threading.Lock()
 JSON_MODE = False
 # Tool retries let the model repair an invalid tool call. Keep the limit
 # bounded while allowing more than the SDK's previous fixed value of two.
-TOOL_RETRIES = budget_setting("OVH_AGENT_TOOL_RETRIES", 8, 1)
+TOOL_RETRIES = provider_integer_setting("TOOL_RETRIES", 8, 1)
 RUN_CONTEXT: ContextVar[RunDependencies | None] = ContextVar('trinity_run_dependencies', default=None)
 
 
@@ -155,17 +166,17 @@ SUPPORTED_IMAGE_TYPES = {
 }
 MAX_IMAGES = 5
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-CONTEXT_TOKEN_CAP = limit_setting("OVH_AGENT_CONTEXT_TOKENS")
-CONTEXT_RESERVE_TOKENS = budget_setting("OVH_AGENT_CONTEXT_RESERVE_TOKENS", 4096, 0)
-OUTPUT_TOKENS = limit_setting("OVH_AGENT_OUTPUT_TOKENS")
-COMPLEX_OUTPUT_TOKENS = limit_setting("OVH_AGENT_COMPLEX_OUTPUT_TOKENS")
-SUMMARY_GENERATION_TOKENS = limit_setting("OVH_AGENT_SUMMARY_GENERATION_TOKENS")
+CONTEXT_TOKEN_CAP = provider_limit_setting("CONTEXT_TOKENS")
+CONTEXT_RESERVE_TOKENS = provider_integer_setting("CONTEXT_RESERVE_TOKENS", 4096, 0)
+OUTPUT_TOKENS = provider_limit_setting("OUTPUT_TOKENS")
+COMPLEX_OUTPUT_TOKENS = provider_limit_setting("COMPLEX_OUTPUT_TOKENS")
+SUMMARY_GENERATION_TOKENS = provider_limit_setting("SUMMARY_GENERATION_TOKENS")
 # Compaction is an auxiliary call: fail over quickly instead of stalling the task.
-SUMMARY_TIMEOUT_SECONDS = budget_setting("OVH_AGENT_SUMMARY_TIMEOUT_SECONDS", 15)
-REQUEST_LIMIT = None if AI_PROVIDER == 'deepseek' else (budget_setting("OVH_AGENT_REQUEST_LIMIT", 0, 0) or None)
-EMOJI_MODE = min(3, budget_setting("OVH_AGENT_EMOJI_MODE", 1, 0))
-TASK_CHECKPOINT_SECONDS = budget_setting("OVH_AGENT_TASK_CHECKPOINT_SECONDS", 300, 30)
-MAX_MEMORY_CHARS = limit_setting("OVH_AGENT_MEMORY_CHARS")
+SUMMARY_TIMEOUT_SECONDS = provider_integer_setting("SUMMARY_TIMEOUT_SECONDS", 15)
+REQUEST_LIMIT = None if AI_PROVIDER == 'deepseek' else (provider_integer_setting("REQUEST_LIMIT", 0, 0) or None)
+EMOJI_MODE = min(3, budget_setting("TRINITY_AGENT_EMOJI_MODE", 1, 0))
+TASK_CHECKPOINT_SECONDS = budget_setting("TRINITY_AGENT_TASK_CHECKPOINT_SECONDS", 300, 30)
+MAX_MEMORY_CHARS = provider_limit_setting("MEMORY_CHARS")
 UNAVAILABLE_AGENT_MODELS = {"Mistral-7B-Instruct-v0.3"}
 # Verified against /doc/{model}/openapi.json on 2026-10-16.
 # Unknown chat models are inspected individually; no GPT-only allowlist.
@@ -186,6 +197,10 @@ def model_capabilities(model_id: str) -> dict:
     if AI_PROVIDER == 'deepseek':
         return {'tools': True, 'reasoning': True, 'stream': True,
                 'response_formats': ['json_object'], 'reasoning_efforts': ['low', 'high', 'max']}
+    if AI_PROVIDER == 'openai':
+        return {'tools': True, 'reasoning': True, 'stream': True,
+                'response_formats': ['json_schema', 'json_object'],
+                'reasoning_efforts': ['low', 'medium', 'high', 'xhigh']}
     key = (AI_API_BASE_URL, model_id)
     if key in MODEL_CAPABILITIES:
         return MODEL_CAPABILITIES[key]
@@ -397,13 +412,15 @@ if "--billing-status" not in sys.argv:
 def emit(payload: dict[str, object]) -> None:
     # Presentation metadata only: native USD accounting and archived costs keep
     # their original meaning. Never feed converted prices back into routing.
+    if payload.get('type') in {'usage', 'model_routed'}:
+        payload.setdefault('provider', AI_PROVIDER)
     if payload.get('type') in {'models', 'usage', 'model_routed', 'archive_loaded', 'snapshot_loaded'}:
         payload = with_euro_display(payload)
     if payload.get('type') == 'usage':
         total = run_dependencies().usage_reported.setdefault(str(payload.get('model', '')), {})
         for key in ('requests', 'input_tokens', 'output_tokens'):
             total[key] = total.get(key, 0) + int(payload.get(key, 0) or 0)
-        total['cost_eur'] = total.get('cost_eur', 0) + float(payload.get('cost_eur', 0) or 0)
+        total[USAGE_COST_FIELD] = total.get(USAGE_COST_FIELD, 0) + float(payload.get(USAGE_COST_FIELD, 0) or 0)
     if run_dependencies().engine is not None:
         run_dependencies().engine.observe_event(payload)
     if not JSON_MODE:
@@ -1162,7 +1179,7 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
         result = run_process(
             diagnostic_argv if diagnostic else command_argv(command),
             working_dir, timeout=timeout, workspace=WORKSPACE,
-            profile=os.environ.get("OVH_AGENT_COMMAND_PROFILE", "approved"),
+            profile=os.environ.get("TRINITY_AGENT_COMMAND_PROFILE", "approved"),
             progress=lambda seconds, line: activity_progress(activity_id, seconds, line))
         if result['passed']:
             deleted = deleted_paths_from_command(command, result.get('output', ''))
@@ -1451,6 +1468,18 @@ def normalise_model(raw: dict[str, object], provider: str | None = None) -> dict
                 'currency': 'USD', 'input_per_million': incoming, 'output_per_million': outgoing,
                 'hourly': None, 'free': False, 'pricing_estimate': True,
                 'pricing_source': 'https://api-docs.deepseek.com/quick_start/pricing/'}
+    if provider == 'openai':
+        reviewed = {'gpt-5.3-codex': {'context_length': 400000, 'max_completion_tokens': 128000,
+                                     'input_per_million': 1.75, 'output_per_million': 14.0}}
+        if model_id not in reviewed:
+            raise ValueError('OpenAI model limits and pricing not yet reviewed')
+        return {**reviewed[model_id], 'id': model_id, 'owner': 'OpenAI', 'provider': 'openai',
+                'kind': 'chat', 'selectable': True, 'vision': True, 'supports_tools': True,
+                'supports_reasoning': True, 'supports_streaming': True,
+                'response_formats': ['json_schema', 'json_object'],
+                'reasoning_efforts': ['low', 'medium', 'high', 'xhigh'], 'currency': 'USD',
+                'hourly': None, 'free': False,
+                'pricing_source': 'https://developers.openai.com/api/docs/pricing'}
     pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else {}
     prices = [pricing.get(key, 0) for key in ('prompt', 'completion')]
     if any(isinstance(value, bool) or not isinstance(value, (int, float, str)) for value in prices):
@@ -1491,8 +1520,8 @@ def normalise_model(raw: dict[str, object], provider: str | None = None) -> dict
     }
 
 
-OTHER_PROVIDER = 'ovhcloud' if AI_PROVIDER == 'deepseek' else 'deepseek'
-PROVIDER_LABELS = {'ovhcloud': 'OVHcloud AI Endpoints', 'deepseek': 'DeepSeek'}
+OTHER_PROVIDERS = tuple(provider for provider in PROVIDERS if provider != AI_PROVIDER)
+PROVIDER_LABELS = {provider.id: provider.label for provider in PROVIDERS.values()}
 DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 OVHCLOUD_BASE_URL = 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1'
 SECONDARY_CATALOG: list[dict[str, object]] | None = None
@@ -1501,42 +1530,24 @@ SECONDARY_CATALOG_NOTE = ''
 
 
 def provider_base_url(provider: str) -> str:
-    if provider == 'deepseek':
-        return DEEPSEEK_BASE_URL
-    if provider == AI_PROVIDER:
-        return AI_API_BASE_URL
-    value = os.environ.get("OVH_AI_BASE_URL", OVHCLOUD_BASE_URL).strip().rstrip("/")
-    parsed = urllib.parse.urlsplit(value)
-    if (parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username
-            or parsed.password or parsed.query or parsed.fragment):
-        raise ValueError("OVH_AI_BASE_URL doit être une URL HTTP(S) de base, sans identifiants, paramètres ni fragment.")
-    return value
+    return PROVIDERS[provider].base_url()
 
 
 def provider_api_key(provider: str) -> str:
-    if provider == 'deepseek':
-        return os.environ.get('DEEPSEEK_API_KEY') or ''
-    return os.environ.get('OVH_AI_API_KEY') or os.environ.get('OVHCLOUD_API_KEY') or ''
+    return PROVIDERS[provider].api_key()
 
 
 def provider_cache_file(provider: str) -> Path:
-    return DATA_ROOT / ('model-catalog-deepseek.json' if provider == 'deepseek' else 'model-catalog.json')
+    return DATA_ROOT / f'model-catalog-{provider}.json'
 
 
 def fetch_secondary_catalog(force: bool = False) -> tuple[list[dict[str, object]], str]:
-    """Catalogue of the other API so one panel lists every usable model.
-
-    The active provider keeps its own cache, routing and capability limits.
-    This list only feeds the model panel and is tagged with its provider, so a
-    selection can switch the API explicitly. It never feeds automatic routing,
-    and the other provider's cache file is only read, never rewritten here.
-    """
+    """Return catalogues for every other configured model API."""
     global SECONDARY_CATALOG, SECONDARY_CATALOG_EXPIRES, SECONDARY_CATALOG_NOTE
-    provider = OTHER_PROVIDER
     if SECONDARY_CATALOG is not None and not force and time.time() < SECONDARY_CATALOG_EXPIRES:
         return SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE
 
-    def cached(require_fresh: bool) -> list[dict[str, object]] | None:
+    def cached(provider: str, require_fresh: bool) -> list[dict[str, object]] | None:
         try:
             payload = json.loads(read_text_cached(provider_cache_file(provider)))
             if payload.get('schema_version') != CATALOG_SCHEMA_VERSION or not payload.get('models'):
@@ -1549,39 +1560,37 @@ def fetch_secondary_catalog(force: bool = False) -> tuple[list[dict[str, object]
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
-    if not force:
-        fresh = cached(True)
-        if fresh:
-            SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE = fresh, ''
-            SECONDARY_CATALOG_EXPIRES = time.time() + MODEL_CACHE_SECONDS
-            return SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE
-    try:
-        key = provider_api_key(provider)
-        if not key:
-            raise ValueError(f"clé API {PROVIDER_LABELS[provider]} absente")
-        request = urllib.request.Request(
-            provider_base_url(provider) + "/models",
-            headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            payload = json.load(response)
-        rows = []
-        for item in (payload.get('data', []) if isinstance(payload, dict) else []):
-            if not isinstance(item, dict) or not item.get('id'):
+    combined, notes = [], []
+    for provider in OTHER_PROVIDERS:
+        try:
+            fresh = None if force else cached(provider, True)
+            if fresh:
+                combined.extend(fresh)
                 continue
-            try:
-                rows.append(dict(normalise_model(item, provider), provider=provider))
-            except (KeyError, TypeError, ValueError, OverflowError):
-                continue
-        if not rows:
-            raise ValueError("catalogue vide")
-        rows.sort(key=lambda item: (not bool(item.get("selectable")), str(item.get("id")).lower()))
-        SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE = rows, ''
-    except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as error:
-        stale = cached(False)
-        SECONDARY_CATALOG = stale or []
-        SECONDARY_CATALOG_NOTE = (f"{PROVIDER_LABELS[provider]} : catalogue en cache ({error})"
-                                  if stale else f"{PROVIDER_LABELS[provider]} : catalogue indisponible ({error})")
+            key = provider_api_key(provider)
+            if not key:
+                raise ValueError(f"clé API {PROVIDER_LABELS[provider]} absente")
+            request = urllib.request.Request(provider_base_url(provider) + '/models',
+                headers={'Authorization': f'Bearer {key}', 'Accept': 'application/json'})
+            with urllib.request.urlopen(request, timeout=10) as response:
+                payload = json.load(response)
+            rows = []
+            for item in (payload.get('data', []) if isinstance(payload, dict) else []):
+                if isinstance(item, dict) and item.get('id'):
+                    try:
+                        rows.append(dict(normalise_model(item, provider), provider=provider))
+                    except (KeyError, TypeError, ValueError, OverflowError):
+                        pass
+            if not rows:
+                raise ValueError('catalogue vide')
+            combined.extend(rows)
+        except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as error:
+            stale = cached(provider, False)
+            combined.extend(stale or [])
+            notes.append(f"{PROVIDER_LABELS[provider]} : " +
+                         (f"catalogue en cache ({error})" if stale else f"catalogue indisponible ({error})"))
+    combined.sort(key=lambda item: (str(item.get('provider')), not bool(item.get('selectable')), str(item.get('id')).lower()))
+    SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE = combined, ' · '.join(notes)
     SECONDARY_CATALOG_EXPIRES = time.time() + MODEL_CACHE_SECONDS
     return SECONDARY_CATALOG, SECONDARY_CATALOG_NOTE
 
@@ -1601,8 +1610,7 @@ def fetch_model_catalog(force: bool = False) -> list[dict[str, object]]:
                 return MODEL_CATALOG
         except (OSError, ValueError, KeyError, TypeError):
             pass
-    api_key = (os.environ.get('DEEPSEEK_API_KEY') if AI_PROVIDER == 'deepseek' else
-               os.environ.get("OVH_AI_API_KEY") or os.environ.get("OVHCLOUD_API_KEY"))
+    api_key = PROVIDER_CONFIG.api_key()
     try:
         if not api_key:
             raise ValueError("Clé API du fournisseur absente")
@@ -1697,7 +1705,7 @@ def preferred_vision_model() -> str:
 def auto_model_card() -> dict[str, object]:
     return {
         "id": AUTO_MODEL,
-        "owner": "Routeur OVH Agent",
+        "owner": "Routeur TRINITY Agent",
         "kind": "auto",
         "selectable": True,
         "vision": True,
@@ -1712,27 +1720,27 @@ def auto_model_card() -> dict[str, object]:
 
 
 def router_file() -> Path:
-    return ARCHIVE_ROOT / ('router-deepseek.json' if AI_PROVIDER == 'deepseek' else 'router.json')
+    return ARCHIVE_ROOT / f'router-{AI_PROVIDER}.json'
 
 
 def billing_file() -> Path:
-    return ARCHIVE_ROOT / ('billing-deepseek.json' if AI_PROVIDER == 'deepseek' else 'billing.json')
+    return ARCHIVE_ROOT / f'billing-{AI_PROVIDER}.json'
 
 
 def billing_configured() -> bool:
     return all(os.environ.get(name) for name in (
-        "OVH_APPLICATION_KEY",
-        "OVH_APPLICATION_SECRET",
-        "OVH_CONSUMER_KEY",
-        "OVH_CLOUD_PROJECT",
+        "TRINITY_OVHCLOUD_APPLICATION_KEY",
+        "TRINITY_OVHCLOUD_APPLICATION_SECRET",
+        "TRINITY_OVHCLOUD_CONSUMER_KEY",
+        "TRINITY_OVHCLOUD_PROJECT",
     ))
 
 
-def ovh_api_get(path: str) -> object:
-    base_url = os.environ.get("OVH_API_BASE_URL", "https://eu.api.ovh.com/1.0").rstrip("/")
-    application_key = os.environ["OVH_APPLICATION_KEY"]
-    application_secret = os.environ["OVH_APPLICATION_SECRET"]
-    consumer_key = os.environ["OVH_CONSUMER_KEY"]
+def ovhcloud_api_get(path: str) -> object:
+    base_url = os.environ.get("TRINITY_OVHCLOUD_API_BASE_URL", "https://eu.api.ovh.com/1.0").rstrip("/")
+    application_key = os.environ["TRINITY_OVHCLOUD_APPLICATION_KEY"]
+    application_secret = os.environ["TRINITY_OVHCLOUD_APPLICATION_SECRET"]
+    consumer_key = os.environ["TRINITY_OVHCLOUD_CONSUMER_KEY"]
     try:
         with urllib.request.urlopen(f"{base_url}/auth/time", timeout=10) as response:
             timestamp = str(json.load(response))
@@ -1932,9 +1940,45 @@ def billing_balance(status: dict[str, object]) -> dict[str, object]:
     return result
 
 
+def local_provider_month_usage(provider: str) -> dict[str, object]:
+    """Aggregate this month's locally observed tokens and cost across workspaces."""
+    month = datetime.now(timezone.utc).strftime('%Y-%m')
+    totals = {'input_tokens': 0, 'output_tokens': 0, 'requests': 0, 'cost': Decimal(0)}
+    for target in (DATA_ROOT / 'archive').glob('*/*/events.jsonl'):
+        try:
+            with target.open(encoding='utf-8') as stream:
+                for line in stream:
+                    try: event = json.loads(line)
+                    except ValueError: continue
+                    if (not isinstance(event, dict) or event.get('type') != 'usage'
+                            or event.get('provider', provider) != provider
+                            or not str(event.get('timestamp', '')).startswith(month)):
+                        continue
+                    totals['input_tokens'] += max(0, int(event.get('input_tokens', 0) or 0))
+                    totals['output_tokens'] += max(0, int(event.get('output_tokens', 0) or 0))
+                    totals['requests'] += max(0, int(event.get('requests', 0) or 0))
+                    amount = Decimal(str(event.get('cost_usd', 0) or 0))
+                    if amount.is_finite() and amount >= 0: totals['cost'] += amount
+        except (OSError, TypeError, ValueError, InvalidOperation):
+            continue
+    return totals
+
+
 def fetch_billing_status(force: bool = False) -> dict[str, object]:
+    if AI_PROVIDER == 'openai':
+        key=PROVIDER_CONFIG.api_key()
+        try: credit=Decimal(os.environ.get(PROVIDER_CONFIG.monthly_credit_env,'0') or '0')
+        except InvalidOperation: credit=Decimal(0)
+        usage = local_provider_month_usage('openai')
+        spent = usage.pop('cost')
+        return {'provider':'openai','configured':bool(key),'available':bool(key),
+                'schema_version':2,'currency':'USD','credit_currency':'USD',
+                'credit_available':float(max(credit,Decimal(0))),'current_usage':float(spent),
+                'credit_remaining':float(max(Decimal(0),credit-spent)),'balance_estimated':True,
+                **usage,
+                'refresh_seconds':BILLING_CACHE_SECONDS,'last_update':now_iso()}
     if AI_PROVIDER == 'deepseek':
-        key = os.environ.get('DEEPSEEK_API_KEY')
+        key = os.environ.get('TRINITY_DEEPSEEK_API_KEY')
         status = {'provider': 'deepseek', 'configured': bool(key), 'available': False,
                   'schema_version': 2, 'currency': 'EUR', 'credit_currency': 'EUR',
                   'refresh_seconds': BILLING_CACHE_SECONDS}
@@ -1977,7 +2021,7 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
         return status
     if not billing_configured():
         return billing_balance({"configured": False, "available": False})
-    project = os.environ["OVH_CLOUD_PROJECT"]
+    project = os.environ["TRINITY_OVHCLOUD_PROJECT"]
     cached = read_billing_cache()
     project_cache = cached if cached and cached.get("project") == project else None
     if project_cache and project_cache.get("schema_version") == 2 and not force:
@@ -1987,15 +2031,15 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
 
     encoded_project = urllib.parse.quote(project, safe="")
     try:
-        current = ovh_api_get(f"/cloud/project/{encoded_project}/usage/current")
-        forecast = ovh_api_get(f"/cloud/project/{encoded_project}/usage/forecast")
+        current = ovhcloud_api_get(f"/cloud/project/{encoded_project}/usage/current")
+        forecast = ovhcloud_api_get(f"/cloud/project/{encoded_project}/usage/forecast")
         current = current if isinstance(current, dict) else {}
         forecast = forecast if isinstance(forecast, dict) else {}
-        credit_ids = ovh_api_get(f"/cloud/project/{encoded_project}/credit")
+        credit_ids = ovhcloud_api_get(f"/cloud/project/{encoded_project}/credit")
         credits: list[dict[str, object]] = []
         for credit_id in credit_ids if isinstance(credit_ids, list) else []:
             encoded_id = urllib.parse.quote(str(credit_id), safe="")
-            detail = ovh_api_get(f"/cloud/project/{encoded_project}/credit/{encoded_id}")
+            detail = ovhcloud_api_get(f"/cloud/project/{encoded_project}/credit/{encoded_id}")
             if isinstance(detail, dict):
                 credits.append(detail)
 
@@ -2171,6 +2215,8 @@ def automatic_fallback_reason(model_id, failure, controller=None, guard=None) ->
         return ""
     if transport_failure(failure):
         return "connexion modèle interrompue sans mutation ; changement de modèle"
+    if isinstance(failure, IncompleteModelResponseError):
+        return "réponse modèle incomplète sans mutation ; changement de modèle"
     if model_id == 'gpt-oss-120b':
         return ""
     if isinstance(failure, BaseException) and qwen_timeout_fallback_allowed(model_id, failure, controller):
@@ -2279,7 +2325,7 @@ def choose_cost_effective_model(
         else:
             price_factor = 3.5 if complex_task else 1.8
             reason = "meilleur coût utile pour une tâche complexe" if complex_task else "meilleur coût utile"
-        price_factor = routing_price_factor(price_factor,os.environ.get('OVH_AGENT_ROUTING_PRICE_FACTOR'))
+        price_factor = routing_price_factor(price_factor,os.environ.get('TRINITY_AGENT_ROUTING_PRICE_FACTOR'))
         pool = [item for item in priced_candidates if projected[str(item["id"])] <= lowest * price_factor]
 
     def route_score(item: dict[str, object]) -> tuple:
@@ -2549,7 +2595,7 @@ def inspect_environment(host: str = "", refresh: bool = False) -> str:
     """Inventaire du conteneur IDE, ou inventaire réel par SSH d'une cible autorisée. Ne jamais déduire les outils distants des montages."""
     if not host:
         details = dict(inventory(WORKSPACE, DATA_ROOT, refresh))
-        details['command_profile'] = os.environ.get("OVH_AGENT_COMMAND_PROFILE", "approved")
+        details['command_profile'] = os.environ.get("TRINITY_AGENT_COMMAND_PROFILE", "approved")
         details['os_sandbox'] = "requested_fail_closed" if details['command_profile'] == 'workspace' else "not_enabled"
         return json.dumps(details, ensure_ascii=False)
     return run_host_command(host, "uname -sm; id -u; cat /etc/os-release; "
@@ -2559,9 +2605,9 @@ def inspect_environment(host: str = "", refresh: bool = False) -> str:
 
 def install_tools(ecosystem: str, packages: list[str], scope: str = "project") -> str:
     """Installe des outils nécessaires sur l'IDE : project/python (venv), project/npm, system/system. Politique auto off/project/system ; aucune installation distante implicite."""
-    policy = os.environ.get("OVH_AGENT_AUTO_INSTALL", "project")
+    policy = os.environ.get("TRINITY_AGENT_AUTO_INSTALL", "project")
     if policy not in {"off", "project", "system"}:
-        return "Erreur outil : politique OVH_AGENT_AUTO_INSTALL invalide."
+        return "Erreur outil : politique TRINITY_AGENT_AUTO_INSTALL invalide."
     try:
         commands = install_plan(WORKSPACE, ecosystem, packages, scope)
     except ValueError as error:
@@ -2798,7 +2844,7 @@ def routing_billing_status() -> dict:
         # Account balance is displayed independently; it never gates routing.
         return {'provider': 'deepseek', 'available': False, 'currency': 'USD'}
     cached = read_billing_cache()
-    if cached and cached.get("project") == os.environ.get("OVH_CLOUD_PROJECT"):
+    if cached and cached.get("project") == os.environ.get("TRINITY_OVHCLOUD_PROJECT"):
         age = time.time() - float(cached.get("cached_at", 0) or 0)
         if cached.get("schema_version") == 2 and 0 <= age < BILLING_CACHE_SECONDS:
             return billing_balance(cached)
@@ -2836,12 +2882,12 @@ def current_limits(card=None, *, complex_task=False, overhead=0, context_budget=
     if AI_PROVIDER == 'deepseek' and not card:
         card = next(item for item in fetch_model_catalog() if item['id'] == DEFAULT_MODEL)
     return resolve_limits(card, complex_task=complex_task, overhead=overhead, context_budget=context_budget,
-        settings={'OVH_AGENT_CONTEXT_TOKENS': CONTEXT_TOKEN_CAP,
-                  'OVH_AGENT_CONTEXT_RESERVE_TOKENS': CONTEXT_RESERVE_TOKENS,
-                  'OVH_AGENT_OUTPUT_TOKENS': OUTPUT_TOKENS,
-                  'OVH_AGENT_COMPLEX_OUTPUT_TOKENS': COMPLEX_OUTPUT_TOKENS,
-                  'OVH_AGENT_SUMMARY_GENERATION_TOKENS': SUMMARY_GENERATION_TOKENS,
-                  'OVH_AGENT_MEMORY_CHARS': MAX_MEMORY_CHARS})
+        settings={'TRINITY_AGENT_CONTEXT_TOKENS': CONTEXT_TOKEN_CAP,
+                  'TRINITY_AGENT_CONTEXT_RESERVE_TOKENS': CONTEXT_RESERVE_TOKENS,
+                  'TRINITY_AGENT_OUTPUT_TOKENS': OUTPUT_TOKENS,
+                  'TRINITY_AGENT_COMPLEX_OUTPUT_TOKENS': COMPLEX_OUTPUT_TOKENS,
+                  'TRINITY_AGENT_SUMMARY_GENERATION_TOKENS': SUMMARY_GENERATION_TOKENS,
+                  'TRINITY_AGENT_MEMORY_CHARS': MAX_MEMORY_CHARS})
 
 
 def output_token_budget(card: dict, complex_task: bool, overhead: int) -> int:
@@ -2935,9 +2981,9 @@ class ResponseStream:
 
 
 def budget_ledger():
-    limits = {period: os.environ.get(f"OVH_AGENT_BUDGET_{period.upper()}_EUR", default)
+    limits = {period: os.environ.get(f"TRINITY_AGENT_BUDGET_{period.upper()}_EUR", default)
               for period, default in (("daily", "2"), ("weekly", "15"), ("monthly", "60"))}
-    return OvhBalanceLedger.from_provider(DATA_ROOT / "budgets" / "usage-ovh-eur.json", limits,
+    return ProviderBalanceLedger.from_provider(DATA_ROOT / "budgets" / "usage-provider-eur.json", limits,
                                          DATA_ROOT / "budgets" / "policy.json", fetch_billing_status)
 
 
@@ -3112,14 +3158,17 @@ def agent_tools() -> list[Tool]:
 def get_budgeted_model(model_id):
     """Share provider and budget enforcement between the executor and visual reader."""
     if AI_PROVIDER == 'deepseek':
-        provider = DeepSeekProvider(api_key=os.environ.get('DEEPSEEK_API_KEY'))
+        provider = DeepSeekProvider(api_key=PROVIDER_CONFIG.require_api_key())
         # SDK 2.56 predates the new Flash alias. Keep V4's documented thinking
         # and tool-return contract when using the current official model ID.
         profile = provider.model_profile('deepseek-v4-flash' if model_id == 'deepseek-flash' else model_id)
         return OpenAIChatModel(model_id, provider=provider, profile=profile)
+    if AI_PROVIDER == 'openai':
+        return OpenAIResponsesModel(model_id, provider=OpenAIProvider(
+            api_key=PROVIDER_CONFIG.require_api_key(), base_url=AI_API_BASE_URL))
     return BudgetedModel(OpenAIChatModel(
                 model_id,
-                provider=ConfiguredOVHProvider(api_key=os.environ.get("OVH_AI_API_KEY") or os.environ.get("OVHCLOUD_API_KEY")),
+                provider=ConfiguredOVHProvider(api_key=os.environ.get("TRINITY_OVHCLOUD_API_KEY")),
                 # OVH chat templates can require a single leading system message.
                 profile={"openai_chat_supports_multiple_system_messages": False,
                          "openai_chat_supports_max_completion_tokens": False,
@@ -3128,16 +3177,16 @@ def get_budgeted_model(model_id):
             ), ledger=budget_ledger,
                 catalog_card=lambda name: next((c for c in fetch_model_catalog() if c["id"] == name), {}),
                 publish=publish_budget, record=record_provider_request,
-                rate_limiter=OVHRateLimiter(
-                    DATA_ROOT / 'ovh-rate-limits.sqlite3',
-                    AI_API_BASE_URL + ':' + (os.environ.get('OVH_CLOUD_PROJECT') or provider_api_key('ovhcloud')),
+                rate_limiter=ProviderRateLimiter(
+                    DATA_ROOT / 'provider-rate-limits.sqlite3',
+                    AI_API_BASE_URL + ':' + (os.environ.get('TRINITY_OVHCLOUD_PROJECT') or provider_api_key('ovhcloud')),
                     notify=lambda model, delay: emit({'type': 'status', 'text':
                         f'Limite OVH : attente de {delay:.1f} s avant la prochaine requête {model}.'})))
 
 
 def vision_reader_model() -> str:
     """Validated reader per provider; never name a model the provider lacks."""
-    override = os.environ.get("OVH_AGENT_VISION_READER", "").strip()
+    override = os.environ.get("TRINITY_AGENT_VISION_READER", "").strip()
     if override:
         return override
     if AI_PROVIDER == 'deepseek':
@@ -3844,7 +3893,7 @@ def read_snapshot(conversation_id: str | None = None) -> dict[str, object] | Non
 def main_terminal() -> None:
     recover_verification()
     selected_model = DEFAULT_MODEL
-    print(f"OVH Agent - modèle {selected_model}")
+    print(f"TRINITY Agent - modèle {selected_model}")
     print(f"Espace de travail: {WORKSPACE}")
     print("Commandes: /clear, /exit")
     history = load_history()
@@ -4069,7 +4118,7 @@ def main_json_lines() -> None:
                 "selected": selected_model,
                 "pricing_source": MODEL_API_URL,
                 "provider": AI_PROVIDER,
-                "other_provider": OTHER_PROVIDER,
+                "other_providers": list(OTHER_PROVIDERS),
                 "other_note": other_note,
             })
             continue
@@ -4344,7 +4393,9 @@ def main_json_lines() -> None:
                 emit({"type": "model_routed", "model": active_model, "previous_model": previous_model,
                       "reason": fallback_reason,
                       "fallback": True, "duration_ms": 0})
-                fallback_status = (f"{previous_model} a expiré"
+                fallback_status = (f"{previous_model} a renvoyé une réponse incomplète"
+                                   if isinstance(primary_error, IncompleteModelResponseError)
+                                   else f"{previous_model} a expiré"
                                    if fallback_reason.startswith("timeout")
                                    else f"{previous_model} a perdu la connexion" if transport_failure(primary_error)
                                    else f"{previous_model} n’a pas pu exécuter l’appel d’outil")

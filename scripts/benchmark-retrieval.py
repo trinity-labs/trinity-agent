@@ -15,7 +15,7 @@ from trinity_agent.request import analyze_request, retrieve_context
 
 def main():
     measurements = []
-    with tempfile.TemporaryDirectory(prefix='ovh-retrieval-benchmark-') as directory:
+    with tempfile.TemporaryDirectory(prefix='trinity-retrieval-benchmark-') as directory:
         allowed = Path(directory)
         project = allowed / 'machine' / 'project'
         project.mkdir(parents=True)
@@ -29,9 +29,9 @@ def main():
             + 'def nebula_recovery():\n    return "late_evidence"\n')
         analysis = analyze_request('Corrige notre nebula_recovery')
         for profile, files, characters, mode in [('small', 120, 65536, 'auto'), ('local', 480, 524288, 'auto'), ('automatic', 'auto', 'auto', 'auto'), ('maximum', 'auto', 'auto', 'max')]:
-            with patch.dict(os.environ, {'OVH_AGENT_PREFLIGHT_MAX_FILES': str(files),
-                                         'OVH_AGENT_PREFLIGHT_FILE_CHARS': str(characters),
-                                         'OVH_AGENT_PERFORMANCE_MODE': mode}):
+            with patch.dict(os.environ, {'TRINITY_AGENT_PREFLIGHT_MAX_FILES': str(files),
+                                         'TRINITY_AGENT_PREFLIGHT_FILE_CHARS': str(characters),
+                                         'TRINITY_AGENT_PERFORMANCE_MODE': mode}):
                 CACHE.clear()
                 CACHE.refresh_limits()
                 timings = []

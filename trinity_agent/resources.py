@@ -175,16 +175,16 @@ def _memory_budgets(profile, headroom):
     # Give its live representation at most 1/16 of usable memory, allowing an
     # 8x expansion. These are ceilings; no space is allocated here.
     index_build = max(0, headroom // 128)
-    configured = _number(os.environ.get('OVH_AGENT_INDEX_CACHE_MB', '').strip())
+    configured = _number(os.environ.get('TRINITY_AGENT_INDEX_CACHE_MB', '').strip())
     if configured:
         index_build = min(index_build, configured * MIB)
-    index_cache = _ceiling('OVH_AGENT_INDEX_CACHE_MB', index_build // MIB)
+    index_cache = _ceiling('TRINITY_AGENT_INDEX_CACHE_MB', index_build // MIB)
     # Zero disables the disk snapshot, while bounded transient search remains
     # possible. Document parsing also shares memory with concurrent readers.
-    document_chars = _ceiling('OVH_AGENT_MEMORY_DOCUMENT_CHARS',
+    document_chars = _ceiling('TRINITY_AGENT_MEMORY_DOCUMENT_CHARS',
         min(index_build // 4, max(0, headroom) // (512 * max(1, profile.workers))))
     return replace(profile, index_cache_mb=index_cache, index_build_bytes=index_build,
-                   archive_cache_mb=_ceiling('OVH_AGENT_ARCHIVE_CACHE_MB', max(0, headroom) // (64 * MIB)),
+                   archive_cache_mb=_ceiling('TRINITY_AGENT_ARCHIVE_CACHE_MB', max(0, headroom) // (64 * MIB)),
                    memory_document_chars=document_chars)
 
 
@@ -208,7 +208,7 @@ class ResourcePolicy:
     def profile(self, retained_bytes=0):
         with self.lock:
             now = time.monotonic()
-            mode = self.mode or ('max' if os.environ.get('OVH_AGENT_PERFORMANCE_MODE', '').lower() == 'max' else 'auto')
+            mode = self.mode or ('max' if os.environ.get('TRINITY_AGENT_PERFORMANCE_MODE', '').lower() == 'max' else 'auto')
             interval = min(self.interval, 5) if mode == 'max' else self.interval
             if self.hardware is None or now >= self.next_refresh or self.snapshot_mode != mode:
                 self.hardware = self.detect()
@@ -239,14 +239,14 @@ class ResourcePolicy:
         cache = min(hw.memory_bytes // 5, headroom // 4)
         if hw.available_bytes < reserve:
             cache = min(cache, hw.available_bytes // 8)
-        cache_mb = _ceiling('OVH_AGENT_RAM_CACHE_MB', cache // MIB)
-        entries = _ceiling('OVH_AGENT_RAM_CACHE_ENTRIES', min(65536, cache_mb * 2))
-        workers = max(1, _ceiling('OVH_AGENT_PREFLIGHT_WORKERS',
+        cache_mb = _ceiling('TRINITY_AGENT_RAM_CACHE_MB', cache // MIB)
+        entries = _ceiling('TRINITY_AGENT_RAM_CACHE_ENTRIES', min(65536, cache_mb * 2))
+        workers = max(1, _ceiling('TRINITY_AGENT_PREFLIGHT_WORKERS',
                                  min(16, max(1, int(hw.cpus)), max(1, hw.available_bytes // (256 * MIB)))))
         # Retrieval still works when cache storage is deliberately disabled.
         memory_mb = cache // MIB
-        files = _ceiling('OVH_AGENT_PREFLIGHT_MAX_FILES', min(2000, workers * 120, max(20, memory_mb * 2)))
-        chars = _ceiling('OVH_AGENT_PREFLIGHT_FILE_CHARS', min(524288, 65536 * max(1, memory_mb // 128)))
+        files = _ceiling('TRINITY_AGENT_PREFLIGHT_MAX_FILES', min(2000, workers * 120, max(20, memory_mb * 2)))
+        chars = _ceiling('TRINITY_AGENT_PREFLIGHT_FILE_CHARS', min(524288, 65536 * max(1, memory_mb // 128)))
         profile = ResourceProfile(round(hw.cpus, 3), hw.memory_bytes // MIB,
                                hw.available_bytes // MIB, cache_mb, entries, workers, files, chars)
         return _memory_budgets(profile, headroom)

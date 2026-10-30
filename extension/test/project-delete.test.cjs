@@ -64,7 +64,7 @@ function provider(h){
  const extension=path.resolve(__dirname,'..'),native=createRequire(path.join(extension,'extension.js'));
  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:h.workspace}}]},env:{language:'fr'},window:{}};
  const scope={require:name=>name==='vscode'?vscode:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
- vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',scope);
+ vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',scope);
  const state={update:async()=>{},get:()=>undefined},p=new scope.module.exports.Provider(extension,{},state);
  p.store=new ArchiveStore(h.workspace,h.data);p.archiveReader=h.reader;p.windowLock={};p.post=e=>p.events.push(e);p.events=[];p.showArchives=()=>{};
  return p;

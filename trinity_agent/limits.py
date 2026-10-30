@@ -56,7 +56,7 @@ def resolve_limits(card=None, *, overhead=0, complex_task=False, settings=None, 
     settings = settings or {}
     provider_limits_only = card.get('provider') == 'deepseek'
     def ceiling(short, automatic):
-        name = 'OVH_AGENT_' + short
+        name = 'TRINITY_AGENT_' + short
         value = None if provider_limits_only else settings[name] if name in settings else limit_setting(name)
         if value is not None and (type(value) is not int or value < 0):
             raise ValueError(f'{name} : plafond entier positif attendu.')
@@ -64,11 +64,11 @@ def resolve_limits(card=None, *, overhead=0, complex_task=False, settings=None, 
     advertised = _positive(card.get('context_length'))
     known = advertised is not None and advertised <= MAX_KNOWN_WINDOW
     window = advertised if known else UNKNOWN_WINDOW
-    reserve = settings.get('OVH_AGENT_CONTEXT_RESERVE_TOKENS')
+    reserve = settings.get('TRINITY_AGENT_CONTEXT_RESERVE_TOKENS')
     if reserve is None:
-        raw = os.environ.get('OVH_AGENT_CONTEXT_RESERVE_TOKENS', '4096')
+        raw = os.environ.get('TRINITY_AGENT_CONTEXT_RESERVE_TOKENS', '4096')
         if not str(raw).isascii() or not str(raw).isdigit():
-            raise ValueError('OVH_AGENT_CONTEXT_RESERVE_TOKENS : entier attendu.')
+            raise ValueError('TRINITY_AGENT_CONTEXT_RESERVE_TOKENS : entier attendu.')
         reserve = int(raw)
     available = max(0, window - max(0, reserve) - max(0, int(overhead)))
     maximum = _positive(card.get('max_completion_tokens'))

@@ -8,10 +8,10 @@ const { escapeHtml: escapeBrand } = require("./security");
 // Keep document construction independent from process/message lifecycle. Asset
 // revisions allow browser reuse, while every document receives a fresh CSP nonce.
 function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, webview) {
-  const deepseek = env.OVH_AGENT_PROVIDER === "deepseek";
+  const deepseek = env.TRINITY_AGENT_PROVIDER === "deepseek";
   const brandName = escapeBrand(brand);
   const brandBadge = escapeBrand(Array.from(brand.split(/\s+/)[0]).slice(0, 3).join("").toUpperCase());
-  const configuredColor = String(env.OVH_AGENT_PRIMARY_COLOR || "").trim();
+  const configuredColor = String(env.TRINITY_AGENT_PRIMARY_COLOR || "").trim();
   const primaryColor = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor : "#3e3aab";
   const mediaRoot = path.join(extensionUri.fsPath || extensionUri, "media");
   // Header marks are independent from Marketplace, extension-list and menu
@@ -28,9 +28,9 @@ function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, we
   const scriptUri = webview.asWebviewUri(joinPath(extensionUri, "media", asset("chat")));
   const i18nUri = webview.asWebviewUri(joinPath(extensionUri, "media", asset("i18n")));
   const translationData = JSON.stringify(require("./media/translations.json")).replace(/</g, "\\u003c");
-  const localeOverride = escapeBrand(env.OVH_AGENT_LANG || "auto");
+  const localeOverride = escapeBrand(env.TRINITY_AGENT_LANG || "auto");
   const showMountPoint = !["false", "0", "no", "non", "off"].includes(
-    String(env.OVH_AGENT_SHOW_MOUNT_POINT ?? "true").trim().toLowerCase());
+    String(env.TRINITY_AGENT_SHOW_MOUNT_POINT ?? "true").trim().toLowerCase());
   const mountPoint = showMountPoint ? `<div class="archive-mount"><span class="archive-mount-label">Mount Point : </span><span id="archive-path">Chargement du chemin d’archivage…</span><span id="archive-mount-separator" class="archive-mount-separator" aria-hidden="true" hidden>|</span><span id="archive-used" hidden></span></div>` : "";
   const archiveBanner = `<div id="archive-banner" class="archive-head"><div class="archive-heading"><span class="archive-heading-icon" aria-hidden="true">${uiIcon("archive", "archive-title-icon")}</span><div class="archive-heading-text"><strong class="archive-title">Conversations</strong>${mountPoint}</div></div><button id="close-history" class="icon" aria-label="Fermer">${uiIcon("close")}</button></div>`;
   const purifyUri = webview.asWebviewUri(joinPath(extensionUri, "media", "purify.min.js"));
@@ -48,9 +48,9 @@ function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, we
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; connect-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${codeStyleUri}?build=${revision}">
 <link rel="stylesheet" href="${styleUri}?build=${revision}">
-<style nonce="${nonce}">:root { --ovh-primary: ${primaryColor}; }</style>
+<style nonce="${nonce}">:root { --trinity-primary: ${primaryColor}; }</style>
 <title>${brandName}</title>
-</head><body data-provider="${deepseek ? "deepseek" : "ovhcloud"}" data-emoji-mode="${/^[0-3]$/.test(env.OVH_AGENT_EMOJI_MODE || "") ? env.OVH_AGENT_EMOJI_MODE : "1"}" data-language="${localeOverride}" data-brand-name="${brandName}" data-brand-badge="${brandBadge}" data-primary-color="${primaryColor}" data-performance-mode="${performanceMode}">
+</head><body data-provider="${deepseek ? "deepseek" : "ovhcloud"}" data-emoji-mode="${/^[0-3]$/.test(env.TRINITY_AGENT_EMOJI_MODE || "") ? env.TRINITY_AGENT_EMOJI_MODE : "1"}" data-language="${localeOverride}" data-brand-name="${brandName}" data-brand-badge="${brandBadge}" data-primary-color="${primaryColor}" data-performance-mode="${performanceMode}">
 <header><div class="header-leading"><span id="history-brand" class="history-brand" aria-hidden="true"><img class="header-app-logo header-app-logo-light" src="${escapeBrand(String(logoUri))}?build=${revision}" alt=""><img class="header-app-logo header-app-logo-dark" src="${escapeBrand(String(darkLogoUri))}?build=${revision}" alt=""></span><button id="history" hidden class="icon back-history" title="Retour à l’historique" aria-label="Retour à l’historique">${uiIcon("back")}</button><div class="brand"><strong>${brandName}</strong><button id="model-picker" title="Choisir le modèle"><span id="selected-model">Auto équilibré</span>${uiIcon("chevron")}</button></div></div><div class="header-actions"><button id="project-picker" class="icon" title="Choisir ou créer un projet" aria-label="Choisir ou créer un projet">${uiIcon("project")}</button><button id="billing" class="icon billing" title="${deepseek ? "DeepSeek" : "Configurer le suivi du solde OVHcloud"}" aria-label="${deepseek ? "DeepSeek" : "Solde OVHcloud"}">${uiIcon("database")}<span class="billing-dot"></span></button><button id="configure" class="icon" title="Configurer la clé OVH" aria-label="Configurer la clé">${uiIcon("key")}</button><button id="clear" class="icon" title="Nouvelle conversation" aria-label="Nouvelle conversation">${uiIcon("plus")}</button></div></header>
 <div class="workspace-content">
 <aside id="archive-panel">${archiveBanner}<p id="archive-notice" role="status"></p><div id="archive-list"><p class="archive-empty">Chargement…</p></div><p class="agent-disclaimer"></p></aside><dialog id="delete-dialog" aria-labelledby="delete-heading delete-title" aria-describedby="delete-description"><h3 id="delete-heading">${uiIcon("trash", "delete-title-icon")}Supprimer définitivement ?</h3><p id="delete-title"></p><p id="delete-description">Les messages, pièces jointes et la mémoire de cette conversation seront supprimés. Cette action est irréversible.</p><div class="delete-dialog-actions"><button id="delete-cancel" type="button">Annuler</button><button id="delete-confirm" type="button">Supprimer définitivement</button></div></dialog>
@@ -58,7 +58,7 @@ function buildChatHtml({extensionUri, brand, performanceMode, env, joinPath}, we
 <main id="messages"><section class="welcome"><h2>${brandName}</h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section></main>
 <footer><div id="followups" class="followups" aria-live="polite" hidden></div><div class="composer-meta"><div id="status" aria-live="polite"></div><button type="button" id="live-balance" aria-live="polite" title="${deepseek ? "DeepSeek" : "Configurer ou actualiser le solde OVHcloud"}">${deepseek ? "DeepSeek · …" : "Solde : chargement…"}</button></div><div id="composer" class="composer"><div id="attachments" class="attachments" hidden></div><textarea id="prompt" rows="1" placeholder="Demander à ${brandName}…"></textarea><div class="composer-bar"><div class="composer-left"><button id="attach" class="round attach" title="Joindre une image" aria-label="Joindre une image">${uiIcon("image")}</button><input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden><button id="access" class="access full" title="Basculer le niveau d’accès">${uiIcon("shield")}<span>Accès complet</span></button><select id="performance-mode" aria-label="Performances locales"><option value="auto">Perf. Auto</option><option value="max">Perf. Max</option></select></div><div class="send-column"><div class="send-actions"><button id="stop" class="round stop" title="Arrêter" aria-label="Arrêter">${uiIcon("stop")}</button><button id="send" class="round send" title="Envoyer" aria-label="Envoyer">${uiIcon("send")}</button></div></div></div></div><p class="agent-disclaimer"></p></footer>
 </div>
-<script nonce="${nonce}">window.OVH_TRANSLATIONS = ${translationData};</script>
+<script nonce="${nonce}">window.TRINITY_TRANSLATIONS = ${translationData};</script>
 <script nonce="${nonce}" src="${i18nUri}?build=${revision}"></script>
 <script nonce="${nonce}" src="${purifyUri}?build=${revision}"></script>
 <script nonce="${nonce}" src="${safeHtmlUri}?build=${revision}"></script>

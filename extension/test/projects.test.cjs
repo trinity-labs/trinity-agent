@@ -59,7 +59,7 @@ test('opening a saved conversation restores its workspace and persists across pr
  const native=createRequire(path.join(extension,'extension.js'));const values={};let picks=0;
  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:root}}]},env:{language:'fr'},window:{showQuickPick:async()=>{picks++;return {root:project.root};},showInformationMessage:()=>{},showErrorMessage:message=>assert.fail(message)}};
  const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{...native(name),ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
- vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
+ vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',sandbox);
  const Provider=sandbox.module.exports.Provider,state={get:key=>values[key],update:async(key,value)=>{values[key]=value;}};
  const provider=new Provider(extension,{},state);provider.windowLock={};provider.pickProject=items=>vscode.window.showQuickPick(items);provider.store.dataRoot=path.join(root,'data');
  const calls=[];provider.stopAgent=async()=>calls.push('stop');provider.ensureAgent=async()=>{
@@ -86,10 +86,10 @@ test('deleting a conversation removes generated memory and disk index, preservin
  const memory=path.join(store.dataRoot,'memory/projects',project.id);fs.mkdirSync(memory,{recursive:true});
  for(const name of ['NOTES.md','MEMORY.md','INDEX.md'])fs.writeFileSync(path.join(memory,name),'content');
  fs.writeFileSync(path.join(store.dataRoot,'memory/AGGREGATE.md'),'derived');
- const previous=process.env.OVH_AGENT_MEMORY_INDEX_DIR;process.env.OVH_AGENT_MEMORY_INDEX_DIR=path.join(root,'cache');
- t.after(()=>{if(previous===undefined)delete process.env.OVH_AGENT_MEMORY_INDEX_DIR;else process.env.OVH_AGENT_MEMORY_INDEX_DIR=previous;});
+ const previous=process.env.TRINITY_AGENT_MEMORY_INDEX_DIR;process.env.TRINITY_AGENT_MEMORY_INDEX_DIR=path.join(root,'cache');
+ t.after(()=>{if(previous===undefined)delete process.env.TRINITY_AGENT_MEMORY_INDEX_DIR;else process.env.TRINITY_AGENT_MEMORY_INDEX_DIR=previous;});
  const namespace=require('crypto').createHash('sha256').update(fs.realpathSync(store.dataRoot)).digest('hex').slice(0,20);
- const index=path.join(process.env.OVH_AGENT_MEMORY_INDEX_DIR,namespace,project.id,'index.json.gz');fs.mkdirSync(path.dirname(index),{recursive:true});fs.writeFileSync(index,'derived');
+ const index=path.join(process.env.TRINITY_AGENT_MEMORY_INDEX_DIR,namespace,project.id,'index.json.gz');fs.mkdirSync(path.dirname(index),{recursive:true});fs.writeFileSync(index,'derived');
  archives.remove('one');
  assert(fs.existsSync(path.join(memory,'NOTES.md')));assert(fs.existsSync(path.join(memory,'.revision')));
  for(const file of [index,path.join(memory,'MEMORY.md'),path.join(memory,'INDEX.md'),path.join(store.dataRoot,'memory/AGGREGATE.md')])assert(!fs.existsSync(file));
@@ -106,7 +106,7 @@ test('project menu aggregation sends selected project IDs without a prompt to th
  const extension=path.resolve(__dirname,'..'),{createRequire}=require('module'),vm=require('vm'),native=createRequire(path.join(extension,'extension.js'));
  let calls=0;const vscode={workspace:{workspaceFolders:[{uri:{fsPath:a.root}}]},env:{language:'fr'},window:{showQuickPick:async(items,options)=>++calls===1?{action:'aggregate'}:items.filter(p=>p.id===b.id),showErrorMessage:message=>assert.fail(message)}};
  const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{...native(name),ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
- vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
+ vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',sandbox);
  const provider=new sandbox.module.exports.Provider(extension,{});provider.windowLock={};provider.pickProject=items=>vscode.window.showQuickPick(items);provider.store.dataRoot=store.dataRoot;
  let sent;provider.sendControl=async value=>sent=value;
  await provider.selectProject();assert.equal(sent.type,'memory_export');assert.deepEqual(Array.from(sent.projects),[b.id]);
@@ -122,7 +122,7 @@ function typedPicker(t) {
   enter(){for(const fn of [...events.accept])fn();},cancel(){for(const fn of [...events.hide])fn();}};
  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:root}}]},env:{language:'fr'},window:{createQuickPick:()=>picker,showErrorMessage:message=>assert.fail(message)}};
  const sandbox={require:name=>name==='vscode'?vscode:name==='./project-store'?{ProjectStore:class extends ProjectStore{constructor(data){super(data,root);}}}:name==='./archive-store'?{...native(name),ArchiveStore:class extends (native(name).ArchiveStore){constructor(workspace,data=store.dataRoot){super(workspace,data);}}}:native(name),module:{exports:{}},process,console,setTimeout,clearTimeout};
- vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
+ vm.runInNewContext(fs.readFileSync(path.join(extension,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',sandbox);
  const values={},state={get:key=>values[key],update:async(key,value)=>values[key]=value};
  const provider=new sandbox.module.exports.Provider(extension,{},state);provider.windowLock={};provider.store.dataRoot=store.dataRoot;
  provider.archiveReader=new (native('./archive-store').ArchiveReader)({allowedRoot:root});t.after(()=>provider.archiveReader.dispose());
@@ -135,7 +135,7 @@ test('Enter on a pasted folder persists it without changing the current conversa
  const selecting=provider.selectProject();picker.type(target);
  assert.equal(picker.items[0].root,target);assert.equal(picker.items[0].alwaysShow,true);assert.equal(store.list().length,0);
  picker.enter();await selecting;
- assert.equal(provider.workspace,root);assert.equal(values['ovhAgent.projectRoot'],undefined);
+ assert.equal(provider.workspace,root);assert.equal(values['trinityAgent.projectRoot'],undefined);
  assert.deepEqual(calls,['archives']);assert.equal(store.list()[0].root,target);
  assert(picker.disposed);assert(Object.values(events).every(set=>set.size===0));
 });
@@ -182,13 +182,13 @@ test('active project preference is persisted per VS Code workspace',t=>{
 
 test('a remembered folder without a saved conversation cannot become the startup context',t=>{
  const {root,store,provider,state,values}=typedPicker(t),project=store.create(root,'folder');
- store.activate(root,project.root);values['ovhAgent.projectRoot']=project.root;
+ store.activate(root,project.root);values['trinityAgent.projectRoot']=project.root;
  const reload=()=>new provider.constructor(path.resolve(__dirname,'..'),{},state);
  assert.equal(reload().workspace,root);
  const folder=path.join(store.dataRoot,'archive',project.id);fs.mkdirSync(folder,{recursive:true});
  fs.writeFileSync(path.join(folder,'current'),'missing');
  assert.equal(reload().workspace,root);
- delete values['ovhAgent.projectRoot'];assert.equal(reload().workspace,root);
+ delete values['trinityAgent.projectRoot'];assert.equal(reload().workspace,root);
 });
 
 test('new conversation resets the backend workspace and persisted context without modifying old archives',async t=>{
@@ -208,11 +208,11 @@ test('new conversation resets the backend workspace and persisted context withou
  await provider.clearConversation();
  assert.equal(starts[0].workspace,root);assert.equal(starts[0].session,store.identity(root).id);
  assert.equal(writes[0].type,'clear');assert.equal(provider.store.dataRoot,store.dataRoot);
- assert.equal(values['ovhAgent.projectRoot'],root);assert.equal(store.active(root).root,root);
+ assert.equal(values['trinityAgent.projectRoot'],root);assert.equal(store.active(root).root,root);
  assert.equal(store.list().length,1); // resetting context must not register an implicit folder
  const reload=()=>new provider.constructor(path.resolve(__dirname,'..'),{},state);
  assert.equal(reload().workspace,root);
- delete values['ovhAgent.projectRoot'];assert.equal(reload().workspace,root);
+ delete values['trinityAgent.projectRoot'];assert.equal(reload().workspace,root);
  assert.equal(fs.readFileSync(path.join(folder,'meta.json'),'utf8'),meta);
  assert.equal(fs.readFileSync(path.join(folder,'messages.json'),'utf8'),'["previous project history"]');
  assert.equal(fs.readFileSync(path.join(folder,'../current'),'utf8'),'saved');
@@ -542,7 +542,7 @@ test('selected folder becomes the workspace and group of the next new conversati
   }}};return true;
  };
  await provider.newProjectConversation(project.id);
- assert.equal(values['ovhAgent.newConversationProject'],project.id);
+ assert.equal(values['trinityAgent.newConversationProject'],project.id);
  assert.equal(provider.workspace,project.root);
  assert.equal(provider.store.session,project.id);
  provider.consumeOutput('{"type":"cleared","conversation":"new"}\n');
@@ -555,10 +555,10 @@ test('clearing the selected folder resets the next conversation destination pers
  provider.post=message=>posted.push(message);
  await provider.selectConversationFolder(project);
  assert.equal(provider.newConversationProject,project.id);
- assert.equal(values['ovhAgent.newConversationProject'],project.id);
+ assert.equal(values['trinityAgent.newConversationProject'],project.id);
  await provider.clearConversationFolder();
  assert.equal(provider.newConversationProject,undefined);
- assert.equal(values['ovhAgent.newConversationProject'],undefined);
+ assert.equal(values['trinityAgent.newConversationProject'],undefined);
  assert.equal(posted.at(-1).type,'project_selected');
  assert.equal(posted.at(-1).project,null);
 });

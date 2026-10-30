@@ -17,7 +17,7 @@ class WorkspaceTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.work=self.root/'work';self.work.mkdir()
-        cache=patch.dict('os.environ',{'OVH_AGENT_MEMORY_INDEX_DIR':str(self.root/'cache')});cache.start();self.addCleanup(cache.stop)
+        cache=patch.dict('os.environ',{'TRINITY_AGENT_MEMORY_INDEX_DIR':str(self.root/'cache')});cache.start();self.addCleanup(cache.stop)
         self.data=self.root/'data';self.ctx=WorkspaceContext(self.data,self.work)
         self.conv=self.ctx.archive/'original';self.conv.mkdir(parents=True)
         self.other=WorkspaceContext(self.data,self.root/'other')
@@ -115,7 +115,7 @@ class WorkspaceTests(unittest.TestCase):
         p=self.data/'MASTER.md';p.write_text('Répondre en français.')
         self.assertEqual(self.ctx.profile(),'Répondre en français.')
     def test_environment_cache_refresh_and_no_environment_secrets(self):
-        with patch.dict('os.environ',{'OVH_AI_API_KEY':'never-include-this','OVH_AGENT_INVENTORY_TTL_SECONDS':'300'}):
+        with patch.dict('os.environ',{'TRINITY_OVHCLOUD_API_KEY':'never-include-this','TRINITY_AGENT_INVENTORY_TTL_SECONDS':'300'}):
             first=inventory(self.work,self.data)
             with patch('trinity_agent.workspace.shutil.which',side_effect=AssertionError('cache should be used')):
                 self.assertEqual(first,inventory(self.work,self.data))
@@ -174,13 +174,13 @@ class BackendTools(unittest.TestCase):
             cls.a=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.a)
     def test_auto_project_policy_uses_real_receipts_and_refreshes_inventory(self):
         a=self.a
-        with tempfile.TemporaryDirectory() as folder, patch.object(a,'WORKSPACE',Path(folder)), patch.object(a,'DATA_ROOT',Path(folder)/'data'), patch.dict('os.environ',{'OVH_AGENT_AUTO_INSTALL':'project'}), patch.object(a,'request_approval',side_effect=AssertionError('automatic project install')), patch.object(a,'run_check',return_value={'passed':True,'exit_code':0,'output':'installed','duration_ms':1}) as run, patch.object(a,'activity_start',return_value='id'), patch.object(a,'activity_end'):
+        with tempfile.TemporaryDirectory() as folder, patch.object(a,'WORKSPACE',Path(folder)), patch.object(a,'DATA_ROOT',Path(folder)/'data'), patch.dict('os.environ',{'TRINITY_AGENT_AUTO_INSTALL':'project'}), patch.object(a,'request_approval',side_effect=AssertionError('automatic project install')), patch.object(a,'run_check',return_value={'passed':True,'exit_code':0,'output':'installed','duration_ms':1}) as run, patch.object(a,'activity_start',return_value='id'), patch.object(a,'activity_end'):
             result=json.loads(a.install_tools('python',['pytest']))
             self.assertEqual(len(result['receipts']),2);self.assertEqual(run.call_count,2)
             self.assertEqual(result['environment']['status'],'observed')
     def test_system_install_requires_approval_under_project_policy(self):
         a=self.a
-        with tempfile.TemporaryDirectory() as folder, patch.object(a,'WORKSPACE',Path(folder)), patch.dict('os.environ',{'OVH_AGENT_AUTO_INSTALL':'project'}), patch.object(a,'install_plan',return_value=[['apk','add','git']]), patch.object(a,'request_approval',return_value=False) as approval, patch.object(a,'run_check') as run:
+        with tempfile.TemporaryDirectory() as folder, patch.object(a,'WORKSPACE',Path(folder)), patch.dict('os.environ',{'TRINITY_AGENT_AUTO_INSTALL':'project'}), patch.object(a,'install_plan',return_value=[['apk','add','git']]), patch.object(a,'request_approval',return_value=False) as approval, patch.object(a,'run_check') as run:
             self.assertEqual(a.install_tools('system',['git'],'system'),'Installation refusée.')
             approval.assert_called_once();run.assert_not_called()
     def test_context_loader_includes_profile_and_bounded_project_index(self):

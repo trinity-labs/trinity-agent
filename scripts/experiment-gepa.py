@@ -158,9 +158,9 @@ def run_experiment(*, output, real_model=None, max_cost_eur=.25, request_limit=1
     evaluation.atomic_report(output, report)
     with tempfile.TemporaryDirectory(prefix='trinity-gepa-') as temporary:
         base = Path(temporary)
-        environment = {'PYDANTIC_AI_NO_BANNER': '1', 'OVH_AGENT_WORKSPACE': str(base/'bootstrap')}
+        environment = {'PYDANTIC_AI_NO_BANNER': '1', 'TRINITY_AGENT_WORKSPACE': str(base/'bootstrap')}
         if not real_model:
-            environment['OVH_AGENT_DATA_ROOT'] = str(base/'offline-data')
+            environment['TRINITY_AGENT_DATA_ROOT'] = str(base/'offline-data')
         with patch.dict(os.environ, environment):
             backend = evaluation.load_backend()
         model, ledger, adapter = None, None, None

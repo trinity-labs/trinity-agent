@@ -140,7 +140,7 @@ class DockerIntegration(unittest.TestCase):
                               image=os.environ['TRINITY_RLM_TEST_IMAGE']) as sandbox:
             first = sandbox.execute("x = context[0]['text']; print(llm_query(x))")
             self.assertIn('child receipt', first['text'])
-            second = sandbox.execute("import os; print(x); print(os.path.exists('/root/.ovh-agent')); print(os.environ.get('OVH_API_KEY'))")
+            second = sandbox.execute("import os; print(x); print(os.path.exists('/root/.trinity-agent')); print(os.environ.get('TRINITY_OVHCLOUD_API_KEY'))")
             self.assertEqual(second['text'], 'source\nFalse\nNone\n')
             child.assert_called_once_with('source')
 

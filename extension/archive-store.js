@@ -21,13 +21,13 @@ function archiveCacheBudget({environment=process.env,runtime=process,system=os,r
   const reserve=Math.min(256*mib,total/10);
   const headroom=Math.max(0,Math.min(total,available+Math.max(0,retainedBytes))-reserve);
   const automatic=Math.floor(headroom/(64*mib))*mib;
-  const raw=environment.OVH_AGENT_ARCHIVE_CACHE_MB;
+  const raw=environment.TRINITY_AGENT_ARCHIVE_CACHE_MB;
   const configured=raw===undefined||raw==='auto'||raw===''?NaN:Number(raw);
   return Number.isFinite(configured)&&configured>=0?Math.min(automatic,configured*mib):automatic;
 }
 
 class ArchiveStore {
-  constructor(workspace, dataRoot = process.env.OVH_AGENT_DATA_ROOT || path.join(require('os').homedir(), '.ovh-agent')) {
+  constructor(workspace, dataRoot = process.env.TRINITY_AGENT_DATA_ROOT || path.join(require('os').homedir(), '.trinity-agent')) {
     this.session = crypto.createHash('sha256').update(fs.realpathSync(workspace)).digest('hex').slice(0,20);
     assertStoragePath(dataRoot);
     this.dataRoot = path.resolve(dataRoot);

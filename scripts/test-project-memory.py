@@ -20,7 +20,7 @@ class MarkdownMemoryTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.data=self.root/'data';self.work=self.root/'work';self.work.mkdir()
-        env=patch.dict(os.environ,{'OVH_AGENT_MEMORY_INDEX_DIR':str(self.root/'cache')});env.start();self.addCleanup(env.stop)
+        env=patch.dict(os.environ,{'TRINITY_AGENT_MEMORY_INDEX_DIR':str(self.root/'cache')});env.start();self.addCleanup(env.stop)
         CACHE.clear();self.ctx=WorkspaceContext(self.data,self.work)
         self.folder=self.ctx.archive/'old';self.folder.mkdir(parents=True)
         self.memory=ProjectMemory(self.data,self.ctx.id,self.work)
@@ -125,7 +125,7 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertFalse((self.data/'memory/AGGREGATE.md').exists())
     def test_partial_documents_are_explicit_and_full_source_is_preserved(self):
         ref=ConversationMemory(self.folder).put('alpha '*12000)
-        with patch.dict(os.environ,{'OVH_AGENT_MEMORY_DOCUMENT_CHARS':'64000'}):
+        with patch.dict(os.environ,{'TRINITY_AGENT_MEMORY_DOCUMENT_CHARS':'64000'}):
             report=self.memory.materialize();self.assertTrue(report['partial'])
         self.assertEqual((self.folder/'memory/documents'/(ref+'.md')).stat().st_size,72000)
     def test_long_archive_is_searchable_beyond_its_first_64k_characters(self):
@@ -135,7 +135,7 @@ class MarkdownMemoryTests(unittest.TestCase):
 
     def test_zero_disk_cache_keeps_retrieval_available(self):
         ConversationMemory(self.folder).put('Décision lilas')
-        with patch.dict(os.environ,{'OVH_AGENT_INDEX_CACHE_MB':'0'}):
+        with patch.dict(os.environ,{'TRINITY_AGENT_INDEX_CACHE_MB':'0'}):
             self.assertIn('lilas',self.memory.search('lilas'))
             self.assertFalse(self.memory.index_file.exists())
 
@@ -254,7 +254,7 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertIsNone(self.ctx.answer(question))
         (self.work/'ONE.md').write_text('## '+question+'\nPython\n')
         self.assertIsNone(self.memory.answer(question,deadline=time.monotonic()-1))
-        with patch.dict(os.environ,{'OVH_AGENT_MEMORY_DOCUMENT_CHARS':'10'}):self.assertIsNone(self.ctx.answer(question))
+        with patch.dict(os.environ,{'TRINITY_AGENT_MEMORY_DOCUMENT_CHARS':'10'}):self.assertIsNone(self.ctx.answer(question))
 
     def test_no_direct_answer_for_action_verification_or_approximate_match(self):
         for question in ['Exécute les tests ?', 'Quels tests vérifier maintenant ?', 'Pourquoi cette erreur ?',

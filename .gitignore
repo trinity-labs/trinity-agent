@@ -26,9 +26,9 @@
 !/extension/media/chat.css
 !/extension/media/chat.js
 !/extension/media/i18n.js
-!/extension/media/ovh-activity.svg
-!/extension/media/ovh-agent-brand-000e9c.svg
-!/extension/media/ovh-agent.svg
+!/extension/media/trinity-activity-legacy.svg
+!/extension/media/trinity-agent-brand-000e9c.svg
+!/extension/media/trinity-agent.svg
 !/extension/media/purify.min.js
 !/extension/media/safe-html.js
 !/extension/media/translations.json
@@ -42,7 +42,7 @@
 !/extension/security.js
 !/extension/test/security.test.cjs
 !/extension/test/*.test.cjs
-!/extension/media/ovh-agent-brand-*.svg
+!/extension/media/trinity-agent-brand-*.svg
 !/scripts/
 !/scripts/check-git-secrets.py
 !/scripts/export-public.py
@@ -145,6 +145,8 @@
 !/scripts/test-autonomy.py
 !/scripts/test-autonomy-delivery.py
 !/scripts/test-deepseek.py
+!/scripts/test-openai.py
+!/scripts/test-providers.py
 !/scripts/evaluate-autonomy.py
 
 !/scripts/test-tools.py

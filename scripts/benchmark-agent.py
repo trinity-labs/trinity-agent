@@ -22,7 +22,7 @@ def main():
     parser.add_argument('--model',help='Explicit comparison model; default is automatic routing')
     args=parser.parse_args()
     if not args.live: parser.error('--live required')
-    local_keys={'OVH_AGENT_ROUTING_PRICE_FACTOR','OVH_AGENT_CONTEXT_TOKENS','OVH_AGENT_OUTPUT_TOKENS','OVH_AGENT_COMPLEX_OUTPUT_TOKENS','OVH_AGENT_TOOL_OUTPUT_CHARS','OVH_AGENT_MEMORY_CHARS','OVH_AGENT_SHARED_MEMORY_CHARS','OVH_AGENT_PREFLIGHT_CONTEXT_CHARS'}
+    local_keys={'TRINITY_AGENT_ROUTING_PRICE_FACTOR','TRINITY_AGENT_CONTEXT_TOKENS','TRINITY_AGENT_OUTPUT_TOKENS','TRINITY_AGENT_COMPLEX_OUTPUT_TOKENS','TRINITY_AGENT_TOOL_OUTPUT_CHARS','TRINITY_AGENT_MEMORY_CHARS','TRINITY_AGENT_SHARED_MEMORY_CHARS','TRINITY_AGENT_PREFLIGHT_CONTEXT_CHARS'}
     if args.env_file:
         for line in args.env_file.read_text().splitlines():
             key,sep,value=line.partition('=')
@@ -36,8 +36,8 @@ def main():
     else:
         spec=importlib.util.spec_from_file_location('pipeline_agent',ROOT/'trinity_agent/agent.py')
         a=importlib.util.module_from_spec(spec);sys.modules[spec.name]=a;spec.loader.exec_module(a)
-    for path in [Path('/run/secrets/OVH_AI_API_KEY'),Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/OVH_AI_API_KEY')]:
-        if not os.environ.get('OVH_AI_API_KEY') and path.is_file():os.environ['OVH_AI_API_KEY']=path.read_text().strip()
+    for path in [Path('/run/secrets/TRINITY_OVHCLOUD_API_KEY'),Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/TRINITY_OVHCLOUD_API_KEY')]:
+        if not os.environ.get('TRINITY_OVHCLOUD_API_KEY') and path.is_file():os.environ['TRINITY_OVHCLOUD_API_KEY']=path.read_text().strip()
     from pydantic_ai.usage import UsageLimits,RunUsage
     from trinity_agent.memory import atomic_write
     # Preserve every tool schema; mutations are rejected inside this benchmark only.
@@ -56,7 +56,7 @@ def main():
     a.emit=a.archive_event
     folder=a.conversation_dir();folder.mkdir(parents=True,exist_ok=True)
     atomic_write(folder/'meta.json',json.dumps({'id':a.CONVERSATION_ID,'title':'Tests fluidité — pipeline réel et choix automatique','workspace':str(a.WORKSPACE),'created_at':a.now_iso(),'updated_at':a.now_iso(),'evaluation':True}))
-    fixtures=Path('/home/coder/.ovh-agent-model-test')/stamp;fixtures.mkdir(parents=True)
+    fixtures=Path('/home/coder/.trinity-agent-model-test')/stamp;fixtures.mkdir(parents=True)
     fixture=fixtures/'settings.json';fixture.write_text('{"port":8457,"service":"nebula-lab"}\n')
     prompt=f'Lis uniquement {fixture} et réponds en JSON avec port et service. Aucune modification ni recherche Internet.'
     report={'adapter':str(args.adapter) if args.adapter else None,'local_settings':{key:os.environ.get(key) for key in local_keys},'scope':'Actual agent instructions and preparation, read-only fixture tools; first request vs reused client/agent, provider cold state unknown; three repetitions, no Codex baseline.','results':[]}

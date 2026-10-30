@@ -235,9 +235,9 @@ def main():
                 if message.get('type') == 'function_call_output':
                     message.setdefault('status','completed')
             return instructions, messages
-    for keyfile in [Path('/run/secrets/OVH_AI_API_KEY'),Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/OVH_AI_API_KEY')]:
-        if not os.environ.get('OVH_AI_API_KEY') and keyfile.is_file(): os.environ['OVH_AI_API_KEY']=keyfile.read_text().strip()
-    if not os.environ.get('OVH_AI_API_KEY'): raise SystemExit('API key unavailable')
+    for keyfile in [Path('/run/secrets/TRINITY_OVHCLOUD_API_KEY'),Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/TRINITY_OVHCLOUD_API_KEY')]:
+        if not os.environ.get('TRINITY_OVHCLOUD_API_KEY') and keyfile.is_file(): os.environ['TRINITY_OVHCLOUD_API_KEY']=keyfile.read_text().strip()
+    if not os.environ.get('TRINITY_OVHCLOUD_API_KEY'): raise SystemExit('API key unavailable')
     # Validate the actual provider-backed ledger once before scheduling cases.
     # A billing outage is not evidence of poor model quality.
     status=a.budget_ledger().status()
@@ -307,7 +307,7 @@ def main():
             started=time.monotonic();stream=a.ResponseStream();usage=RunUsage();protocol=[]
             try:
                 model_class=OVHResponsesExperiment if args.api=='responses' else OpenAIChatModel
-                model=BudgetedModel(model_class(mid,provider=a.ConfiguredOVHProvider(api_key=os.environ['OVH_AI_API_KEY']),profile={'openai_chat_supports_multiple_system_messages':False,'openai_chat_supports_max_completion_tokens':False}),ledger=a.budget_ledger,catalog_card=lambda _:card,publish=lambda _:None)
+                model=BudgetedModel(model_class(mid,provider=a.ConfiguredOVHProvider(api_key=os.environ['TRINITY_OVHCLOUD_API_KEY']),profile={'openai_chat_supports_multiple_system_messages':False,'openai_chat_supports_max_completion_tokens':False}),ledger=a.budget_ledger,catalog_card=lambda _:card,publish=lambda _:None)
                 settings=a.generation_settings(mid,prompt)
                 settings.update(max_tokens=min(args.max_tokens,card.get('max_completion_tokens') or card['context_length']//2),timeout=args.timeout)
                 if args.api=='responses': settings.update(openai_store=False,openai_send_reasoning_ids=True)

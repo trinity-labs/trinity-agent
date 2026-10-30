@@ -47,8 +47,8 @@ class GepaTests(unittest.TestCase):
     def test_suggestion_never_changes_user_contract_or_instructions(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
-            with patch.dict(os.environ, {'OVH_AGENT_DATA_ROOT': str(base/'bootstrap'),
-                                         'OVH_AGENT_WORKSPACE': str(base/'workspace')}):
+            with patch.dict(os.environ, {'TRINITY_AGENT_DATA_ROOT': str(base/'bootstrap'),
+                                         'TRINITY_AGENT_WORKSPACE': str(base/'workspace')}):
                 backend = gepa.evaluation.load_backend()
             a = gepa.evaluation.run_case(backend, base/'a', 'multi_file', seed=101)
             b = gepa.evaluation.run_case(backend, base/'b', 'multi_file', seed=101,

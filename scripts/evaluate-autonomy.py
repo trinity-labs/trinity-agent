@@ -145,7 +145,7 @@ def run_evaluation(*, seed=20261019, runner=None):
     rng = random.Random(seed)
     reports = []
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix="ovh-autonomy-") as directory:
+    with tempfile.TemporaryDirectory(prefix="trinity-autonomy-") as directory:
         base = Path(directory)
 
         def task(identifier, documents, request, expected, *, concurrent=None, counter=None):

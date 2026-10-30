@@ -39,13 +39,13 @@ function customIcon(variable, media) {
       extension = 'svg';
     }
     const digest = crypto.createHash('sha256').update(content).digest('hex').slice(0, 20);
-    const role = variable === 'OVH_AGENT_MENU_ICON' ? 'menu' :
-      variable === 'OVH_AGENT_DARK_THEME_ICON' ? 'theme-dark' : 'app';
+    const role = variable === 'TRINITY_AGENT_MENU_ICON' ? 'menu' :
+      variable === 'TRINITY_AGENT_DARK_THEME_ICON' ? 'theme-dark' : 'app';
     const filename = `custom-${role}-${digest}.${extension}`;
     fs.writeFileSync(path.join(media, filename), content);
     return 'media/' + filename;
   } catch (error) {
-    if (process.env.OVH_AGENT_BRANDING_STRICT === 'true') throw error;
+    if (process.env.TRINITY_AGENT_BRANDING_STRICT === 'true') throw error;
     console.warn(`[branding] ${variable}: ${error.code || error.message}; preserving current icon.`);
     return null;
   }
@@ -68,7 +68,7 @@ function themedIcon(lightAsset, darkAsset, media, role) {
   return 'media/' + filename;
 }
 function configuredDarkTheme() {
-  const requested = String(process.env.OVH_AGENT_ICON_THEME || 'auto').trim().toLowerCase();
+  const requested = String(process.env.TRINITY_AGENT_ICON_THEME || 'auto').trim().toLowerCase();
   if (requested === 'dark') return true;
   if (requested === 'light') return false;
   const files = ['/home/coder/.vscode/settings.json', path.join(require('os').homedir(), '.local/share/code-server/User/settings.json')];
@@ -89,44 +89,44 @@ function staticThemeIcon(asset, media, role, dark) {
   fs.writeFileSync(path.join(media, filename), content);
   return 'media/' + filename;
 }
-function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'auto') {
+function applyManifest(file, name, language = process.env.TRINITY_AGENT_LANG || 'auto') {
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (manifest.name !== 'ovh-agent' || manifest.publisher !== 'trinity') return;
+  if (manifest.name !== 'trinity-agent' || manifest.publisher !== 'trinity') return;
   manifest.displayName = name;
-  if (manifest.__metadata) manifest.__metadata.publisherDisplayName = process.env.OVH_AGENT_PUBLISHER_NAME || 'TRINITY';
-  const configuredColor = String(process.env.OVH_AGENT_PRIMARY_COLOR || "").trim();
+  if (manifest.__metadata) manifest.__metadata.publisherDisplayName = process.env.TRINITY_AGENT_PUBLISHER_NAME || 'TRINITY';
+  const configuredColor = String(process.env.TRINITY_AGENT_PRIMARY_COLOR || "").trim();
   const primary = /^#[0-9a-f]{6}$/i.test(configuredColor) ? configuredColor.toLowerCase() : "#3e3aab";
   const media = path.join(path.dirname(file), "media");
-  const iconTemplate = path.join(media, "ovh-agent.svg");
+  const iconTemplate = path.join(media, "trinity-agent.svg");
   if (fs.existsSync(path.join(media, "trinity-icon.png"))) {
     manifest.icon = "media/trinity-icon.png";
   } else if (fs.existsSync(iconTemplate)) {
     const svg = fs.readFileSync(iconTemplate, "utf8").replace(/(<rect\b[^>]*\bfill=")[^"]*(")/, (_, start, end) => start + primary + end);
     // A color-specific filename prevents VS Code from reusing the old cached icon.
-    const iconName = "ovh-agent-brand-" + primary.slice(1) + ".svg";
+    const iconName = "trinity-agent-brand-" + primary.slice(1) + ".svg";
     fs.writeFileSync(path.join(media, iconName), svg);
     manifest.icon = "media/" + iconName;
   }
   const defaultIcon = manifest.icon;
-  const appIcon = customIcon('OVH_AGENT_APP_ICON', media);
+  const appIcon = customIcon('TRINITY_AGENT_APP_ICON', media);
   const lightThemeIcon = appIcon || defaultIcon;
-  const menuOverride = customIcon('OVH_AGENT_MENU_ICON', media);
+  const menuOverride = customIcon('TRINITY_AGENT_MENU_ICON', media);
   const menuIcon = menuOverride ||
     (fs.existsSync(path.join(media, 'trinity-menu.png')) ? 'media/trinity-menu.png' :
-      fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/ovh-activity.svg');
-  const darkOverride = customIcon('OVH_AGENT_DARK_THEME_ICON', media);
+      fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/trinity-activity-legacy.svg');
+  const darkOverride = customIcon('TRINITY_AGENT_DARK_THEME_ICON', media);
   const darkThemeIcon = darkOverride ||
     (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : menuIcon);
   // The published VSIX keeps its purple Marketplace icon. This local branding
   // pass runs only after installation and gives the installed app its dark set.
   const darkTheme = configuredDarkTheme();
   manifest.icon = staticThemeIcon(darkTheme ? darkThemeIcon : lightThemeIcon, media, 'app', darkTheme);
-  const branding = manifest.ovhAgentBranding && typeof manifest.ovhAgentBranding === 'object' && !Array.isArray(manifest.ovhAgentBranding)
-    ? manifest.ovhAgentBranding : {};
-  manifest.ovhAgentBranding = { ...branding, lightThemeIcon, darkThemeIcon };
+  const branding = manifest.trinityAgentBranding && typeof manifest.trinityAgentBranding === 'object' && !Array.isArray(manifest.trinityAgentBranding)
+    ? manifest.trinityAgentBranding : {};
+  manifest.trinityAgentBranding = { ...branding, lightThemeIcon, darkThemeIcon };
   const locale = language.toLowerCase().split(/[-_]/)[0];
   const forced = commandTranslations[locale] ? locale : null;
-  const ids = ['ovhAgent.start', 'ovhAgent.configureKey', 'ovhAgent.configureBilling'];
+  const ids = ['trinityAgent.start', 'trinityAgent.configureKey', 'trinityAgent.configureBilling'];
   for (const command of manifest.contributes?.commands || []) {
     command.category = name;
     if (ids.includes(command.command)) command.title = `%${command.command}.title%`;
@@ -142,7 +142,7 @@ function applyManifest(file, name, language = process.env.OVH_AGENT_LANG || 'aut
   }
   const themedMenuIcon = menuOverride || staticThemeIcon(menuIcon, media, 'menu', darkTheme);
   for (const view of manifest.contributes?.viewsContainers?.activitybar || []) { view.title = name; view.icon = themedMenuIcon; }
-  for (const view of manifest.contributes?.views?.ovhAgent || []) view.name = name;
+  for (const view of manifest.contributes?.views?.trinityAgent || []) view.name = name;
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 }
 function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server/lib/vscode/out/vs/code/browser/workbench/workbench.css') {
@@ -220,12 +220,12 @@ if (require.main === module) {
   const registryFile = path.join(extensions, 'extensions.json');
   const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'));
   for (const item of registry) {
-    if (item.identifier?.id !== 'trinity.ovh-agent') continue;
+    if (item.identifier?.id !== 'trinity.trinity-agent') continue;
     const file = path.join(extensions, path.basename(item.relativeLocation), 'package.json');
     const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
     // Unset branding variables mean bundled TRINITY defaults; only explicit values persist custom branding.
-    const name = (process.env.OVH_AGENT_NAME || 'TRINITY Agent').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80);
-    const publisher = process.env.OVH_AGENT_PUBLISHER_NAME || 'TRINITY';
+    const name = (process.env.TRINITY_AGENT_NAME || 'TRINITY Agent').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80);
+    const publisher = process.env.TRINITY_AGENT_PUBLISHER_NAME || 'TRINITY';
     item.metadata = { ...item.metadata, publisherDisplayName: publisher };
     applyManifest(file, name);
   }

@@ -62,7 +62,7 @@ class CoherenceTests(unittest.TestCase):
             rows.append({'id':'bad-price-'+str(value), 'pricing':{'prompt':value,'completion':0}})
         with patch.object(a, 'MODEL_CATALOG', None), patch.object(a, 'MODEL_CACHE_FILE', self.root/'catalog.json'), \
              patch.object(a, 'AI_API_BASE_URL', 'https://fixture.invalid/v1'), patch.object(a, 'model_metadata', return_value={}), \
-             patch.dict(os.environ, {'OVH_AI_API_KEY':'fixture'}), \
+             patch.dict(os.environ, {'TRINITY_OVHCLOUD_API_KEY':'fixture'}), \
              patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps({'data':rows}).encode())):
             cards = a.fetch_model_catalog(force=True)
         self.assertEqual([card['id'] for card in cards], ['healthy-model'])

@@ -12,7 +12,7 @@ from pydantic_ai.messages import (
 from trinity_agent.memory import ConversationMemory, atomic_write
 from trinity_agent.limits import limit_setting, resolve_limits
 
-SUMMARY_PREFIX = '[OVH_CONTEXT_SUMMARY]\n'
+SUMMARY_PREFIX = '[TRINITY_CONTEXT_SUMMARY]\n'
 SUMMARY_VERSION = 'Mémoire non vérifiée v2. '
 
 
@@ -31,16 +31,16 @@ def budget_setting(name, default, minimum=1):
         return default
 
 
-TOOL_OUTPUT_CHARS = limit_setting('OVH_AGENT_TOOL_OUTPUT_CHARS')
-SUMMARY_TOKENS = limit_setting('OVH_AGENT_SUMMARY_TOKENS')
-SUMMARY_SOURCE_CHARS = limit_setting('OVH_AGENT_SUMMARY_SOURCE_CHARS')
+TOOL_OUTPUT_CHARS = limit_setting('TRINITY_AGENT_TOOL_OUTPUT_CHARS')
+SUMMARY_TOKENS = limit_setting('TRINITY_AGENT_SUMMARY_TOKENS')
+SUMMARY_SOURCE_CHARS = limit_setting('TRINITY_AGENT_SUMMARY_SOURCE_CHARS')
 
 
 def context_limits(budget=None):
     return resolve_limits(context_budget=budget, settings={
-        'OVH_AGENT_TOOL_OUTPUT_CHARS': TOOL_OUTPUT_CHARS,
-        'OVH_AGENT_SUMMARY_TOKENS': SUMMARY_TOKENS,
-        'OVH_AGENT_SUMMARY_SOURCE_CHARS': SUMMARY_SOURCE_CHARS})
+        'TRINITY_AGENT_TOOL_OUTPUT_CHARS': TOOL_OUTPUT_CHARS,
+        'TRINITY_AGENT_SUMMARY_TOKENS': SUMMARY_TOKENS,
+        'TRINITY_AGENT_SUMMARY_SOURCE_CHARS': SUMMARY_SOURCE_CHARS})
 
 
 def text_tokens(text):

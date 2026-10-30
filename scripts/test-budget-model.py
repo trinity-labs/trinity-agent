@@ -1,4 +1,4 @@
-#!/opt/ovh-agent/bin/python
+#!/opt/trinity-agent/bin/python
 """Exercise real Pydantic model/tool/stream boundaries without calling a provider."""
 import asyncio
 from decimal import Decimal
@@ -13,14 +13,14 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pydantic_ai import Agent
-from pydantic_ai.messages import ModelResponse, PartStartEvent, TextPart, ToolCallPart
+from pydantic_ai.messages import ModelResponse, PartStartEvent, TextPart, ThinkingPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.usage import RequestUsage
 from trinity_agent.budget import BudgetLedger, BudgetExceeded
-from trinity_agent.budget_model import BudgetedModel, NormalizedStream
+from trinity_agent.budget_model import BudgetedModel, IncompleteModelResponseError, NormalizedStream, require_actionable_response
 from trinity_agent.budget_model import normalize_tool_call_names
 
 # Some OVH chat templates occasionally append an OpenAI channel marker to a
@@ -30,6 +30,11 @@ malformed = ModelResponse(parts=[ToolCallPart('read_file<|channel|>commentary', 
 assert normalize_tool_call_names(malformed, parameters).parts[0].tool_name == 'read_file'
 unknown = ModelResponse(parts=[ToolCallPart('not_advertised<|channel|>commentary', {})])
 assert normalize_tool_call_names(unknown, parameters).parts[0].tool_name == 'not_advertised<|channel|>commentary'
+try:
+    require_actionable_response(ModelResponse(parts=[ThinkingPart('unfinished')]))
+    raise AssertionError('Thinking-only provider response was accepted')
+except IncompleteModelResponseError:
+    pass
 
 class MalformedStream:
     async def __aiter__(self):
@@ -126,14 +131,14 @@ with tempfile.TemporaryDirectory() as directory:
 print('PASS: per-request limits, summaries, streams, uncertain charges, native EUR prices and USD rejection')
 
 # Provider observations remain separate from durable local request accounting.
-from trinity_agent.budget import OvhBalanceLedger, BudgetLedgerError
+from trinity_agent.budget import ProviderBalanceLedger, BudgetLedgerError
 with tempfile.TemporaryDirectory() as directory:
     now = datetime.now(timezone.utc)
     snapshot = dict(available=True, currency='EUR', credit_currency='EUR', project='fixture',
                     current_usage=2.1, credit_available=200, last_update=now.isoformat(),
                     cached_at=now.timestamp(), usage_period={'from':now.replace(day=1,hour=0,minute=0,second=0,microsecond=0).isoformat()})
     root = Path(directory)
-    ledger = OvhBalanceLedger.from_provider(root/'ovh.json', {'daily':8,'monthly':197}, root/'policy.json', lambda:snapshot, now=lambda:now)
+    ledger = ProviderBalanceLedger.from_provider(root/'provider.json', {'daily':8,'monthly':197}, root/'policy.json', lambda:snapshot, now=lambda:now)
     def failed_provider(messages, info):
         raise OSError('fixture transport failed')
     wrapped = BudgetedModel(FunctionModel(failed_provider), lambda:ledger, lambda _:card, lambda _:None)
@@ -159,7 +164,7 @@ with tempfile.TemporaryDirectory() as directory:
         def billing():
             provider_reads.append(True)
             return snapshot if len(provider_reads)==1 else {'available':False}
-        pending=OvhBalanceLedger.from_provider(root/('orphan-'+str(stream_mode)+'.json'),
+        pending=ProviderBalanceLedger.from_provider(root/('orphan-'+str(stream_mode)+'.json'),
             {'daily':8,'monthly':197},root/'absent.json',billing,now=lambda:now)
         def tracked(messages,info):
             model_calls.append(True)
@@ -179,7 +184,7 @@ with tempfile.TemporaryDirectory() as directory:
             pass
         data=json.loads(pending.path.read_text())
         assert not model_calls and data['reservations']=={}
-        assert data['ovh']['local']['spent']['daily'][now.date().isoformat()]=='0'
+        assert data['provider']['local']['spent']['daily'][now.date().isoformat()]=='0'
 
     callback_ledger=BudgetLedger(root/'callback.json',{'daily':1})
     def broken_ui(_):
@@ -275,7 +280,7 @@ print('PASS: request journal persists independently; interrupted costs are repor
 
 # OVH's authenticated project/model rate limit must cover tools, summaries and
 # streams across processes, independently of financial budget reservations.
-from trinity_agent.budget_model import OVHRateLimiter
+from trinity_agent.budget_model import ProviderRateLimiter
 from pydantic_ai.exceptions import ModelHTTPError
 from unittest.mock import AsyncMock, patch
 from contextlib import asynccontextmanager
@@ -288,12 +293,12 @@ async def rate_limit_regressions(root):
     now = [1000.0]
     async def advance(delay):
         now[0] += delay
-    gate = OVHRateLimiter(root/'rate.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
-    other = OVHRateLimiter(root/'rate.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
+    gate = ProviderRateLimiter(root/'rate.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
+    other = ProviderRateLimiter(root/'rate.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
     assert gate._slot('model-a') == 0
     assert abs(other._slot('model-a') - .15) < 1e-8
     assert other._slot('model-b') == 0
-    assert OVHRateLimiter(root/'rate.sqlite3', 'project-b', clock=lambda: now[0])._slot('model-a') == 0
+    assert ProviderRateLimiter(root/'rate.sqlite3', 'project-b', clock=lambda: now[0])._slot('model-a') == 0
     for _ in range(400):
         await gate.wait('model-a')
     assert now[0] >= 1059.999999  # 401 requests span at least one minute.
@@ -325,8 +330,8 @@ async def rate_limit_regressions(root):
         outcomes = list(workers.map(lambda _: other._slot('concurrent'), range(16)))
     assert outcomes.count(0) == 1
     command = [sys.executable, '-c',
-        'from trinity_agent.budget_model import OVHRateLimiter; import sys; '
-        'print(OVHRateLimiter(sys.argv[1], "project-a", clock=lambda: 1000.0)._slot("cross-process"))',
+        'from trinity_agent.budget_model import ProviderRateLimiter; import sys; '
+        'print(ProviderRateLimiter(sys.argv[1], "project-a", clock=lambda: 1000.0)._slot("cross-process"))',
         str(root/'rate.sqlite3')]
     first = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)
     second = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)
@@ -337,7 +342,7 @@ async def rate_limit_regressions(root):
     records = []
     response = ModelResponse(parts=[TextPart('ok')], usage=RequestUsage(input_tokens=100, output_tokens=20))
     inner = FunctionModel(lambda messages, info: response)
-    limiter = OVHRateLimiter(root/'attempts.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
+    limiter = ProviderRateLimiter(root/'attempts.sqlite3', 'project-a', clock=lambda: now[0], sleep=advance)
     outer = BudgetedModel(inner, lambda: ledger, lambda _: card, lambda _: None,
                           record=lambda event, response: records.append(event), rate_limiter=limiter)
     no_header = ModelHTTPError(429, 'test', {})
@@ -400,7 +405,7 @@ async def rate_limit_regressions(root):
     async def blocked_sleep(delay):
         waiting.set()
         await asyncio.Event().wait()
-    blocked = OVHRateLimiter(root/'cancel.sqlite3', 'project-a', clock=lambda: now[0], sleep=blocked_sleep)
+    blocked = ProviderRateLimiter(root/'cancel.sqlite3', 'project-a', clock=lambda: now[0], sleep=blocked_sleep)
     blocked._slot(inner.model_name, 60)
     untouched = BudgetLedger(root/'cancel-budget.json', {'daily': 1})
     cancellable = BudgetedModel(inner, lambda: untouched, lambda _: card, lambda _: None, rate_limiter=blocked)

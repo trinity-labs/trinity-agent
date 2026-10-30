@@ -37,22 +37,22 @@ class PublicExport(unittest.TestCase):
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text('LOCAL_ONLY_MARKER_12345')
             # Local maxima must not change the public Compose's native-EUR defaults.
-            (source / '.env').write_text('OVH_AGENT_BUDGET_DAILY_EUR=200\n')
+            (source / '.env').write_text('TRINITY_AGENT_BUDGET_DAILY_EUR=200\n')
             (source / 'docker-compose.yml').write_text(
                 'services:\n  ide:\n    environment:\n'
-                '      OVH_AGENT_BUDGET_DAILY_EUR: "${OVH_AGENT_BUDGET_DAILY_EUR:-2}"\n'
-                '      OVH_AGENT_BUDGET_WEEKLY_EUR: "${OVH_AGENT_BUDGET_WEEKLY_EUR:-15}"\n'
-                '      OVH_AGENT_BUDGET_MONTHLY_EUR: "${OVH_AGENT_BUDGET_MONTHLY_EUR:-60}"\n'
-                '      #OVH_AGENT_NAME: "Local Agent"\n'
-                '      #OVH_AGENT_PRIMARY_COLOR: "#000000"\n'
-                '      #OVH_AGENT_APP_ICON: "./branding/ovh/app.svg"\n'
+                '      TRINITY_AGENT_BUDGET_DAILY_EUR: "${TRINITY_AGENT_BUDGET_DAILY_EUR:-2}"\n'
+                '      TRINITY_AGENT_BUDGET_WEEKLY_EUR: "${TRINITY_AGENT_BUDGET_WEEKLY_EUR:-15}"\n'
+                '      TRINITY_AGENT_BUDGET_MONTHLY_EUR: "${TRINITY_AGENT_BUDGET_MONTHLY_EUR:-60}"\n'
+                '      #TRINITY_AGENT_NAME: "Local Agent"\n'
+                '      #TRINITY_AGENT_PRIMARY_COLOR: "#000000"\n'
+                '      #TRINITY_AGENT_APP_ICON: "./branding/ovh/app.svg"\n'
                 '    volumes:\n'
                 '      - type: bind\n'
                 '        source: /var/lib/trinity/agent-data/codex\n'
                 '        target: /root/.codex\n'
                 '      - type: bind\n'
                 '        source: /var/lib/trinity/agent-data/trinity-agent\n'
-                '        target: /root/.ovh-agent\n')
+                '        target: /root/.trinity-agent\n')
             index = (source / '.git/index').read_bytes()
             result = subprocess.run([sys.executable, str(source / 'scripts/export-public.py')],
                 env={**os.environ, 'TRINITY_AGENT_PUBLIC_ROOT':str(target)},
@@ -69,10 +69,10 @@ class PublicExport(unittest.TestCase):
             self.assertFalse((target / 'scripts/trinity-agent.local.sh').exists())
             compose = (target / 'docker-compose.example.yml').read_text()
             for period, amount in [('DAILY',2),('WEEKLY',15),('MONTHLY',60)]:
-                self.assertIn(f'OVH_AGENT_BUDGET_{period}_EUR:-{amount}', compose)
+                self.assertIn(f'TRINITY_AGENT_BUDGET_{period}_EUR:-{amount}', compose)
             self.assertNotIn('200', compose)
-            self.assertIn('OVH_AGENT_NAME:-TRINITY Agent', compose)
-            self.assertIn('OVH_AGENT_PRIMARY_COLOR:-#3e3aab', compose)
+            self.assertIn('TRINITY_AGENT_NAME:-TRINITY Agent', compose)
+            self.assertIn('TRINITY_AGENT_PRIMARY_COLOR:-#3e3aab', compose)
             self.assertNotIn('./branding/ovh/', compose)
             self.assertIn('${CODEX_DATA_DIR:-./data/codex}', compose)
             self.assertIn('${AGENT_DATA_DIR:-./data/agent}', compose)

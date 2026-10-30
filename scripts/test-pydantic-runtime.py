@@ -1,4 +1,4 @@
-#!/opt/ovh-agent/bin/python
+#!/opt/trinity-agent/bin/python
 """Offline contracts for native Pydantic execution, concurrency and cancellation."""
 import asyncio
 from contextvars import ContextVar

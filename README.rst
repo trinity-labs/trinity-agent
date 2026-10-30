@@ -60,13 +60,13 @@ before testing and packaging to refresh the dependency resolution and bundled br
 libraries. The lockfile records that tested resolution; packaging uses it so it does
 not silently resolve a different dependency set after the tests. CI refreshes it on
 every run and shares it between the Marketplace and local packages.
-The image creates ``/opt/ovh-agent`` and installs the latest stable Pydantic AI and
+The image creates ``/opt/trinity-agent`` and installs the latest stable Pydantic AI and
 compatible dependencies. Node, code-server and the optional research dependencies
 also follow their latest stable releases. Rebuild with ``sh scripts/build-image.sh``:
 it resolves the latest Node release accepted by ``code-server@latest`` from its npm
 metadata, pulls the matching Alpine image and refreshes Docker's cached layers.
 This avoids forcing an incompatible Node major or maintaining a numeric version pin.
-For an existing backend, run ``/opt/ovh-agent/bin/python -m pip install --upgrade
+For an existing backend, run ``/opt/trinity-agent/bin/python -m pip install --upgrade
 --upgrade-strategy eager 'pydantic-ai-slim[openai]'``. Existing agent processes keep
 their loaded modules until they exit; the next process uses the updated runtime.
 Persistent data directories must exist before starting Docker bind mounts.
@@ -81,27 +81,30 @@ reduce mounts/credentials for less-trusted work.
 Configuration
 -------------
 
-* ``ovhAgent.provider`` (VS Code User settings): ``ovhcloud`` or ``deepseek``.
-  CLI deployments select the same provider with ``OVH_AGENT_PROVIDER``.
+* ``trinityAgent.provider`` (VS Code User settings): ``ovhcloud``, ``deepseek`` or ``openai``.
+  CLI deployments select the same provider with ``TRINITY_AGENT_PROVIDER``.
   The command **TRINITY Agent: Choose the inference provider** writes the same
   setting. A change restarts an idle backend and applies to the next message;
   an active task finishes first.
-* ``OVH_AGENT_NAME``: public extension name.
-* ``OVH_AGENT_PRIMARY_COLOR``: primary color, ``#RRGGBB``.
-* ``OVH_AGENT_LANG``: ``auto``, ``fr``, ``en``, ``de`` or ``es``.
-* ``OVH_AGENT_SHOW_MOUNT_POINT``: ``false`` removes the history banner entirely.
-* ``OVH_AI_BASE_URL``: AI endpoint base URL.
-* ``OVH_API_BASE_URL``: separate billing API base URL, loaded from server secrets.
+* ``TRINITY_AGENT_NAME``: public extension name.
+* ``TRINITY_AGENT_PRIMARY_COLOR``: primary color, ``#RRGGBB``.
+* ``TRINITY_AGENT_LANG``: ``auto``, ``fr``, ``en``, ``de`` or ``es``.
+* ``TRINITY_AGENT_SHOW_MOUNT_POINT``: ``false`` removes the history banner entirely.
+* ``TRINITY_OVHCLOUD_BASE_URL``: AI endpoint base URL.
+* ``TRINITY_OVHCLOUD_API_BASE_URL``: separate billing API base URL, loaded from server secrets.
+* ``TRINITY_DEEPSEEK_BASE_URL`` and ``TRINITY_OPENAI_BASE_URL``: API-specific endpoints.
+* ``TRINITY_<PROVIDER>_<SETTING>`` overrides token limits, request count,
+  timeouts and caches for one API; ``TRINITY_AGENT_<SETTING>`` remains the fallback.
 
 AI and billing credentials are read from ``/run/secrets`` or server secret
 files. Never commit tokens, passwords, auth.json, .env, SSH keys, conversation
 archives, model caches, IDE user profiles, or installed extensions.
 
-DeepSeek uses ``DEEPSEEK_API_KEY`` and ``https://api.deepseek.com`` independently
+DeepSeek uses ``TRINITY_DEEPSEEK_API_KEY`` and ``https://api.deepseek.com`` independently
 of OVH credentials and endpoint settings. Configure the key through the extension
 after selecting DeepSeek, or supply it through the environment or the existing
 server-secret directory. The optional Docker secret can be mounted at
-``/run/secrets/DEEPSEEK_API_KEY``. Automatic routing starts with the economical
+``/run/secrets/TRINITY_DEEPSEEK_API_KEY``. Automatic routing starts with the economical
 compatible model; Flash and Pro can also be selected explicitly.
 
 For DeepSeek, local inference spending budgets, request-count ceilings, configured
@@ -119,6 +122,12 @@ The total includes granted credit only once. Rates are cached for six hours;
 during an outage, a rate up to seven days old can be used with a stale indicator.
 Without a usable rate, conversion is unavailable. Native accounting amounts
 remain unchanged. Actual charges may be lower because of caching or off-peak pricing.
+
+OpenAI uses ``TRINITY_OPENAI_API_KEY`` through the Responses API and exposes the
+reviewed ``gpt-5.3-codex`` model. ``TRINITY_OPENAI_MONTHLY_CREDIT_USD`` records the
+monthly API allowance (100 by default for the configured Pro benefit). Displayed
+usage and token counters come from completed local requests; the OpenAI platform
+remains authoritative for organization billing and credits.
 
 Development checks
 ------------------
@@ -217,7 +226,7 @@ mechanism here guarantees that every model diagnosis is correct.
 
 Offline regression suite::
 
-    /opt/ovh-agent/bin/python scripts/test-verification.py
+    /opt/trinity-agent/bin/python scripts/test-verification.py
 
 Automatic public backup
 -----------------------
@@ -255,9 +264,9 @@ including optional development tools, retain their own licenses and ownership.
 Custom icons
 ------------
 
-``OVH_AGENT_APP_ICON`` selects the light-theme installed application and header logo.
-``OVH_AGENT_MENU_ICON`` selects the monochrome VS Code navigation logo.
-``OVH_AGENT_DARK_THEME_ICON`` selects the application header logo in dark and
+``TRINITY_AGENT_APP_ICON`` selects the light-theme installed application and header logo.
+``TRINITY_AGENT_MENU_ICON`` selects the monochrome VS Code navigation logo.
+``TRINITY_AGENT_DARK_THEME_ICON`` selects the application header logo in dark and
 high-contrast themes.
 Paths must be absolute and accessible inside the container. Images are limited
 to 1 MiB; SVGs are restricted to static vectors. Header image colors are
@@ -267,9 +276,9 @@ use the purple header in light themes and the bundled white mark in dark themes.
 Place images in the private, Git-ignored ``branding/`` directory beside the
 compose file, then set these variables in the compose project's ``.env``::
 
-    OVH_AGENT_APP_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/app.png
-    OVH_AGENT_MENU_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/menu.svg
-    OVH_AGENT_DARK_THEME_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/theme-dark.svg
+    TRINITY_AGENT_APP_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/app.png
+    TRINITY_AGENT_MENU_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/menu.svg
+    TRINITY_AGENT_DARK_THEME_ICON=/home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/theme-dark.svg
 
 Recreate the service with ``docker compose up -d --no-build vscode`` and reload
 the browser. Empty or invalid settings restore the default icons. Content-based
@@ -332,7 +341,7 @@ The controls use the configured branding and French/English/German/Spanish local
 
 Offline backend verification (using the runtime Pydantic AI environment)::
 
-    /opt/ovh-agent/bin/python scripts/test-followups.py
+    /opt/trinity-agent/bin/python scripts/test-followups.py
 
 Extension UI, bridge validation and sanitization tests::
 
@@ -352,7 +361,7 @@ are not subtracted again from a provider snapshot that already includes them.
 
 Amounts are displayed to two decimal places (cents). The old 0.10 rounding
 mechanism has been removed; the backend retains unrounded values.
-``OVH_AGENT_BILLING_CACHE_SECONDS=60`` controls the billing cache TTL and the
+``TRINITY_AGENT_BILLING_CACHE_SECONDS=60`` controls the billing cache TTL and the
 requested UI refresh interval, and is exposed in Compose. OVH may publish
 consumption later. The UI labels the result as an
 estimate and shows the OVH update time, stale cache state or calculation errors.
@@ -367,9 +376,9 @@ and the `OVHcloud Cloud API schema <https://eu.api.ovh.com/1.0/cloud.json>`_.
 Daily, weekly and monthly spending limits
 ----------------------------------------
 
-The Compose variables ``OVH_AGENT_BUDGET_DAILY_EUR=2``,
-``OVH_AGENT_BUDGET_WEEKLY_EUR=15`` and ``OVH_AGENT_BUDGET_MONTHLY_EUR=60`` limit
-new model requests for the entire installation sharing ``OVH_AGENT_DATA_ROOT``.
+The Compose variables ``TRINITY_AGENT_BUDGET_DAILY_EUR=2``,
+``TRINITY_AGENT_BUDGET_WEEKLY_EUR=15`` and ``TRINITY_AGENT_BUDGET_MONTHLY_EUR=60`` limit
+new model requests for the entire installation sharing ``TRINITY_AGENT_DATA_ROOT``.
 They cover all conversations, workspaces and projects, including compaction
 requests and every model step in a tool loop. Zero disables the corresponding
 limit. Periods are UTC calendar days, weeks starting Monday and calendar months.
@@ -391,7 +400,7 @@ DeepSeek display conversion is separate: native USD event amounts remain
 unchanged, with dated ECB rates supplied to the euro display.
 
 The provider-backed, locked and atomically written ledger is
-``/root/.ovh-agent/budgets/usage-ovh-eur.json`` on the persistent mount. The legacy
+``/root/.trinity-agent/budgets/usage-provider-eur.json`` on the persistent mount. The legacy
 ``usage-eur.json`` ledger remains separate. The active ledger retains
 90 days of period counters and open reservations. Repeated settlement does
 not charge twice. A corrupt or inaccessible ledger blocks requests instead of
@@ -445,7 +454,7 @@ file per 1000 characters. Legacy archives remain readable, while obsolete
 index fragments do not override the current Markdown documents. An inverted
 lexical index is built lazily, reused in RAM and persisted atomically to
 ``archive/<workspace>/<conversation>/memory/cache/search-v1.json`` under
-``OVH_AGENT_DATA_ROOT`` (normally ``/root/.ovh-agent`` on a persistent mount).
+``TRINITY_AGENT_DATA_ROOT`` (normally ``/root/.trinity-agent`` on a persistent mount).
 The derived index is validated against the source documents and their metadata;
 document edits and deletions invalidate stale excerpts. A missing,
 corrupt or unwritable derived cache falls back to rebuilding from the sources.
@@ -472,15 +481,15 @@ do not coordinate separate containers/hosts that merely share a data mount.
 
 Adjustable limits (restart the backend/extension after changing environment):
 
-* ``OVH_AGENT_RAM_CACHE_MB=auto`` and ``OVH_AGENT_RAM_CACHE_ENTRIES=auto``:
+* ``TRINITY_AGENT_RAM_CACHE_MB=auto`` and ``TRINITY_AGENT_RAM_CACHE_ENTRIES=auto``:
   retained cache size and entry count adapt to usable memory, including cgroup
   limits and current usage. A numeric value is an optional upper bound. Cache
   access reevaluates its limits periodically and evicts LRU entries when they
   shrink. Memory is allocated as entries are cached, not reserved at startup.
-* ``OVH_AGENT_INDEX_CACHE_MB=auto``: serialized index and transient construction
+* ``TRINITY_AGENT_INDEX_CACHE_MB=auto``: serialized index and transient construction
   budgets follow available memory. Partial indexing is identified; exact source
   documents remain explicitly readable.
-* ``OVH_AGENT_ARCHIVE_CACHE_MB=auto``: metadata-cache allowance follows available
+* ``TRINITY_AGENT_ARCHIVE_CACHE_MB=auto``: metadata-cache allowance follows available
   memory and container limits, with periodic eviction when the allowance shrinks.
 
 In Auto mode, setting a limit to zero disables that cache. Limits account for retained cache
@@ -514,9 +523,9 @@ outside the workspace are excluded from automatic retrieval. This filename
 filter is not a content-level secret detector. Excerpts are labelled partial,
 untrusted data; normal file-reading tools remain available for full inspection.
 
-* ``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=auto``: total automatic file-excerpt
+* ``TRINITY_AGENT_PREFLIGHT_CONTEXT_CHARS=auto``: total automatic file-excerpt
   allowance, including labels; zero disables automatic file retrieval.
-* ``OVH_AGENT_PREFLIGHT_TIMEOUT_MS=2500``: maximum wait for the file-retrieval
+* ``TRINITY_AGENT_PREFLIGHT_TIMEOUT_MS=2500``: maximum wait for the file-retrieval
   worker. A slow SSHFS mount returns a partial preparation result so the model
   can proceed. Only one such worker runs at a time; late results are discarded.
 
@@ -540,7 +549,7 @@ replayed as labelled text, with the original protocol archived first.
 It no longer discards history after two turns. Before every model request,
 including requests inside a tool loop, it estimates the context size and reserves
 space for the model output, infrastructure instructions and tool definitions.
-With ``OVH_AGENT_CONTEXT_TOKENS=auto``, the active input budget follows the
+With ``TRINITY_AGENT_CONTEXT_TOKENS=auto``, the active input budget follows the
 selected model’s advertised window after reserving output, instructions, tools
 and the estimation margin. An integer adds an explicit ceiling. Unknown model
 metadata uses a conservative, labelled fallback rather than an unlimited window. Token estimates use UTF-8 bytes and a conservative image
@@ -561,19 +570,19 @@ Compose environment or its ``.env`` file. Recreate the ``vscode`` container to
 apply changed environment variables; reloading the VS Code window alone does
 not update the environment of an existing container.
 
-* ``OVH_AGENT_CONTEXT_TOKENS=auto``: active-history allowance derived from the model window.
-* ``OVH_AGENT_CONTEXT_RESERVE_TOKENS=4096``: explicit margin for token-estimation error.
-* ``OVH_AGENT_OUTPUT_TOKENS=auto`` and ``OVH_AGENT_COMPLEX_OUTPUT_TOKENS=auto``:
+* ``TRINITY_AGENT_CONTEXT_TOKENS=auto``: active-history allowance derived from the model window.
+* ``TRINITY_AGENT_CONTEXT_RESERVE_TOKENS=4096``: explicit margin for token-estimation error.
+* ``TRINITY_AGENT_OUTPUT_TOKENS=auto`` and ``TRINITY_AGENT_COMPLEX_OUTPUT_TOKENS=auto``:
   completion allowances based on model capacities and task complexity.
-* ``OVH_AGENT_SUMMARY_TOKENS=auto``, ``OVH_AGENT_SUMMARY_SOURCE_CHARS=auto`` and
-  ``OVH_AGENT_SUMMARY_GENERATION_TOKENS=auto``: compaction allowances derived from
+* ``TRINITY_AGENT_SUMMARY_TOKENS=auto``, ``TRINITY_AGENT_SUMMARY_SOURCE_CHARS=auto`` and
+  ``TRINITY_AGENT_SUMMARY_GENERATION_TOKENS=auto``: compaction allowances derived from
   the usable context and completion limits.
-* ``OVH_AGENT_TOOL_OUTPUT_CHARS=auto``: allowance before archiving a long result
+* ``TRINITY_AGENT_TOOL_OUTPUT_CHARS=auto``: allowance before archiving a long result
   and returning head/tail excerpts with an exact-source reference.
-* ``OVH_AGENT_MEMORY_CHARS=auto`` and ``OVH_AGENT_SHARED_MEMORY_CHARS=auto``:
+* ``TRINITY_AGENT_MEMORY_CHARS=auto`` and ``TRINITY_AGENT_SHARED_MEMORY_CHARS=auto``:
   retrieval allowances derived from the context, not from the machine’s RAM.
-* ``OVH_AGENT_SUMMARY_TIMEOUT_SECONDS=15``: explicit summary timeout.
-* ``OVH_AGENT_REQUEST_LIMIT=0``: no model-call count ceiling by default; positive values set an explicit upper bound per run;
+* ``TRINITY_AGENT_SUMMARY_TIMEOUT_SECONDS=15``: explicit summary timeout.
+* ``TRINITY_AGENT_REQUEST_LIMIT=0``: no model-call count ceiling by default; positive values set an explicit upper bound per run;
   separate summary calls and transport retries are not counted in this bound.
 
 For adaptive allowances, ``auto`` or an omitted value computes a finite budget;
@@ -625,7 +634,7 @@ conversation storage. No gzip or ZIP input is substituted for text tokens.
 
 Verification::
 
-    /opt/ovh-agent/bin/python scripts/test-context.py
+    /opt/trinity-agent/bin/python scripts/test-context.py
 
 This covers complete tool pairs, repeated tool rounds in one user turn,
 current-request preservation, exact archives, summary fallback, oversized
@@ -640,29 +649,29 @@ Short follow-ups retain the original task difficulty for routing and supported
 reasoning settings. Local retrieval uses BM25 with complementary excerpts and
 a reusable pool of readers; it does not add model calls.
 
-Retrieval defaults to ``auto`` for ``OVH_AGENT_PREFLIGHT_WORKERS``,
-``OVH_AGENT_PREFLIGHT_MAX_FILES`` and ``OVH_AGENT_PREFLIGHT_FILE_CHARS``, as do
-``OVH_AGENT_RAM_CACHE_MB`` and ``OVH_AGENT_RAM_CACHE_ENTRIES``. Derived indexes,
+Retrieval defaults to ``auto`` for ``TRINITY_AGENT_PREFLIGHT_WORKERS``,
+``TRINITY_AGENT_PREFLIGHT_MAX_FILES`` and ``TRINITY_AGENT_PREFLIGHT_FILE_CHARS``, as do
+``TRINITY_AGENT_RAM_CACHE_MB`` and ``TRINITY_AGENT_RAM_CACHE_ENTRIES``. Derived indexes,
 archive metadata caches and indexed document sizes also support ``auto`` through
-``OVH_AGENT_INDEX_CACHE_MB``, ``OVH_AGENT_ARCHIVE_CACHE_MB`` and
-``OVH_AGENT_MEMORY_DOCUMENT_CHARS``. Their explicit ceilings (including zero
+``TRINITY_AGENT_INDEX_CACHE_MB``, ``TRINITY_AGENT_ARCHIVE_CACHE_MB`` and
+``TRINITY_AGENT_MEMORY_DOCUMENT_CHARS``. Their explicit ceilings (including zero
 for caches) remain effective in both Auto and Max. Sizing uses CPU
 affinity, cgroup v1/v2 quotas and parent limits, total memory and available memory.
 Hardware observations refresh on demand every 30 seconds. Numeric values remain
 optional upper bounds; omitted or empty values also select automatic sizing.
 The reusable reader pool adjusts concurrency without accumulating pools on slow
 mounts. Selected context remains bounded by
-``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=auto``. Inspect the current calculated
+``TRINITY_AGENT_PREFLIGHT_CONTEXT_CHARS=auto``. Inspect the current calculated
 profile with ``python -m trinity_agent.resources`` using the backend's environment.
 
 Local Auto / Max performance modes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Use **Perf. Auto / Perf. Max** beside the chat access control. The selection is
-saved in the VS Code user setting ``ovhAgent.performanceMode`` and applies to
+saved in the VS Code user setting ``trinityAgent.performanceMode`` and applies to
 an existing backend without interrupting a task or starting a new model call.
 When editing the VS Code setting directly, restart the backend to apply it.
-An explicit setting overrides ``OVH_AGENT_PERFORMANCE_MODE=auto|max``; Auto
+An explicit setting overrides ``TRINITY_AGENT_PERFORMANCE_MODE=auto|max``; Auto
 remains the distribution default. The selected mode and computed resource
 allowances are included in backend status and retrieval diagnostics.
 
@@ -872,7 +881,7 @@ total calls, tokens, cost and latency before considering any production change.
 Affichage et maîtrise des tours d'outils
 --------------------------------------
 
-``OVH_AGENT_EMOJI_MODE`` configure la prose et les messages intermédiaires :
+``TRINITY_AGENT_EMOJI_MODE`` configure la prose et les messages intermédiaires :
 
 | 🚫 ``0`` supprime les émojis décoratifs.
 | ✅ ``1`` autorise uniquement ✅ pour les réussites vérifiées, ⭕ pour les erreurs et ➡️ pour les suites et recommandations. Ce mode est utilisé par défaut.
@@ -897,7 +906,7 @@ attendre la validation finale. Les nouveaux scripts ``scripts/test-budget*.py``
 sont couverts par les contrôles EUR existants ; leur réussite propre reste à
 vérifier séparément, les tests existants ne prouvent pas leur pertinence.
 
-``OVH_AGENT_TASK_CHECKPOINT_SECONDS`` vaut 300 par défaut : un point d'avancement
+``TRINITY_AGENT_TASK_CHECKPOINT_SECONDS`` vaut 300 par défaut : un point d'avancement
 invite à vérifier et conclure après ce délai, puis un autre à l'approche de la
 limite d'appels. Ce délai est une consigne, pas une interruption forcée ni une
 garantie de durée. Les limites API et les plafonds EUR ne sont pas augmentés.
@@ -959,7 +968,7 @@ Une conversation terminée peut être rattachée à un autre projet depuis ce me
 les conversations interrompues doivent d’abord être terminées. Le changement
 est bloqué pendant une tâche. Le périmètre autorisé reste ``/home/coder``.
 
-``OVH_AGENT_DATA_ROOT/MASTER.md`` contient les préférences utilisateur explicites,
+``TRINITY_AGENT_DATA_ROOT/MASTER.md`` contient les préférences utilisateur explicites,
 communes à tous les projets. Le menu projet ou la commande « Modifier le contexte
 utilisateur partagé » l’ouvre dans l’éditeur. Le fichier est créé seulement s’il
 est absent. Les instructions racine et projet utilisent dans cet ordre de repli
@@ -995,14 +1004,14 @@ Les archives d’évaluation et les métadonnées invalides sont exclues de ces 
 et des notes partagées ; une archive d’évaluation reste consultable explicitement.
 Les souvenirs sont
 des données historiques, pas des instructions prioritaires ni une preuve actuelle.
-``OVH_AGENT_SHARED_MEMORY_CHARS=auto`` adapte les extraits partagés au contexte ;
+``TRINITY_AGENT_SHARED_MEMORY_CHARS=auto`` adapte les extraits partagés au contexte ;
 un entier ajoute un plafond, zéro les désactive.
 
 L’inventaire local décrit OS, noyau, architecture, libc, UID, conteneur probable,
 écriture du dossier, exécutables et outils installés dans le projet. Il n’exécute
 pas les paquets trouvés et ne copie pas les variables d’environnement. Un chemin
 exécutable n’est pas une preuve de version ou de bon fonctionnement : vérifier
-les versions utiles pendant la tâche. ``OVH_AGENT_INVENTORY_TTL_SECONDS=300``
+les versions utiles pendant la tâche. ``TRINITY_AGENT_INVENTORY_TTL_SECONDS=300``
 contrôle son cache ; il est rafraîchi après installation ou commande introuvable.
 ``inspect_environment(host=...)`` interroge explicitement une cible SSH autorisée,
 au lieu de confondre les fichiers montés avec le système qui exécute les commandes.
@@ -1017,7 +1026,7 @@ Il n’y a pas de téléchargement ni d’installation lors de la simple découv
 Une installation invalide les anciens reçus de vérification de la tâche : les
 contrôles doivent être rejoués avant de certifier le nouvel environnement.
 
-``OVH_AGENT_AUTO_INSTALL`` règle l’automatisation :
+``TRINITY_AGENT_AUTO_INSTALL`` règle l’automatisation :
 
 * ``project`` (défaut) : dépendances nécessaires isolées au projet sans confirmation ;
 * ``system`` : autorise aussi les installations système dans l’IDE sans confirmation ;
@@ -1038,7 +1047,7 @@ Aucun appel LLM supplémentaire n'est nécessaire pour leur indexation ou leur
 agrégation. Le sélecteur de projet propose « Modifier la mémoire du projet »
 et « Agréger les mémoires des projets » (sélection multiple).
 
-Sous ``OVH_AGENT_DATA_ROOT`` :
+Sous ``TRINITY_AGENT_DATA_ROOT`` :
 
 * ``MASTER.md`` : préférences utilisateur communes aux projets.
 * ``memory/projects/<id>/NOTES.md`` : notes manuelles conservées sans réécriture.
@@ -1058,21 +1067,21 @@ Les archives complètes existantes restent dans ``memory/documents/*.md``.
 Les souvenirs sont historiques et ne certifient pas l'état actuel du projet.
 
 L'index lexical utilise le cache RAM LRU borné existant et un index JSON gzip
-reconstruisible sur disque local : ``OVH_AGENT_MEMORY_INDEX_DIR`` (défaut
-``$XDG_CACHE_HOME/ovh-agent/project-memory`` ou ``~/.cache/ovh-agent/project-memory``).
-Le Compose expose ce chemin et ``OVH_AGENT_MEMORY_SCAN_SECONDS`` (5 secondes).
+reconstruisible sur disque local : ``TRINITY_AGENT_MEMORY_INDEX_DIR`` (défaut
+``$XDG_CACHE_HOME/trinity-agent/project-memory`` ou ``~/.cache/trinity-agent/project-memory``).
+Le Compose expose ce chemin et ``TRINITY_AGENT_MEMORY_SCAN_SECONDS`` (5 secondes).
 Les sources peuvent rester sur le montage partagé tandis que cet index reste
 local ; aucun changement du système de fichiers ni déplacement des archives.
 Une écriture par l'agent invalide immédiatement l'index. Les modifications
 manuelles sont découvertes au prochain balayage ; un extrait dont la source a
 changé ou disparu est écarté dès sa prochaine lecture, même avant ce balayage.
 
-``OVH_AGENT_INDEX_CACHE_MB=auto`` dimensionne l’index dérivé selon la mémoire
+``TRINITY_AGENT_INDEX_CACHE_MB=auto`` dimensionne l’index dérivé selon la mémoire
 disponible ; un entier ajoute un plafond en Mio (zéro
 supprime sa persistance disque). Le cache RAM reste borné globalement par
-``OVH_AGENT_RAM_CACHE_MB``. Les notes passent avant les transcriptions ; au
+``TRINITY_AGENT_RAM_CACHE_MB``. Les notes passent avant les transcriptions ; au
 la taille indexée par document s’adapte au budget disponible
-(``OVH_AGENT_MEMORY_DOCUMENT_CHARS=auto``, entier = plafond) et la recherche renvoie
+(``TRINITY_AGENT_MEMORY_DOCUMENT_CHARS=auto``, entier = plafond) et la recherche renvoie
 cinq extraits. Une limite atteinte est signalée comme partielle. Les outils de
 relecture et de recherche paginée donnent accès aux sources complètes. Le
 lecteur partagé conserve son délai d'attente de 1,1 seconde ; une première

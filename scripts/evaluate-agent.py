@@ -99,7 +99,7 @@ def atomic_report(path, report):
 
 
 def load_backend():
-    spec = importlib.util.spec_from_file_location('ovh_evaluation_backend', ROOT/'trinity_agent/agent.py')
+    spec = importlib.util.spec_from_file_location('trinity_evaluation_backend', ROOT/'trinity_agent/agent.py')
     backend = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = backend
     spec.loader.exec_module(backend)
@@ -569,16 +569,16 @@ def run_campaign(*, seed=20261019, cases=None, real_model=None,
             'Observed token limits can be crossed by the final provider response; hard cost reservations and request limits prevent subsequent calls.']}
     if output:
         atomic_report(output, report)
-    with tempfile.TemporaryDirectory(prefix='ovh-agent-eval-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='trinity-agent-eval-') as temporary:
         base = Path(temporary)
-        bootstrap = {'OVH_AGENT_WORKSPACE': str(base/'bootstrap-workspace'), 'PYDANTIC_AI_NO_BANNER': '1'}
+        bootstrap = {'TRINITY_AGENT_WORKSPACE': str(base/'bootstrap-workspace'), 'PYDANTIC_AI_NO_BANNER': '1'}
         # A paid run must retain the installation's actual account ledger and
         # credit policy. Only offline mode redirects that ledger to disposable data.
         if not real_model:
-            bootstrap['OVH_AGENT_DATA_ROOT'] = str(base/'bootstrap-data')
+            bootstrap['TRINITY_AGENT_DATA_ROOT'] = str(base/'bootstrap-data')
             # The reference adapter has no provider catalogue. Keep offline
             # evidence independent from the provider selected by the installation.
-            bootstrap['OVH_AGENT_PROVIDER'] = 'ovhcloud'
+            bootstrap['TRINITY_AGENT_PROVIDER'] = 'ovhcloud'
         with patch.dict(os.environ, bootstrap):
             backend = load_backend()
         model, ledger, card = None, None, None

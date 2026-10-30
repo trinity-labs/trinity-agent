@@ -17,7 +17,7 @@ spec.loader.exec_module(a)
 
 base = {'configured': True, 'available': True, 'currency': 'EUR',
         'credit_currency': 'EUR', 'credit_available': 100, 'current_usage': 10.04}
-with patch.dict(os.environ, {'OVH_AGENT_BALANCE_STEP': '0.10'}):
+with patch.dict(os.environ, {'TRINITY_AGENT_BALANCE_STEP': '0.10'}):
     status = a.billing_balance(base)
     assert status['credit_available'] == 100 and status['credit_remaining'] == 89.96
     assert status['credit_remaining_display'] == 89.96 and status['balance_estimated']
@@ -31,9 +31,9 @@ with patch.dict(os.environ, {'OVH_AGENT_BALANCE_STEP': '0.10'}):
         bad = a.billing_balance({**base, 'current_usage': invalid})
         assert not bad['balance_estimated'] and bad['balance_error']
 for invalid in ('oops', 'NaN', 'Infinity', '0', '-1', '100'):
-    with patch.dict(os.environ, {'OVH_AGENT_BALANCE_STEP': invalid}):
+    with patch.dict(os.environ, {'TRINITY_AGENT_BALANCE_STEP': invalid}):
         assert a.billing_balance(base)['credit_remaining_display'] == 89.96
-with patch.dict(os.environ, {'OVH_AGENT_BALANCE_STEP': '.01'}):
+with patch.dict(os.environ, {'TRINITY_AGENT_BALANCE_STEP': '.01'}):
     assert a.billing_balance(base)['credit_remaining_display'] == 89.96
 
 def price(value, currency='EUR'):
@@ -56,8 +56,8 @@ def api(path):
 
 with tempfile.TemporaryDirectory() as tmp, patch.object(a, 'ARCHIVE_ROOT', Path(tmp)), \
         patch.object(a, 'billing_configured', return_value=True), \
-        patch.dict(os.environ, {'OVH_CLOUD_PROJECT': 'test-project', 'OVH_AGENT_BALANCE_STEP': '.10'}), \
-        patch.object(a, 'ovh_api_get', side_effect=api) as remote:
+        patch.dict(os.environ, {'TRINITY_OVHCLOUD_PROJECT': 'test-project', 'TRINITY_AGENT_BALANCE_STEP': '.10'}), \
+        patch.object(a, 'ovhcloud_api_get', side_effect=api) as remote:
     first = a.fetch_billing_status(force=True)
     assert first['credit_remaining_display'] == 89.96
     raw = json.loads(a.billing_file().read_text())

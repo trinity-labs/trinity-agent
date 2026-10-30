@@ -20,7 +20,7 @@ from pydantic_ai.usage import UsageLimits
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-with patch.dict(os.environ, {'OVH_AGENT_PROVIDER':'deepseek'}), patch.object(sys, 'argv', ['test', '--billing-status']):
+with patch.dict(os.environ, {'TRINITY_AGENT_PROVIDER':'deepseek'}), patch.object(sys, 'argv', ['test', '--billing-status']):
     spec = importlib.util.spec_from_file_location('deepseek_backend', ROOT/'trinity_agent/agent.py')
     a = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = a
@@ -45,7 +45,7 @@ class DeepSeekIntegration(unittest.TestCase):
         self.assertEqual(a.AI_API_BASE_URL, 'https://api.deepseek.com')
         self.assertIsNone(a.REQUEST_LIMIT)
         self.assertFalse(a.current_budget_status()['enforced'])
-        with patch.dict(os.environ, {'OVH_AGENT_CONTEXT_TOKENS':'4096','OVH_AGENT_OUTPUT_TOKENS':'512'}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_CONTEXT_TOKENS':'4096','TRINITY_AGENT_OUTPUT_TOKENS':'512'}):
             limits = a.current_limits(card, overhead=1024)
         self.assertEqual(limits.output_tokens, 393216)
         self.assertEqual(limits.context_tokens + limits.output_tokens + 1024, 1048576)
@@ -57,15 +57,15 @@ class DeepSeekIntegration(unittest.TestCase):
         self.assertNotIn('openai_reasoning_effort', settings)
 
     def test_missing_deepseek_key_never_uses_ovh_key(self):
-        with patch.dict(os.environ, {'OVH_AI_API_KEY':'OVH-MUST-NOT-LEAK'}, clear=True):
+        with patch.dict(os.environ, {'TRINITY_OVHCLOUD_API_KEY':'OVH-MUST-NOT-LEAK'}, clear=True):
             with self.assertRaises(Exception) as failure:
                 a.get_budgeted_model('deepseek-flash')
-        self.assertIn('DEEPSEEK_API_KEY', str(failure.exception))
+        self.assertIn('TRINITY_DEEPSEEK_API_KEY', str(failure.exception))
         self.assertNotIn('OVH-MUST-NOT-LEAK', str(failure.exception))
 
     def test_balance_is_separate_and_does_not_enforce_spending(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
-             patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'deepseek-fixture'}):
+             patch.dict(os.environ, {'TRINITY_DEEPSEEK_API_KEY': 'deepseek-fixture'}):
             payload={'is_available':False,'balance_infos':[{'currency':'USD','total_balance':'0'}]}
             with patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(payload).encode())) as get:
                 status=a.fetch_billing_status(force=True)
@@ -85,7 +85,7 @@ class DeepSeekIntegration(unittest.TestCase):
         for rows, total, topped_up in [([yuan], 2, 1), ([yuan, dollar], 3, 2)]:
             with self.subTest(rows=rows), tempfile.TemporaryDirectory() as folder, \
                  patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
-                 patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'fixture'}), \
+                 patch.dict(os.environ, {'TRINITY_DEEPSEEK_API_KEY': 'fixture'}), \
                  patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(
                      {'balance_infos': rows, 'is_available': True}).encode())):
                 status = a.fetch_billing_status(force=True)
@@ -101,7 +101,7 @@ class DeepSeekIntegration(unittest.TestCase):
     def test_old_dollar_cache_is_replaced_and_failed_refresh_keeps_only_euro_cache(self):
         payload = {'balance_infos': [{'currency': 'CNY', 'total_balance': '16.34'}], 'is_available': True}
         with tempfile.TemporaryDirectory() as folder, patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
-             patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'fixture'}):
+             patch.dict(os.environ, {'TRINITY_DEEPSEEK_API_KEY': 'fixture'}):
             a.billing_file().write_text(json.dumps({'provider': 'deepseek', 'available': True,
                 'currency': 'USD', 'credit_available': 999, 'cached_at': a.time.time()}))
             with patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(payload).encode())) as get:
@@ -123,7 +123,7 @@ class DeepSeekIntegration(unittest.TestCase):
         ]:
             with self.subTest(rows=rows), tempfile.TemporaryDirectory() as folder, \
                  patch.object(a, 'ARCHIVE_ROOT', Path(folder)), \
-                 patch.dict(os.environ, {'DEEPSEEK_API_KEY': 'fixture'}), \
+                 patch.dict(os.environ, {'TRINITY_DEEPSEEK_API_KEY': 'fixture'}), \
                  patch.object(a, 'fetch_euro_rates', return_value=rates), \
                  patch.object(a.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(
                      {'balance_infos': rows, 'is_available': True}).encode())):
@@ -195,6 +195,7 @@ class DeepSeekIntegration(unittest.TestCase):
             with ExitStack() as stack:
                 for key, value in values.items():stack.enter_context(patch.object(a,key,value))
                 stack.enter_context(patch.object(a,'DeepSeekProvider',return_value=provider))
+                stack.enter_context(patch.dict(os.environ, {'TRINITY_DEEPSEEK_API_KEY':'deepseek-fixture'}))
                 stack.enter_context(patch.object(a,'budget_ledger',side_effect=AssertionError('OVH budget must not run')))
                 stack.enter_context(patch.object(a,'fetch_model_catalog',return_value=[a.normalise_model(RAW)]))
                 stack.enter_context(patch.object(a,'request_approval',return_value=True))

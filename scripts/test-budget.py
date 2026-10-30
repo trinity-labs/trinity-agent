@@ -47,7 +47,7 @@ def competing_settlement(args):
 
 class BudgetTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="ovh-budget-test-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="trinity-budget-test-")
         self.path = Path(self.temporary.name) / "budget.json"
         self.clock = Clock()
 
@@ -341,9 +341,9 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(data["reservations"], {})
 
 
-class OvhBalanceTests(unittest.TestCase):
+class ProviderBalanceTests(unittest.TestCase):
     def setUp(self):
-        from trinity_agent.budget import OvhBalanceLedger
+        from trinity_agent.budget import ProviderBalanceLedger
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -352,7 +352,7 @@ class OvhBalanceTests(unittest.TestCase):
             project='test-project', current_usage=2.1, credit_available=200,
             last_update=self.now.isoformat(), cached_at=self.now.timestamp(),
             usage_period={'from':'2026-10-01T00:00:00Z'})
-        self.factory = lambda: OvhBalanceLedger.from_provider(self.root/'ovh.json',
+        self.factory = lambda: ProviderBalanceLedger.from_provider(self.root/'provider.json',
             {'daily':8,'weekly':56,'monthly':197}, self.root/'policy.json',
             lambda:dict(self.snapshot), now=lambda:self.now)
 
@@ -399,8 +399,8 @@ class OvhBalanceTests(unittest.TestCase):
 
     def test_legacy_ledger_migration_preserves_observations_and_reservations(self):
         ledger=self.factory();token=ledger.reserve('.2')
-        path=self.root/'ovh.json';data=json.loads(path.read_text())
-        del data['ovh']['local'];path.write_text(json.dumps(data))
+        path=self.root/'provider.json';data=json.loads(path.read_text())
+        del data['provider']['local'];path.write_text(json.dumps(data))
         state=self.factory().settle(token,'.1')
         self.assertEqual(state['periods']['monthly']['spent'],2.1)
         self.assertEqual(state['periods']['monthly']['local_opening'],2.1)
@@ -412,14 +412,14 @@ class OvhBalanceTests(unittest.TestCase):
         ledger=self.factory();token=ledger.reserve('.2')
         with ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(lambda _:self.factory().settle(token,'0.100000000000000000000000000000000001'),range(16)))
-        data=json.loads((self.root/'ovh.json').read_text())
-        self.assertEqual(data['ovh']['local']['spent']['daily']['2026-10-18'],
+        data=json.loads((self.root/'provider.json').read_text())
+        self.assertEqual(data['provider']['local']['spent']['daily']['2026-10-18'],
                          '0.100000000000000000000000000000000001')
         self.assertEqual(data['reservations'],{})
 
     def test_corrupt_local_counter_fails_closed_without_reset(self):
-        self.factory().status();path=self.root/'ovh.json';data=json.loads(path.read_text())
-        data['ovh']['local']['spent']['monthly']['2026-10-01']='-1'
+        self.factory().status();path=self.root/'provider.json';data=json.loads(path.read_text())
+        data['provider']['local']['spent']['monthly']['2026-10-01']='-1'
         path.write_text(json.dumps(data));before=path.read_bytes()
         with self.assertRaises(BudgetLedgerError):self.factory().status()
         self.assertEqual(path.read_bytes(),before)
@@ -453,12 +453,12 @@ class OvhBalanceTests(unittest.TestCase):
 
     def test_corrupt_provider_baseline_never_resets(self):
         self.factory().status()
-        path=self.root/'ovh.json';data=json.loads(path.read_text());del data['ovh']['baselines']['daily']
+        path=self.root/'provider.json';data=json.loads(path.read_text());del data['provider']['baselines']['daily']
         path.write_text(json.dumps(data));before=path.read_bytes()
         with self.assertRaises(BudgetLedgerError):self.factory().status()
         self.assertEqual(path.read_bytes(),before)
 
-    def test_insufficient_ovh_balance_and_concurrent_holds(self):
+    def test_insufficient_provider_balance_and_concurrent_holds(self):
         from concurrent.futures import ThreadPoolExecutor
         self.snapshot['credit_available']=3
         def attempt(_):
@@ -477,7 +477,7 @@ class OvhBalanceTests(unittest.TestCase):
             original=dict(self.snapshot);self.snapshot.update(patch)
             with self.assertRaises(BudgetLedgerError):self.factory().reserve('.1')
             self.snapshot=original
-        self.assertFalse((self.root/'ovh.json').exists())
+        self.assertFalse((self.root/'provider.json').exists())
 
     def test_failure_releases_reservation_even_if_billing_is_down(self):
         ledger=self.factory();token=ledger.reserve('.2')

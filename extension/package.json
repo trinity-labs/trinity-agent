@@ -1,10 +1,10 @@
 {
-  "name": "ovh-agent",
+  "name": "trinity-agent",
   "displayName": "TRINITY Agent",
-  "description": "Open-source coding assistant for OVHcloud AI Endpoints and DeepSeek: archives, task resumption, steering and queued messages. Self-hosted backend required.",
-  "version": "4.0.4",
+  "description": "Open-source coding assistant and multi-provider model API relay for OpenAI Codex, OVHcloud AI Endpoints and DeepSeek.",
+  "version": "5.0.0",
   "icon": "media/trinity-icon.png",
-  "ovhAgentBranding": {
+  "trinityAgentBranding": {
     "lightThemeIcon": "media/trinity-icon.png",
     "darkThemeIcon": "media/trinity-activity.png"
   },
@@ -18,16 +18,16 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onView:ovhAgent.launch",
-    "onCommand:ovhAgent.start",
-    "onCommand:ovhAgent.selectProvider"
+    "onView:trinityAgent.launch",
+    "onCommand:trinityAgent.start",
+    "onCommand:trinityAgent.selectProvider"
   ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "ovhAgent.start",
-        "title": "%ovhAgent.start.title%",
+        "command": "trinityAgent.start",
+        "title": "%trinityAgent.start.title%",
         "category": "TRINITY Agent",
         "icon": {
           "light": "media/trinity-title-black.png",
@@ -35,8 +35,8 @@
         }
       },
       {
-        "command": "ovhAgent.configureKey",
-        "title": "%ovhAgent.configureKey.title%",
+        "command": "trinityAgent.configureKey",
+        "title": "%trinityAgent.configureKey.title%",
         "category": "TRINITY Agent",
         "icon": {
           "light": "media/bi-key-light.svg",
@@ -44,8 +44,8 @@
         }
       },
       {
-        "command": "ovhAgent.configureBilling",
-        "title": "%ovhAgent.configureBilling.title%",
+        "command": "trinityAgent.configureBilling",
+        "title": "%trinityAgent.configureBilling.title%",
         "category": "TRINITY Agent",
         "icon": {
           "light": "media/bi-wallet-light.svg",
@@ -53,25 +53,25 @@
         }
       },
       {
-        "command": "ovhAgent.selectProvider",
-        "title": "%ovhAgent.selectProvider.title%",
+        "command": "trinityAgent.selectProvider",
+        "title": "%trinityAgent.selectProvider.title%",
         "category": "TRINITY Agent"
       },
       {
-        "command": "ovhAgent.selectProject",
-        "title": "%ovhAgent.selectProject.title%",
+        "command": "trinityAgent.selectProject",
+        "title": "%trinityAgent.selectProject.title%",
         "category": "TRINITY Agent"
       },
       {
-        "command": "ovhAgent.editProfile",
-        "title": "%ovhAgent.editProfile.title%",
+        "command": "trinityAgent.editProfile",
+        "title": "%trinityAgent.editProfile.title%",
         "category": "TRINITY Agent"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "ovhAgent.start",
+          "command": "trinityAgent.start",
           "group": "navigation"
         }
       ]
@@ -79,16 +79,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "ovhAgent",
+          "id": "trinityAgent",
           "title": "TRINITY Agent",
           "icon": "media/trinity-menu.png"
         }
       ]
     },
     "views": {
-      "ovhAgent": [
+      "trinityAgent": [
         {
-          "id": "ovhAgent.launch",
+          "id": "trinityAgent.launch",
           "name": "TRINITY Agent",
           "type": "webview"
         }
@@ -97,23 +97,24 @@
     "configuration": {
       "title": "TRINITY Agent",
       "properties": {
-        "ovhAgent.provider": {
+        "trinityAgent.provider": {
           "type": "string",
           "enum": [
             "ovhcloud",
-            "deepseek"
+            "deepseek",
+            "openai"
           ],
           "default": "ovhcloud",
           "scope": "machine",
-          "description": "Inference provider. DeepSeek uses a separate API key and USD cost estimates. Local inference budgets and request/token ceilings are disabled for DeepSeek; provider limits and file verification still apply. A change restarts an idle backend and applies to the next message; an active task finishes first."
+          "description": "Model API used for this conversation. OVHcloud, DeepSeek and OpenAI each keep their own key, endpoint, catalogue, token limits and account display. A change restarts an idle backend and applies to the next message; an active task finishes first."
         },
-        "ovhAgent.backendPath": {
+        "trinityAgent.backendPath": {
           "type": "string",
           "default": "",
           "scope": "machine",
           "description": "Absolute path to the TRINITY Agent companion launcher on the extension host. Requires the self-hosted Python backend."
         },
-        "ovhAgent.performanceMode": {
+        "trinityAgent.performanceMode": {
           "type": "string",
           "enum": [
             "auto",
@@ -121,10 +122,10 @@
           ],
           "default": "auto",
           "scope": "machine",
-          "description": "%ovhAgent.performanceMode.description%",
+          "description": "%trinityAgent.performanceMode.description%",
           "enumDescriptions": [
-            "%ovhAgent.performanceMode.auto%",
-            "%ovhAgent.performanceMode.max%"
+            "%trinityAgent.performanceMode.auto%",
+            "%trinityAgent.performanceMode.max%"
           ]
         }
       }

@@ -30,15 +30,15 @@ def main():
     spec.loader.exec_module(a)
     from pydantic_ai import Agent
     from pydantic_ai.models.openai import OpenAIChatModel
-    key = os.environ.get('OVH_AI_API_KEY') or os.environ.get('OVHCLOUD_API_KEY')
+    key = os.environ.get('TRINITY_OVHCLOUD_API_KEY')
     if not key:
-        for path in (Path('/run/secrets/OVH_AI_API_KEY'), Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/OVH_AI_API_KEY')):
+        for path in (Path('/run/secrets/TRINITY_OVHCLOUD_API_KEY'), Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/TRINITY_OVHCLOUD_API_KEY')):
             if path.is_file():
                 key = path.read_text().strip()
                 break
     if not key:
         raise SystemExit('OVH API key not available')
-    os.environ['OVH_AI_API_KEY'] = key
+    os.environ['TRINITY_OVHCLOUD_API_KEY'] = key
     catalog = a.fetch_model_catalog()
     model_ids = [m['id'] for m in catalog if m['selectable'] and (not args.models or m['id'] in args.models)]
     def evaluate(pair):

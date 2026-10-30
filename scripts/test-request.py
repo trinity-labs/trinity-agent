@@ -27,7 +27,7 @@ class Preparation(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        performance = patch.dict(os.environ, {'OVH_AGENT_PERFORMANCE_MODE': 'auto'})
+        performance = patch.dict(os.environ, {'TRINITY_AGENT_PERFORMANCE_MODE': 'auto'})
         performance.start()
         self.addCleanup(performance.stop)
         self.allowed = Path(self.temp.name)
@@ -216,7 +216,7 @@ class Preparation(unittest.TestCase):
         cards = [{'context_length':32768, 'max_completion_tokens':8192},
                  {'context_length':262144, 'max_completion_tokens':32768}]
         # The same request uses the provider window without a fixed char cap.
-        with patch.dict(os.environ, {'OVH_AGENT_'+name:'auto' for name in NAMES}), \
+        with patch.dict(os.environ, {'TRINITY_AGENT_'+name:'auto' for name in NAMES}), \
              patch.object(r, 'retrieve_context', return_value={'context':'', 'sources':[]}) as retrieve:
             budgets = []
             for card in cards:
@@ -333,7 +333,7 @@ class Preparation(unittest.TestCase):
     def test_large_inventory_is_bounded(self):
         inventory = [(str(self.project), [], [f'file{i}.py' for i in range(2500)])]
         with patch.object(r.os, 'walk', return_value=iter(inventory)), \
-             patch.dict(os.environ, {'OVH_AGENT_PREFLIGHT_MAX_FILES':'120'}):
+             patch.dict(os.environ, {'TRINITY_AGENT_PREFLIGHT_MAX_FILES':'120'}):
             result = self.retrieve('Modifie notre extension dans `chat.css`')
         self.assertLessEqual(result['files_scanned'], 120)
         self.assertTrue(result['partial'])
@@ -349,7 +349,7 @@ class Preparation(unittest.TestCase):
         from trinity_agent.resources import Hardware, ResourcePolicy, MIB
         policy = ResourcePolicy(lambda: Hardware(4, 8192*MIB, 6144*MIB))
         with patch.object(r, 'resource_profile', side_effect=policy.profile), \
-             patch.dict(os.environ, {'OVH_AGENT_PREFLIGHT_MAX_FILES':'480','OVH_AGENT_PREFLIGHT_FILE_CHARS':'524288'}):
+             patch.dict(os.environ, {'TRINITY_AGENT_PREFLIGHT_MAX_FILES':'480','TRINITY_AGENT_PREFLIGHT_FILE_CHARS':'524288'}):
             result = self.retrieve('Corrige notre nebula_recovery')
         self.assertIn('handling', result['context'])
         self.assertIn('late_evidence', result['context'])
@@ -358,7 +358,7 @@ class Preparation(unittest.TestCase):
 
     def test_truncated_line_is_not_presented_as_a_complete_source_line(self):
         self.source.write_text('complete line\n' + 'incomplete ' * 20)
-        with patch.dict(os.environ, {'OVH_AGENT_PREFLIGHT_FILE_CHARS':'50'}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_PREFLIGHT_FILE_CHARS':'50'}):
             chunks = r._file_chunks(self.source)
         self.assertEqual(chunks[0][:3], (1, 1, 'complete line'))
 
@@ -425,7 +425,7 @@ class Preparation(unittest.TestCase):
         self.assertNotIn('outdated_rare_fixture',self.retrieve('Corrige notre outdated_rare_fixture')['context'])
 
     def test_disabled_retrieval_and_reader_failure_keep_agent_available(self):
-        with patch.dict(os.environ, {'OVH_AGENT_PREFLIGHT_CONTEXT_CHARS': '0'}), \
+        with patch.dict(os.environ, {'TRINITY_AGENT_PREFLIGHT_CONTEXT_CHARS': '0'}), \
              patch.object(r, 'retrieve_context', side_effect=AssertionError('Disabled reader')):
             self.assertFalse(r.prepare_request('Modifie `chat.css`', [], self.project, self.allowed)['sources'])
         with patch.object(r, 'retrieve_context', side_effect=OSError('Unavailable mount')):
@@ -440,7 +440,7 @@ class Preparation(unittest.TestCase):
             release.wait(2)
             return {'context': 'late stale data', 'sources': [], 'files_scanned': 1, 'partial': False}
         try:
-            with patch.dict(os.environ, {'OVH_AGENT_PREFLIGHT_TIMEOUT_MS': '20'}), \
+            with patch.dict(os.environ, {'TRINITY_AGENT_PREFLIGHT_TIMEOUT_MS': '20'}), \
                  patch.object(r, 'retrieve_context', side_effect=slow) as reader:
                 started = time.monotonic()
                 first = r.prepare_request('Modifie `chat.css`', [], self.project, self.allowed)

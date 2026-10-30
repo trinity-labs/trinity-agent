@@ -58,7 +58,7 @@ test('bridge rejects malformed messages, traversal IDs and truthy string approva
   assert(validMessage({type:'snapshot',conversation:'fixture',html:'<p>saved</p>'}));
 });
 test('local links cannot escape the workspace through traversal, prefixes or symlinks', () => {
-  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'ovh-security-'));
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'trinity-security-'));
   try {
     const root=path.join(temp,'workspace');fs.mkdirSync(root);
     const safe=path.join(root,'safe.txt'),outside=path.join(temp,'private.txt');

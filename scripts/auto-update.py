@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXTENSIONS = Path.home() / '.local/share/code-server/extensions'
 API = 'https://api.github.com/repos/trinity-labs/trinity-agent/releases/latest'
 PREFIX = 'https://github.com/trinity-labs/trinity-agent/releases/download/'
-BACKEND_FILES = {'trinity_agent/__main__.py', 'trinity_agent/agent.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'scripts/trinity-agent.sh'}
+BACKEND_FILES = {'trinity_agent/__main__.py', 'trinity_agent/agent.py', 'trinity_agent/providers.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'scripts/trinity-agent.sh'}
 
 
 def version(value):
@@ -44,7 +44,7 @@ def validate(package, expected, root=ROOT):
             if item.filename.startswith('/') or '..' in parts or (item.external_attr >> 16) & 0o170000 == 0o120000:
                 raise ValueError('Unsafe package entry')
         manifest = json.loads(archive.read('extension/package.json'))
-        if (manifest.get('publisher'), manifest.get('name'), manifest.get('version')) != ('trinity', 'ovh-agent', expected):
+        if (manifest.get('publisher'), manifest.get('name'), manifest.get('version')) != ('trinity', 'trinity-agent', expected):
             raise ValueError('Unexpected extension identity/version')
         backend = json.loads(archive.read('extension/local-update.json'))['backend']
         if set(backend) != BACKEND_FILES:
@@ -54,23 +54,37 @@ def validate(package, expected, root=ROOT):
                 raise ValueError('Update deferred: companion backend differs; update deployment sources first')
 
 
-def current():
-    entries = json.loads((EXTENSIONS / 'extensions.json').read_text())
+def installed_entry(extensions=EXTENSIONS):
+    entries = json.loads((extensions / 'extensions.json').read_text())
     for entry in entries:
-        if entry['identifier']['id'] == 'trinity.ovh-agent':
-            return entry['version']
-    raise ValueError('Local trinity.ovh-agent is not installed; no automatic migration')
+        if entry['identifier']['id'] == 'trinity.trinity-agent':
+            return entry
+    # One-time migration from an earlier local identity. Identify it from its
+    # installed manifest instead of retaining that vendor-prefixed ID in code.
+    for entry in entries:
+        installed = extensions / Path(entry.get('relativeLocation', '')).name
+        try:
+            manifest = json.loads((installed / 'package.json').read_text())
+        except (OSError, ValueError):
+            continue
+        if manifest.get('displayName') == 'TRINITY Agent' and entry.get('identifier', {}).get('id', '').startswith('trinity.'):
+            return entry
+    raise ValueError('Local TRINITY Agent is not installed')
+
+
+def current():
+    entry = installed_entry()
+    return entry['version'], entry['identifier']['id']
 
 
 def branding_environment(directory, extensions=EXTENSIONS):
     """Stage explicit branding assets; absent variables restore bundled TRINITY defaults."""
     env = dict(os.environ)
-    entry = next(e for e in json.loads((extensions / 'extensions.json').read_text())
-                 if e['identifier']['id'] == 'trinity.ovh-agent')
+    entry = installed_entry(extensions)
     installed = extensions / Path(entry['relativeLocation']).name
-    env.setdefault('OVH_AGENT_NAME', 'TRINITY Agent')
-    env.setdefault('OVH_AGENT_PUBLISHER_NAME', 'TRINITY')
-    for key in ('OVH_AGENT_APP_ICON', 'OVH_AGENT_MENU_ICON'):
+    env.setdefault('TRINITY_AGENT_NAME', 'TRINITY Agent')
+    env.setdefault('TRINITY_AGENT_PUBLISHER_NAME', 'TRINITY')
+    for key in ('TRINITY_AGENT_APP_ICON', 'TRINITY_AGENT_MENU_ICON'):
         configured = env.get(key)
         if configured:
             source = Path(configured)
@@ -82,12 +96,12 @@ def branding_environment(directory, extensions=EXTENSIONS):
         copy = Path(directory) / (key + source.suffix)
         copy.write_bytes(source.read_bytes())
         env[key] = str(copy)
-    env['OVH_AGENT_BRANDING_STRICT'] = 'true'
+    env['TRINITY_AGENT_BRANDING_STRICT'] = 'true'
     return env
 
 
 def update():
-    installed = current()
+    installed, previous_id = current()
     release = json.loads(fetch(API, 2 * 1024 * 1024))
     tag = release.get('tag_name', '')
     if release.get('draft') or release.get('prerelease') or not tag.startswith('v'):
@@ -118,13 +132,15 @@ def update():
         subprocess.run(['node', str(ROOT / 'branding/trinity-branding.cjs')], env=branding, check=True, timeout=30)
         subprocess.run(['code-server', '--install-extension', str(package), '--force'], check=True, timeout=180)
         subprocess.run(['node', str(ROOT / 'branding/trinity-branding.cjs')], env=branding, check=True, timeout=30)
-    if current() != target:
+        if previous_id != 'trinity.trinity-agent':
+            subprocess.run(['code-server', '--uninstall-extension', previous_id], check=True, timeout=180)
+    if current()[0] != target:
         raise ValueError('Installation verification failed')
     print('Auto-update: installed ' + target + '; reload the editor to activate. No task interrupted.', flush=True)
 
 
 def main():
-    if os.environ.get('OVH_AGENT_AUTO_UPDATE', 'true').lower() not in ('true', '1', 'yes'):
+    if os.environ.get('TRINITY_AGENT_AUTO_UPDATE', 'true').lower() not in ('true', '1', 'yes'):
         return
     # flock is released even after crashes. Multiple entrypoints cannot race.
     with open('/tmp/trinity-agent-auto-update.lock', 'a') as lock:
@@ -133,7 +149,7 @@ def main():
         except BlockingIOError:
             return
         try:
-            interval = max(300, int(os.environ.get('OVH_AGENT_UPDATE_INTERVAL', '21600')))
+            interval = max(300, int(os.environ.get('TRINITY_AGENT_UPDATE_INTERVAL', '21600')))
         except ValueError:
             interval = 21600
         while True:

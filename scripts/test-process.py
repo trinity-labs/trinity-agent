@@ -168,7 +168,7 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(Path(result['execution_context']['executable']), Path(sys.executable).resolve())
 
     def test_inherited_credentials_are_not_passed_or_logged(self):
-        names = ['OVH_AI_API_KEY', 'OVH_APPLICATION_KEY', 'OVH_CONSUMER_KEY', 'OPENAI_API_KEY',
+        names = ['TRINITY_OVHCLOUD_API_KEY', 'TRINITY_OVHCLOUD_APPLICATION_KEY', 'TRINITY_OVHCLOUD_CONSUMER_KEY', 'OPENAI_API_KEY',
                  'ANTHROPIC_API_KEY', 'GH_TOKEN', 'GITHUB_TOKEN', 'VSCE_PAT', 'NPM_TOKEN',
                  'SSH_AUTH_SOCK', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_VALUE_0', 'GIT_ASKPASS',
                  'BASH_ENV', 'ENV', 'LD_PRELOAD', 'PRIVATE_KEY', 'AZURE_DEVOPS_EXT_PAT', 'HTTP_AUTHORIZATION']

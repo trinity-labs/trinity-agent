@@ -11,15 +11,15 @@ const conversation=(source=SOURCE)=>({id:'same-id',title:'Conversation',archive_
 function setup(t) {
   const root=path.resolve(__dirname,'..'),native=createRequire(path.join(root,'extension.js'));
   const vscode={workspace:{workspaceFolders:[{uri:{fsPath:root}}]},Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'}};
-  const sandbox={require:n=>n==='vscode'?vscode:native(n),module:{exports:{}},process:{env:{...process.env,OVH_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
+  const sandbox={require:n=>n==='vscode'?vscode:native(n),module:{exports:{}},process:{env:{...process.env,TRINITY_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',sandbox);
   const provider=new sandbox.module.exports.Provider(root,{});
   const dom=new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}),{runScripts:'outside-only',pretendToBeVisual:true,url:'https://test.invalid'});
   t.after(()=>dom.window.close());
   const w=dom.window,doc=w.document,sent=[];
   w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:()=>{},postMessage:m=>sent.push(JSON.parse(JSON.stringify(m)))});
   w.HTMLElement.prototype.scrollIntoView=function(){};
-  w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
+  w.TRINITY_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js'])w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
   const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
   const archives=(projects,items=[])=>emit({type:'archives',projects,items});

@@ -2,7 +2,7 @@
 
 # 🟪 TRINITY Agent
 
-An independent, open-source coding assistant for **OVHcloud AI Endpoints and DeepSeek**, with conversation archives, tool approvals, task resumption, steering and a persistent follow-up queue.
+An independent, open-source coding assistant and model API relay for **OVHcloud AI Endpoints, DeepSeek and OpenAI Codex**, with conversation archives, tool approvals, task resumption, steering and a persistent follow-up queue.
 
 **This extension is the client for the self-hosted TRINITY Agent backend. Installing this VSIX alone does not install Python, the agent backend or an OVH account.** Use it in the supplied Linux Docker environment, or connect VS Code Remote to that environment. It is not an official OVHcloud or OpenAI extension.
 
@@ -16,11 +16,11 @@ An independent, open-source coding assistant for **OVHcloud AI Endpoints and Dee
 
 1. Deploy the companion backend using the [repository installation guide](https://github.com/trinity-labs/trinity-agent/blob/main/README.rst) and its Docker Compose example. The backend and Python dependencies must be installed on the same host as the VS Code extension.
 2. Install this extension in that environment. With VS Code Remote, install it on the remote host.
-3. If you use a different installation path, set `ovhAgent.backendPath` in **User settings** to the absolute path of `scripts/trinity-agent.sh`. The launcher must implement the bundled JSON-lines protocol and load the backend dependencies and secrets.
-4. Select `ovhAgent.provider` in **User settings** (`ovhcloud` or `deepseek`) or run **TRINITY Agent: Choose the inference provider**, then configure that provider's API key through the extension command. The supplied Docker deployment persists it in its configured secret directory; never commit it to Git. A provider change restarts an idle backend and applies to the next message; an active task finishes first.
+3. If you use a different installation path, set `trinityAgent.backendPath` in **User settings** to the absolute path of `scripts/trinity-agent.sh`. The launcher must implement the bundled JSON-lines protocol and load the backend dependencies and secrets.
+4. Select `trinityAgent.provider` in **User settings** (`ovhcloud`, `deepseek` or `openai`) or run **TRINITY Agent: Choose the inference provider**, then configure that provider's API key through the extension command. The supplied Docker deployment persists it in its configured secret directory; never commit it to Git. A provider change restarts an idle backend and applies to the next message; an active task finishes first.
 5. Open a trusted workspace and start a conversation. The backend can read and modify files and run commands with the permissions of its container. Review the access mode and container mounts.
 
-The extension itself is free and licensed under **0BSD**. API usage and any hosting are charged by their providers. No model subscription or API credit is included.
+The extension itself is free and licensed under **0BSD**. API usage and any hosting are charged by their providers. OpenAI Codex uses the Responses API. Its configured monthly allowance and locally observed token cost are estimates; the OpenAI Platform billing page remains authoritative. No model subscription or API credit is included with this extension.
 
 With **DeepSeek**, local inference budgets, request-count limits, configured context/output token caps, repeated-tool-failure cutoffs and model request timeouts are disabled. Tool corrections are no longer cut off after two SDK retries. The provider's context/output capacities, account balance and rate limits still apply. File backups, permission checks and verification remain active. Automatic routing starts economically; Flash and Pro are available for explicit selection. Costs use conservative peak/cache-miss estimates and are displayed in euros. Both USD and CNY account balances are fetched from DeepSeek, converted using dated ECB reference rates and summed without counting granted credit twice. Exchange rates are refreshed every six hours; a cached rate up to seven days old can be used during an outage and is marked stale. Missing rates show conversion as unavailable. Native amounts remain unchanged in accounting records. Keys, model caches and usage accounting are separate from OVH.
 
@@ -53,7 +53,7 @@ Prompts, relevant workspace contents, tool results and images can be sent to the
 
 Original code: 0BSD. Bootstrap Icons: MIT. Highlight.js and its bundled Monokai theme: BSD-3-Clause. The Marketplace icon is the TRINITY logo. The history header uses Font Awesome Free's **hexagon-nodes** icon under CC BY 4.0. DOMPurify, Markdown-it and other dependencies retain their respective licenses; license files are included in the package.
 
-Display style is configurable through `OVH_AGENT_EMOJI_MODE`:
+Display style is configurable through `TRINITY_AGENT_EMOJI_MODE`:
 
 🚫 `0` disables decorative emojis.<br>
 ✅ `1` allows only ✅ for verified successes, ⭕ for errors and ➡️ for next steps. This is the default.<br>
@@ -156,7 +156,7 @@ charged to that same cloud project, not just this agent.
 Completed or failed requests release their temporary reservation. Unknown usage
 is never converted into a maximum-cost expense. The previous `usage-eur.json`
 ledger is preserved for audit and is no longer used to authorize requests; the
-provider observations are stored separately in `budgets/usage-ovh-eur.json`.
+provider observations are stored separately in `budgets/usage-provider-eur.json`.
 
 The monthly counter comes from OVH. Daily and weekly counters track changes
 observed since monitoring began, with `partial` and `since` metadata: the API's

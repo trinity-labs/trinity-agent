@@ -11,7 +11,7 @@ for directory in [Path('/etc/trinity/docker-trinity'), Path('/home/coder/TRINITY
     if directory.is_dir():
         for file in directory.iterdir():
             # The billing base URL is public configuration, not a credential.
-            if file.is_file() and file.name != "OVH_API_BASE_URL":
+            if file.is_file() and file.name != "TRINITY_OVHCLOUD_API_BASE_URL":
                 value = file.read_bytes().strip()
                 if len(value) >= 8:
                     known.add(value)

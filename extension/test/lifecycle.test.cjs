@@ -25,8 +25,8 @@ async function setup(t) {
   })},ConfigurationTarget:{Global:1},
     Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'}};
   const scope={require:name=>name==='vscode'?vscode:name==='./project-store'?projectStore:name==='./archive-store'?archiveStore:native(name),
-    module:{exports:{}},process:{env:{OVH_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',scope);
+    module:{exports:{}},process:{env:{TRINITY_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',scope);
   const provider=new scope.module.exports.Provider(root,{},state);
   const sent=[],commands=[],pending=[];
   provider.showArchives=()=>{};
@@ -51,7 +51,7 @@ async function setup(t) {
     const copy=JSON.parse(JSON.stringify(message));sent.push(copy);pending.push(receive(copy));
   }});
   window.HTMLElement.prototype.scrollIntoView=function(){};
-  window.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
+  window.TRINITY_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js'])
     window.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
   const flush=async()=>{
@@ -209,7 +209,7 @@ test('editing a selected project path updates persisted selection before creatin
   const replacement=h.projects.identity(after).id;
   assert.equal(h.provider.newConversationProject,replacement);
   assert.equal(h.provider.pendingConversationProject,replacement);
-  assert.equal(h.values['ovhAgent.newConversationProject'],replacement);
+  assert.equal(h.values['trinityAgent.newConversationProject'],replacement);
   await h.provider.clearConversation();
   assert.equal(h.provider.workspace,after);
   assert.equal(h.commands.at(-1).type,'clear');

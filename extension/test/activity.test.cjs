@@ -10,8 +10,8 @@ function browser(env={}) {
   const root = path.resolve(__dirname, '..');
   const nativeRequire = createRequire(path.join(root, 'extension.js'));
   const vscode = {workspace:{workspaceFolders:[{uri:{fsPath:root}}]}, Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)}, env:{language:'fr'}};
-  const scope = {require:name=>name==='vscode'?vscode:nativeRequire(name), module:{exports:{}}, process:{env:{...process.env,...env,OVH_AGENT_LANG:'fr'}}, console, setTimeout, clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',scope);
+  const scope = {require:name=>name==='vscode'?vscode:nativeRequire(name), module:{exports:{}}, process:{env:{...process.env,...env,TRINITY_AGENT_LANG:'fr'}}, console, setTimeout, clearTimeout};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',scope);
   const provider = new scope.module.exports.Provider(root, {});
   const dom = new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}), {runScripts:'outside-only',url:'https://test.invalid'});
   const w = dom.window, intervals = new Map(), sent = [];
@@ -25,7 +25,7 @@ function browser(env={}) {
   w.clearInterval = id => { if (!intervals.delete(id)) clearInterval(id); };
   w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:()=>{},postMessage:message=>sent.push(message)});
   w.HTMLElement.prototype.scrollIntoView=function(){};
-  w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
+  w.TRINITY_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for (const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js']) w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
   return {dom, document:w.document, intervals, sent,
     emit:data=>w.dispatchEvent(new w.MessageEvent('message',{data})),
@@ -498,7 +498,7 @@ test('new conversation completes while startup events are filtered, without a pr
 
 test('project color picker matches the primary or custom icon color, with explicit conversation counts',()=>{
  for(const [configured,expected] of [['#000E9C','#000e9c'],['#168c57','#168c57'],['invalid','#3e3aab']]) {
-  const {dom,document,emit}=browser({OVH_AGENT_PRIMARY_COLOR:configured});
+  const {dom,document,emit}=browser({TRINITY_AGENT_PRIMARY_COLOR:configured});
   try {
    const project={id:'a'.repeat(20),name:'Brand default',root:'/project',items:[]};
    emit({type:'archives',items:[],projects:[project]});

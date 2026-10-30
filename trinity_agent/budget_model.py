@@ -104,7 +104,22 @@ def transport_failure(error):
     return False
 
 
-class OVHRateLimiter:
+class IncompleteModelResponseError(RuntimeError):
+    """Provider ended a turn with internal reasoning but no usable output."""
+
+
+def require_actionable_response(response):
+    actionable = {'text', 'tool-call', 'builtin-tool-call', 'file', 'data'}
+    if not any(getattr(part, 'part_kind', '') in actionable for part in response.parts):
+        state = getattr(response, 'state', None)
+        finish = getattr(response, 'finish_reason', None)
+        raise IncompleteModelResponseError(
+            f'Réponse modèle incomplète ({state or "état inconnu"}, fin={finish or "absente"}) : '
+            'raisonnement interne reçu sans texte ni appel d’outil.')
+    return response
+
+
+class ProviderRateLimiter:
     """Share OVH project/model pacing and 429 cooldowns across local processes.
 
     Authenticated AI Endpoints allow 400 requests/minute/project/model. A paced
@@ -273,7 +288,7 @@ class BudgetedModel(WrapperModel):
             try:
                 response = await self.wrapped.request(messages, model_settings, model_request_parameters)
                 response = normalize_tool_call_names(response, model_request_parameters)
-                return response
+                return require_actionable_response(response)
             except Exception as error:
                 if self.rate_limiter:
                     retry = await self.rate_limiter.rejected(self.model_name, error, attempt)
@@ -300,6 +315,7 @@ class BudgetedModel(WrapperModel):
                         completed = True
                     finally:
                         response = normalized.get()
+                        require_actionable_response(response)
                 return
             except Exception as error:
                 # Once exposed, a stream may have emitted text/tool calls.

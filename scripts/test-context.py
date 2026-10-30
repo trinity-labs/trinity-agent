@@ -274,7 +274,7 @@ with tempfile.TemporaryDirectory() as folder:
     document = work/'ARCHITECTURE.md'; document.write_text('SOURCE_MARKER: typography uses chat.css.\n')
     with patch.object(a, 'WORKSPACE', work), patch.object(a, 'ALLOWED_ROOT', base), \
          patch.object(a, 'DATA_ROOT', data), patch.object(a, 'conversation_dir', return_value=archive), \
-         patch.dict('os.environ', {'OVH_AGENT_MEMORY_INDEX_DIR': str(base/'cache')}):
+         patch.dict('os.environ', {'TRINITY_AGENT_MEMORY_INDEX_DIR': str(base/'cache')}):
         def inspect_context(messages, info):
             combined = str(info.instructions) + '\n'.join(
                 part.content for message in messages for part in message.parts if isinstance(part, SystemPromptPart))

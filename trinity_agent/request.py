@@ -42,7 +42,7 @@ EXTENSIONS = {'.py', '.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx', '.css', '.scs
               '.sh', '.sql', '.go', '.rs', '.java', '.c', '.h', '.cpp', '.md', '.rst', '.txt'}
 EXCLUDED = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.cache',
             'dist', 'build', 'vendor', 'proc', 'sys', 'dev', 'run', '.ssh', '.codex',
-            '.ovh-agent', 'secrets', 'credentials', 'overlay2', 'overlayfs',
+            '.trinity-agent', 'secrets', 'credentials', 'overlay2', 'overlayfs',
             'local-recovery', 'local-release-review'}
 PROJECT_MARKERS = ('AGENTS.md', 'AGENT.md', '.git', 'pyproject.toml', 'package.json', 'docker-compose.yml', 'Cargo.toml', 'go.mod')
 STOP = set('avec dans pour les des une que qui est sur pas plus cette comme mais donc tout tous faire peux veut nous vous elle aussi faut mettre ajoute corrige modifie supprime change please this that with from into update change the and for'.split())
@@ -493,7 +493,7 @@ class ChunkReaders:
                 index = self.created
                 self.created += 1
                 try:
-                    threading.Thread(target=self._run, daemon=True, name=f'ovh-file-reader-{index}').start()
+                    threading.Thread(target=self._run, daemon=True, name=f'trinity-file-reader-{index}').start()
                 except RuntimeError:
                     self.created -= 1
                     self.workers = max(1, self.created)
@@ -679,7 +679,7 @@ def prepare_request(prompt, history, workspace, allowed_root, image_count=0, *, 
     result = {'context': '', 'sources': [], 'files_scanned': 0, 'partial': False}
     from trinity_agent.limits import resolve_limits
     max_chars = resolve_limits(context_card, complex_task=analysis.complexity=='complex').preflight_context_chars
-    timeout = positive_env('OVH_AGENT_PREFLIGHT_TIMEOUT_MS', 2500) / 1000
+    timeout = positive_env('TRINITY_AGENT_PREFLIGHT_TIMEOUT_MS', 2500) / 1000
     if analysis.needs_workspace and max_chars and timeout:
         output = queue.Queue(maxsize=1)
         deadline = started + timeout
@@ -693,7 +693,7 @@ def prepare_request(prompt, history, workspace, allowed_root, image_count=0, *, 
             if _worker is not None and _worker.is_alive():
                 worker = None
             else:
-                worker = _worker = threading.Thread(target=run, daemon=True, name='ovh-context-reader')
+                worker = _worker = threading.Thread(target=run, daemon=True, name='trinity-context-reader')
                 worker.start()
         if worker is not None:
             worker.join(max(0, deadline - time.monotonic()))

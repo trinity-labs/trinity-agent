@@ -1,12 +1,12 @@
 const { svg: uiIcon } = AgentIcons;
-const uiLanguage = OvhI18n.setLanguage(OvhI18n.resolveLanguage(
+const uiLanguage = TrinityI18n.setLanguage(TrinityI18n.resolveLanguage(
   document.body.dataset.language, navigator.languages?.length ? navigator.languages : [navigator.language]));
-const { t } = OvhI18n;
+const { t } = TrinityI18n;
 document.documentElement.lang = uiLanguage;
 const shortDateTime = new Intl.DateTimeFormat(uiLanguage, {dateStyle:"short",timeStyle:"short"});
 const fullDateTime = new Intl.DateTimeFormat(uiLanguage, {year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric",second:"numeric"});
 const durationNumber = new Intl.NumberFormat(uiLanguage, {maximumFractionDigits:2});
-OvhI18n.translateStatic(document.body);
+TrinityI18n.translateStatic(document.body);
 const vscode = acquireVsCodeApi();
 let emojiMode = /^[0-3]$/.test(document.body.dataset.emojiMode || "") ? Number(document.body.dataset.emojiMode) : 1;
 const brandName = document.body.dataset.brandName || document.title || "TRINITY Agent";
@@ -15,7 +15,7 @@ for (const notice of document.querySelectorAll(".agent-disclaimer")) {
   notice.textContent = t("{0} est un outil d’assistance. Vous restez responsable des actions exécutées. L’IA peut se tromper : vérifiez ses réponses et les commandes.", brandName);
 }
 document.getElementById("prompt").placeholder = t("Demander à {0}…", brandName);
-document.documentElement.style.setProperty("--ovh-brand-badge", JSON.stringify(document.body.dataset.brandBadge || Array.from(brandName.split(/\s+/)[0]).slice(0, 3).join("").toUpperCase()));
+document.documentElement.style.setProperty("--trinity-brand-badge", JSON.stringify(document.body.dataset.brandBadge || Array.from(brandName.split(/\s+/)[0]).slice(0, 3).join("").toUpperCase()));
 const messages = document.getElementById("messages");
 const prompt = document.getElementById("prompt");
 const send = document.getElementById("send");
@@ -477,7 +477,9 @@ function modelAvailabilityLabel() {
     const rows = models.filter((item) => item.provider === provider);
     return `${rows.filter((item) => item.selectable).length}/${rows.length}`;
   };
-  const summary = `OVHcloud ${count("ovhcloud")} · DeepSeek ${count("deepseek")}`;
+  const names = {ovhcloud: "OVHcloud", deepseek: "DeepSeek", openai: "OpenAI Codex"};
+  const summary = [...new Set(models.map(item => item.provider).filter(Boolean))]
+    .map(provider => `${names[provider] || provider} ${count(provider)}`).join(" · ");
   return modelCatalogueNote ? `${summary} · ${modelCatalogueNote}` : summary;
 }
 
@@ -518,7 +520,7 @@ function renderModels() {
         ? t("Jusqu’à {0}k selon le modèle", Math.round(model.context_length / 1024))
         : t("Contexte selon le modèle choisi"))
       : compactTokens(model.context_length);
-    const providerName = model.provider === "deepseek" ? "DeepSeek" : model.provider === "ovhcloud" ? "OVHcloud" : "";
+    const providerName = ({deepseek:"DeepSeek",ovhcloud:"OVHcloud",openai:"OpenAI Codex"})[model.provider] || "";
     meta.textContent = [providerName, model.owner, size, active, model.quantization, contextLabel].filter(Boolean).join(" · ");
     if (model.parameters_b) meta.title = t("Taille documentée du modèle ; ne garantit ni sa vitesse ni sa qualité.");
     row.append(top, price, meta);
@@ -982,7 +984,7 @@ function renderArchiveMessages(items) {
     // Replaying an archive is not a new execution: do not display its render time.
     messages.querySelectorAll(".activity-elapsed").forEach(el => { el.textContent = ""; el.removeAttribute("title"); });
     if (!messages.children.length) {
-      messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
+      messages.innerHTML = TrinityI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
     }
   } finally { restoringArchive = false; }
   persist();
@@ -1001,7 +1003,7 @@ function applySnapshot(data) {
     upgradeSnapshotPresentation(messages);
     restoreTimestamps(messages, data.timeline || []);
     restoreActivityTimings(messages, data.timeline || []);
-    OvhI18n.translateSnapshot(messages);
+    TrinityI18n.translateSnapshot(messages);
     messages.querySelectorAll("details.activity").forEach(activity => { activity.open = false; });
     for (const article of messages.querySelectorAll(".message.failure")) article.remove();
     for (const article of messages.querySelectorAll(".message.assistant")) {
@@ -1937,12 +1939,12 @@ function restoreActivityTimings(root, timeline=[]) {
     if(Number.isFinite(time))index(stamps,`${item.type}:${time}`,item);
     if(item.type==='tool_start') {
       index(starts,item.id,item);
-      index(titles,activityLabel(OvhI18n.message(item.title || '')),item);
+      index(titles,activityLabel(TrinityI18n.message(item.title || '')),item);
     }
     if(item.type==='tool_end' && !ends.has(item.id))ends.set(item.id,item);
   }
   for(const row of root.querySelectorAll('.activity-row')) {
-    const title=activityLabel(OvhI18n.message(row.querySelector('strong')?.textContent || ''));
+    const title=activityLabel(TrinityI18n.message(row.querySelector('strong')?.textContent || ''));
     const type=row.dataset.eventType || labels.get(title);
     const stampValue=row.querySelector('.message-time')?.dateTime;
     let event=row.dataset.activityId && take(starts.get(row.dataset.activityId));
@@ -2174,16 +2176,17 @@ function formatMoney(value, currency = "EUR") {
 }
 
 function applyBillingStatus(data, announce = true) {
-  const provider = data.provider === "deepseek" ? "deepseek" : "ovhcloud";
+  const provider = ["deepseek","openai","ovhcloud"].includes(data.provider) ? data.provider : "ovhcloud";
+  const providerLabel = provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI Codex" : "OVHcloud";
   if (document.body.dataset.provider && document.body.dataset.provider !== provider) return;
-  billing.setAttribute("aria-label", provider === "deepseek" ? "DeepSeek" : t("Solde OVHcloud"));
+  billing.setAttribute("aria-label", provider === "ovhcloud" ? t("Solde OVHcloud") : providerLabel);
   if (data.pending) {
     if (liveBalance.dataset.provider === provider && liveBalance.dataset.available === "true") return;
     liveBalance.dataset.provider = provider;
     liveBalance.dataset.available = "false";
     billing.classList.remove("connected", "failed");
-    billing.title = liveBalance.title = provider === "deepseek" ? "DeepSeek" : t("Vérification de la connexion OVHcloud…");
-    liveBalance.textContent = provider === "deepseek" ? "DeepSeek · …" : t("Solde : vérification…");
+    billing.title = liveBalance.title = provider === "ovhcloud" ? t("Vérification de la connexion OVHcloud…") : `${providerLabel} · …`;
+    liveBalance.textContent = provider === "ovhcloud" ? t("Solde : vérification…") : `${providerLabel} · …`;
     return;
   }
   liveBalance.dataset.provider = provider;
@@ -2210,6 +2213,24 @@ function applyBillingStatus(data, announce = true) {
     billing.classList.toggle("connected", Boolean(available && !data.stale));
     billing.classList.toggle("failed", Boolean(!available || data.stale));
     if (announce && data.error) setStatus(data.error, true);
+    return;
+  }
+  if (provider === "openai") {
+    const available = data.available && data.currency === "USD" && Number.isFinite(data.credit_remaining);
+    liveBalance.dataset.available = String(Boolean(available));
+    if (available) {
+      const amount = document.createElement("span");
+      amount.className = "balance-amount";
+      amount.textContent = formatMoney(data.credit_remaining, "USD");
+      liveBalance.replaceChildren(document.createTextNode("OpenAI Codex · "), amount);
+    } else liveBalance.textContent = "OpenAI Codex · —";
+    const input = Number(data.input_tokens || 0).toLocaleString(uiLanguage);
+    const output = Number(data.output_tokens || 0).toLocaleString(uiLanguage);
+    billing.title = liveBalance.title = available
+      ? `Allocation configurée ${formatMoney(data.credit_available, "USD")} · usage local estimé ${formatMoney(data.current_usage, "USD")}\n${input} tokens entrée · ${output} tokens sortie · ${data.requests || 0} requête(s)\nLa facturation de l’organisation OpenAI reste la source officielle.`
+      : (data.configured ? "Suivi local OpenAI indisponible" : "Configurer la clé API OpenAI avec l’icône clé");
+    billing.classList.toggle("connected", Boolean(available));
+    billing.classList.toggle("failed", !available);
     return;
   }
   if (!data.configured) liveBalance.textContent = t("Solde : à configurer");
@@ -2470,7 +2491,7 @@ if (saved?.html) {
   upgradeSnapshotPresentation(messages);
   restoreTimestamps(messages);
   restoreActivityTimings(messages);
-  OvhI18n.translateSnapshot(messages);
+  TrinityI18n.translateSnapshot(messages);
   for (const button of messages.querySelectorAll(".approval-actions button")) button.disabled = true;
   for (const content of messages.querySelectorAll(".markdown")) enhanceMarkdown(content);
   for (const change of messages.querySelectorAll(".file-change")) enhanceFileChange(change);
@@ -2520,7 +2541,7 @@ function startNewConversation(message = {type:"clear"}) {
   currentRun = null;
   activityRows.clear();
   approvalCards.clear();
-  messages.innerHTML = OvhI18n.markup("<section class=\"welcome\"><h2></h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section>");
+  messages.innerHTML = TrinityI18n.markup("<section class=\"welcome\"><h2></h2><p>Je peux analyser des images, lire et modifier les fichiers, rechercher dans le projet et exécuter des commandes.</p></section>");
   messages.querySelector(".welcome h2").textContent = brandName;
   pendingImages = [];
   renderPendingImages();
@@ -2701,10 +2722,10 @@ window.addEventListener("message", ({ data }) => {
       if (data.type === "idle") data = {type:"error",text:t("Création de conversation interrompue. Réessaie Nouvelle conversation.")};
     } else if (!["billing_status", "billing_configured", "budget_status", "configured"].includes(data.type)) return;
   }
-  if (["status", "error", "archive_delete_failed"].includes(data.type)) data = {...data, text: OvhI18n.message(data.text)};
-  if (["tool_start", "approval"].includes(data.type)) data = {...data, title: OvhI18n.message(data.title)};
-  if (data.type === "tool_end") data = {...data, detail: OvhI18n.message(data.detail)};
-  if (data.type === "model_routed") data = {...data, reason: OvhI18n.message(data.reason)};
+  if (["status", "error", "archive_delete_failed"].includes(data.type)) data = {...data, text: TrinityI18n.message(data.text)};
+  if (["tool_start", "approval"].includes(data.type)) data = {...data, title: TrinityI18n.message(data.title)};
+  if (data.type === "tool_end") data = {...data, detail: TrinityI18n.message(data.detail)};
+  if (data.type === "model_routed") data = {...data, reason: TrinityI18n.message(data.reason)};
   if (data.type === "ready") {
     if (data.resources) showPerformance(data.resources.mode, data.resources);
     if (Number.isInteger(data.emoji_mode) && data.emoji_mode >= 0 && data.emoji_mode <= 3) emojiMode = data.emoji_mode;
@@ -2742,7 +2763,7 @@ window.addEventListener("message", ({ data }) => {
       followupsBox.removeAttribute('aria-busy');
       renderFollowups();
       if (data.type === 'followup_error') {
-        setStatus(t("Ordre non enregistré : {0}", OvhI18n.message(data.text)), true);
+        setStatus(t("Ordre non enregistré : {0}", TrinityI18n.message(data.text)), true);
         followupCommand('list');
       } else setStatus(t("Ordre des tâches enregistré."), "success");
     }
@@ -2772,7 +2793,7 @@ window.addEventListener("message", ({ data }) => {
       retryFollowup = null;
       send.disabled = !!loadingArchive || creatingConversation || stopping;
     }
-    setStatus(t("Message non envoyé : {0}", OvhI18n.message(data.text)), true);
+    setStatus(t("Message non envoyé : {0}", TrinityI18n.message(data.text)), true);
   }
   if (data.type === "followup_started") {
     addUserMessage(data.text, [], data.timestamp);
@@ -2807,7 +2828,7 @@ window.addEventListener("message", ({ data }) => {
     if (performancePicker) performancePicker.disabled = false;
     resetFollowupInteraction();
     if (currentRun) finishRun("stopped");
-    setBusy(false, OvhI18n.message(data.text), true);
+    setBusy(false, TrinityI18n.message(data.text), true);
     if (deferredArchiveOpen) {
       const target = deferredArchiveOpen;
       deferredArchiveOpen = null;
@@ -2963,7 +2984,7 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === 'performance_error') {
     showPerformance(data.mode);
-    setStatus(t('Impossible de changer les performances : {0}', OvhI18n.message(data.text)), true);
+    setStatus(t('Impossible de changer les performances : {0}', TrinityI18n.message(data.text)), true);
   }
   if (data.type === "billing_configured") setBusy(false, t("Accès lecture seule à la facturation enregistré"));
   if (data.type === "billing_status") applyBillingStatus(data, !data.silent && !busy);
@@ -2983,7 +3004,7 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === 'project_delete_failed') {
     projectDeletionPending(data.project,false);
-    archiveOrganizationNotice(OvhI18n.message(data.text || t('La suppression a échoué.')),'error');
+    archiveOrganizationNotice(TrinityI18n.message(data.text || t('La suppression a échoué.')),'error');
   }
   if (data.type === 'project_deleted') {
     pendingProjectDeletions.delete(data.project);pendingProjectUpdates.delete(data.project);
@@ -3050,12 +3071,12 @@ window.addEventListener("message", ({ data }) => {
     modelCatalog = data.items || [];
     modelCatalogueNote = data.other_note || "";
     const providers = new Set(modelCatalog.map(item => item.provider).filter(Boolean));
-    const providerLabel = providers.has("ovhcloud") && providers.has("deepseek")
-      ? "OVHcloud + DeepSeek" : providers.has("deepseek") ? "DeepSeek" : "OVHcloud AI Endpoints";
+    const providerNames = {ovhcloud:"OVHcloud",deepseek:"DeepSeek",openai:"OpenAI Codex"};
+    const providerLabel = [...providers].map(provider=>providerNames[provider] || provider).join(" + ");
     const panelTitle = document.getElementById("model-panel-title");
     if (panelTitle) panelTitle.textContent = t("Modèles {0}", providerLabel);
     const panelSource = document.getElementById("model-panel-source");
-    if (panelSource) panelSource.textContent = t("Catalogue et tarifs des deux fournisseurs");
+    if (panelSource) panelSource.textContent = t("Catalogue et tarifs des fournisseurs configurés");
     // Listing or refreshing available models is never a selection action.
     updateModelButton();
     renderModels();

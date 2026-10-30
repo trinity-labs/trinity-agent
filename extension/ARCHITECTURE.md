@@ -104,7 +104,7 @@ Le VSIX contient aussi les sources et les maps pour le diagnostic. Le gain porte
 
 ### Délai de compression du contexte
 
-Le résumé auxiliaire utilise le modèle actif, sans outils, avec un délai par défaut de 15 secondes (`OVH_AGENT_SUMMARY_TIMEOUT_SECONDS`). Le délai couvre la réponse complète. En cas d’échec, le backend émet un statut explicite puis utilise les extraits locaux ; il annonce ensuite la reprise. Le protocole complet est archivé avant compression. Le délai et le type d’erreur sont enregistrés, sans attribuer automatiquement la lenteur au fournisseur. Annuler l’appel local ne garantit pas l’annulation de sa facturation distante. `scripts/test-context.py` vérifie hors réseau le timeout réel, l’annulation de la coroutine, le secours et la conservation exacte de l’archive.
+Le résumé auxiliaire utilise le modèle actif, sans outils, avec un délai par défaut de 15 secondes (`TRINITY_AGENT_SUMMARY_TIMEOUT_SECONDS`). Le délai couvre la réponse complète. En cas d’échec, le backend émet un statut explicite puis utilise les extraits locaux ; il annonce ensuite la reprise. Le protocole complet est archivé avant compression. Le délai et le type d’erreur sont enregistrés, sans attribuer automatiquement la lenteur au fournisseur. Annuler l’appel local ne garantit pas l’annulation de sa facturation distante. `scripts/test-context.py` vérifie hors réseau le timeout réel, l’annulation de la coroutine, le secours et la conservation exacte de l’archive.
 
 ### Preuves et contexte des modifications
 
@@ -116,7 +116,7 @@ Le garde de sortie refuse une annonce de tests réussis sans reçu d’exécutio
 
 When the selected executor cannot read images, `trinity_agent/vision.py` performs one
 tool-free, budgeted visual extraction (60 seconds maximum, 4096 output tokens).
-The default reader is Qwen3.6-27B; `OVH_AGENT_VISION_READER` is an explicit operator
+The default reader is Qwen3.6-27B; `TRINITY_AGENT_VISION_READER` is an explicit operator
 override. It must advertise vision and native JSON schema in the effective provider
 capabilities. There is no silent fallback to a reader with weaker test results.
 Native structured output constrains format; it does not certify visual accuracy.
@@ -153,7 +153,7 @@ termination may lose the last second of streamed text; tool journals remain the
 source for recorded actions.
 
 Selecting a history folder or choosing a project records the explicit destination
-for the next new conversation (`ovhAgent.newConversationProject`). It does not
+for the next new conversation (`trinityAgent.newConversationProject`). It does not
 move the current conversation. New Conversation starts in that folder and records
 the history assignment when the backend acknowledges `cleared`, after creating
 the archive directory. Without an explicit selection, it uses the IDE workspace.
@@ -319,7 +319,7 @@ sur 16 Ko, arrêt au-delà de 16 Mio émis, expiration et arrêt du groupe de pr
 Les secrets hérités de l'environnement sont filtrés. Le profil par défaut
 `approved` conserve la politique d'autorisation et **n'est pas un confinement OS** ;
 un processus hostile qui se détache peut échapper au groupe. Le profil explicite
-`OVH_AGENT_COMMAND_PROFILE=workspace` exige bubblewrap et les namespaces Linux,
+`TRINITY_AGENT_COMMAND_PROFILE=workspace` exige bubblewrap et les namespaces Linux,
 isole le réseau et monte seulement le workspace en écriture ainsi que les chemins
 d'exécution autorisés en lecture. Il refuse l'exécution si cette capacité manque.
 Les contrôles déclarés et transports SSH restent des exécutions approuvées ; le

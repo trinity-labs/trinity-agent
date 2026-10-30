@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from trinity_agent.cache import CACHE, file_signature, read_text_cached, positive_env, memory_index_limits
 from trinity_agent.memory import atomic_write, terms, execution_evidence
 
-SCAN_SECONDS = positive_env('OVH_AGENT_MEMORY_SCAN_SECONDS', 5)
+SCAN_SECONDS = positive_env('TRINITY_AGENT_MEMORY_SCAN_SECONDS', 5)
 IGNORED_SOURCE_DIRS = frozenset({'.git','.hg','.svn','node_modules','vendor','dist','build','coverage',
                                  '__pycache__','.pytest_cache','.mypy_cache','.tox','.venv','venv',
                                  'local-recovery'})
@@ -115,7 +115,7 @@ class ProjectMemory:
         self.archive=self.data/'archive'/project
         self.root=self.data/'memory/projects'/project
         namespace=hashlib.sha256(str(self.data).encode()).hexdigest()[:20]
-        local=Path((os.environ.get('OVH_AGENT_MEMORY_INDEX_DIR') or str(Path(os.environ.get('XDG_CACHE_HOME',str(Path.home()/'.cache')))/'ovh-agent/project-memory')))
+        local=Path((os.environ.get('TRINITY_AGENT_MEMORY_INDEX_DIR') or str(Path(os.environ.get('XDG_CACHE_HOME',str(Path.home()/'.cache')))/'trinity-agent/project-memory')))
         self.cache=local/namespace/project
         self.index_file=self.cache/'index.json.gz'
         self.revision=self.root/'.revision'
@@ -497,7 +497,7 @@ def schedule_export(data_root,project,workspace):
         try:ProjectMemory(data_root,project,workspace).materialize()
         except (OSError,ValueError,RuntimeError):pass
         finally:_export_lock.release()
-    threading.Thread(target=run,daemon=True,name='ovh-markdown-export').start()
+    threading.Thread(target=run,daemon=True,name='trinity-markdown-export').start()
 
 
 def aggregate(data_root,projects):
@@ -536,7 +536,7 @@ def aggregate(data_root,projects):
 if __name__ == '__main__':
     import argparse
     parser=argparse.ArgumentParser(description='Agréger les mémoires Markdown sans appel au modèle.')
-    parser.add_argument('--data-root',default=os.environ.get('OVH_AGENT_DATA_ROOT',str(Path.home()/'.ovh-agent')))
+    parser.add_argument('--data-root',default=os.environ.get('TRINITY_AGENT_DATA_ROOT',str(Path.home()/'.trinity-agent')))
     parser.add_argument('--workspace',action='append',required=True,help='Dossier projet ; répétable pour agréger plusieurs projets.')
     args=parser.parse_args()
     projects=[hashlib.sha256(str(Path(w).resolve()).encode()).hexdigest()[:20] for w in args.workspace]

@@ -1,4 +1,4 @@
-#!/opt/ovh-agent/bin/python
+#!/opt/trinity-agent/bin/python
 """Offline regression tests for OVH request settings, caching and streamed tool rounds."""
 import asyncio
 import importlib.util
@@ -21,8 +21,8 @@ a = importlib.util.module_from_spec(spec)
 # This suite asserts published defaults, not the operator's local token caps.
 # Isolate import-time settings; never alter the running installation policy.
 with patch.dict(os.environ, {
-    "OVH_AGENT_CONTEXT_TOKENS": "262144", "OVH_AGENT_CONTEXT_RESERVE_TOKENS": "4096",
-    "OVH_AGENT_OUTPUT_TOKENS": "16384", "OVH_AGENT_COMPLEX_OUTPUT_TOKENS": "32768",
+    "TRINITY_AGENT_CONTEXT_TOKENS": "262144", "TRINITY_AGENT_CONTEXT_RESERVE_TOKENS": "4096",
+    "TRINITY_AGENT_OUTPUT_TOKENS": "16384", "TRINITY_AGENT_COMPLEX_OUTPUT_TOKENS": "32768",
 }):
     spec.loader.exec_module(a)
 # These heuristic fixtures must not consume installation-specific benchmark data.
@@ -62,12 +62,12 @@ with patch.object(a, 'context_overhead', return_value=8000):
     assert a.auto_model_card()['context_length'] is None
     assert budget > 200000  # The largest window is no longer held to the old 98304 cap.
     assert a.output_token_budget({'context_length': 4096}, True, 8000) == 0
-with patch.dict(os.environ, {'OVH_AGENT_TEST_BUDGET': 'bad'}):
-    assert a.budget_setting('OVH_AGENT_TEST_BUDGET', 200) == 200
-with patch.dict(os.environ, {'OVH_AGENT_TEST_BUDGET': '-1'}):
-    assert a.budget_setting('OVH_AGENT_TEST_BUDGET', 200) == 1
-with patch.dict(os.environ, {'OVH_AGENT_TEST_BUDGET': '300'}):
-    assert a.budget_setting('OVH_AGENT_TEST_BUDGET', 200) == 300
+with patch.dict(os.environ, {'TRINITY_AGENT_TEST_BUDGET': 'bad'}):
+    assert a.budget_setting('TRINITY_AGENT_TEST_BUDGET', 200) == 200
+with patch.dict(os.environ, {'TRINITY_AGENT_TEST_BUDGET': '-1'}):
+    assert a.budget_setting('TRINITY_AGENT_TEST_BUDGET', 200) == 1
+with patch.dict(os.environ, {'TRINITY_AGENT_TEST_BUDGET': '300'}):
+    assert a.budget_setting('TRINITY_AGENT_TEST_BUDGET', 200) == 300
 
 with tempfile.TemporaryDirectory() as folder:
     a.MODEL_CACHE_FILE = Path(folder) / 'catalog.json'
@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory() as folder:
         assert a.fetch_model_catalog()[0]['id'] == catalog[0]['id']
         assert a.fetch_model_catalog()[0]['id'] == catalog[0]['id']
 
-with patch.dict(os.environ, {'OVH_CLOUD_PROJECT': 'test'}), patch.object(a, 'read_billing_cache', return_value={'project': 'other', 'cached_at': time.time()}), patch.object(a, 'refresh_billing_async') as refresh:
+with patch.dict(os.environ, {'TRINITY_OVHCLOUD_PROJECT': 'test'}), patch.object(a, 'read_billing_cache', return_value={'project': 'other', 'cached_at': time.time()}), patch.object(a, 'refresh_billing_async') as refresh:
     assert a.routing_billing_status()['available'] is False
     refresh.assert_called_once_with({'silent': True})
 
@@ -140,6 +140,10 @@ assert a.automatic_fallback_reason(
     'gpt-oss-20b', RuntimeError("Tool 'edit_file' exceeded max retries count of 2"), None, None)
 assert not a.automatic_fallback_reason(
     'gpt-oss-120b', RuntimeError("Tool 'edit_file' exceeded max retries count of 2"), None, None)
+incomplete = a.IncompleteModelResponseError('reasoning only')
+assert a.automatic_fallback_reason('gpt-oss-120b', incomplete, None, None)
+with patch.object(a, 'no_mutation_started', return_value=False):
+    assert not a.automatic_fallback_reason('gpt-oss-120b', incomplete, None, None)
 class JournalFixture:
     def __init__(self, operations): self.operations = operations
     def snapshot(self): return {'operations': self.operations}

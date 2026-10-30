@@ -184,8 +184,8 @@ RUN echo "============================================================" \
 # OVHCLOUD AI AGENT
 # =============================================================================
 
-RUN python3 -m venv /opt/ovh-agent \
-    && /opt/ovh-agent/bin/pip install --upgrade --upgrade-strategy eager \
+RUN python3 -m venv /opt/trinity-agent \
+    && /opt/trinity-agent/bin/pip install --upgrade --upgrade-strategy eager \
         'pydantic-ai-slim[openai]'
 
 # =============================================================================
@@ -221,7 +221,7 @@ RUN apk add --no-cache docker-cli-buildx \
     && bun --version \
     && printf 'Codex       : ' \
     && codex --version \
-    && /opt/ovh-agent/bin/pip check \
+    && /opt/trinity-agent/bin/pip check \
     && docker buildx version \
     && echo "============================================================"
 

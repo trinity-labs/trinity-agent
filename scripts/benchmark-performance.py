@@ -17,8 +17,8 @@ def worker(args):
     started=time.perf_counter()
     sys.path.insert(0,str(ROOT))
     # A child gets an isolated data root/workspace; never read production credentials.
-    os.environ.update(OVH_AGENT_DATA_ROOT=args.data,OVH_AGENT_WORKSPACE=args.workspace,
-                      OVH_AI_API_KEY='offline-benchmark',PYDANTIC_AI_NO_BANNER='1')
+    os.environ.update(TRINITY_AGENT_DATA_ROOT=args.data,TRINITY_AGENT_WORKSPACE=args.workspace,
+                      TRINITY_OVHCLOUD_API_KEY='offline-benchmark',PYDANTIC_AI_NO_BANNER='1')
     import socket
     def offline(*args,**kwargs): raise RuntimeError('Benchmark forbids network access')
     socket.create_connection=offline
@@ -26,7 +26,7 @@ def worker(args):
     if args.env_file:
         for line in Path(args.env_file).read_text().splitlines():
             key,sep,value=line.partition('=')
-            if sep and key.startswith('OVH_AGENT_') and (value.isdigit() or value=='auto'):
+            if sep and key.startswith('TRINITY_AGENT_') and (value.isdigit() or value=='auto'):
                 os.environ[key]=value
     sys.argv=['benchmark','--billing-status']
     if args.adapter:

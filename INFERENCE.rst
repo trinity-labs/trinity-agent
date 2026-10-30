@@ -120,15 +120,15 @@ ralentissement dû à la récupération mémoire. Référence : `cgroups Linux`_
 
    * - Variable
      - Valeur par défaut
-   * - ``OVH_AGENT_RAM_CACHE_MB``
+   * - ``TRINITY_AGENT_RAM_CACHE_MB``
      - auto
-   * - ``OVH_AGENT_RAM_CACHE_ENTRIES``
+   * - ``TRINITY_AGENT_RAM_CACHE_ENTRIES``
      - auto
-   * - ``OVH_AGENT_PREFLIGHT_WORKERS``
+   * - ``TRINITY_AGENT_PREFLIGHT_WORKERS``
      - auto
-   * - ``OVH_AGENT_PREFLIGHT_MAX_FILES``
+   * - ``TRINITY_AGENT_PREFLIGHT_MAX_FILES``
      - auto
-   * - ``OVH_AGENT_PREFLIGHT_FILE_CHARS``
+   * - ``TRINITY_AGENT_PREFLIGHT_FILE_CHARS``
      - auto
 
 Une valeur numérique définit un plafond supplémentaire ; une valeur absente ou
@@ -225,10 +225,10 @@ n'a déclenché aucun appel d'inférence payant.
 
 Reproduction::
 
-    /opt/ovh-agent/bin/python scripts/benchmark-retrieval.py
-    /opt/ovh-agent/bin/python scripts/test-request.py
-    /opt/ovh-agent/bin/python scripts/test-inference.py
-    /opt/ovh-agent/bin/python scripts/test-resources.py
+    /opt/trinity-agent/bin/python scripts/benchmark-retrieval.py
+    /opt/trinity-agent/bin/python scripts/test-request.py
+    /opt/trinity-agent/bin/python scripts/test-inference.py
+    /opt/trinity-agent/bin/python scripts/test-resources.py
 
 .. _raisonnement OpenAI: https://developers.openai.com/api/docs/guides/reasoning-best-practices
 .. _contexte Anthropic: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
@@ -342,7 +342,7 @@ Le banc archive les appels et erreurs de validation (sans exposer le raisonnemen
 interne) et offre ``--no-stream`` pour isoler les problèmes de JSON d'outils.
 Les expériences sans streaming ne calibrent pas le chemin normal avec streaming.
 
-Le réglage local optionnel ``OVH_AGENT_ROUTING_PRICE_FACTOR`` (entre 1 et 10)
+Le réglage local optionnel ``TRINITY_AGENT_ROUTING_PRICE_FACTOR`` (entre 1 et 10)
 élargit le groupe de prix dans lequel comparer les latences mesurées. Le registre
 budgétaire reste obligatoire. Les tâches complexes conservent une sélection
 prudente : des questions élémentaires réussies ne suffisent pas à désigner le

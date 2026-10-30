@@ -1,11 +1,11 @@
 {
-  "ovhAgent.start.title": "TRINITY Agent: Iniciar",
-  "ovhAgent.configureKey.title": "TRINITY Agent: Configurar la clave OVH",
-  "ovhAgent.configureBilling.title": "TRINITY Agent: Configurar saldo y facturación",
-  "ovhAgent.selectProject.title": "Seleccionar o crear un proyecto",
-  "ovhAgent.selectProvider.title": "TRINITY Agent: Elegir el proveedor de inferencia",
-  "ovhAgent.editProfile.title": "Editar el contexto de usuario compartido",
-  "ovhAgent.performanceMode.description": "Rendimiento local. El selector del chat aplica cambios inmediatamente; los ajustes aquí se aplican al siguiente inicio del motor.",
-  "ovhAgent.performanceMode.auto": "Dimensionamiento automático con límites moderados.",
-  "ovhAgent.performanceMode.max": "CPU y RAM disponibles, búsqueda y caché ampliadas según el hardware. Se mantienen los límites del sistema y los presupuestos API."
+  "trinityAgent.start.title": "TRINITY Agent: Iniciar",
+  "trinityAgent.configureKey.title": "TRINITY Agent: Configurar la clave OVH",
+  "trinityAgent.configureBilling.title": "TRINITY Agent: Configurar saldo y facturación",
+  "trinityAgent.selectProject.title": "Seleccionar o crear un proyecto",
+  "trinityAgent.selectProvider.title": "TRINITY Agent: Elegir el proveedor de inferencia",
+  "trinityAgent.editProfile.title": "Editar el contexto de usuario compartido",
+  "trinityAgent.performanceMode.description": "Rendimiento local. El selector del chat aplica cambios inmediatamente; los ajustes aquí se aplican al siguiente inicio del motor.",
+  "trinityAgent.performanceMode.auto": "Dimensionamiento automático con límites moderados.",
+  "trinityAgent.performanceMode.max": "CPU y RAM disponibles, búsqueda y caché ampliadas según el hardware. Se mantienen los límites del sistema y los presupuestos API."
 }

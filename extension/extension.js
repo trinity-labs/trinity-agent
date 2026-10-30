@@ -2,7 +2,7 @@ const { svg: uiIcon } = require("./media/icons.min.js");
 const vscode = require("vscode");
 const i18n = require("./media/i18n");
 const { t } = i18n;
-i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [vscode.env.language]));
+i18n.setLanguage(i18n.resolveLanguage(process.env.TRINITY_AGENT_LANG, [vscode.env.language]));
 const { ArchiveStore, ArchiveReader } = require("./archive-store");
 const { ProjectStore, assertStoragePath, readStorageFile } = require("./project-store");
 const { acquireWindowLock, releaseWindowLock } = require("./window-lock");
@@ -17,22 +17,27 @@ const { BillingChannel } = require("./billing-channel");
 const { NdjsonDecoder } = require("./backend-protocol");
 const { resolveBackendPath } = require("./backend-path");
 
-const BRAND_NAME = [process.env.OVH_AGENT_NAME, require("./package.json").displayName, "TRINITY Agent"]
+const BRAND_NAME = [process.env.TRINITY_AGENT_NAME, require("./package.json").displayName, "TRINITY Agent"]
   .map(name => String(name || "").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 80)).find(Boolean);
 
 
 function agentPath() {
-  const configured = process.env.OVH_AGENT_PATH || vscode.workspace.getConfiguration?.("ovhAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/scripts/trinity-agent.sh";
+  const configured = process.env.TRINITY_AGENT_PATH || vscode.workspace.getConfiguration?.("trinityAgent").get("backendPath") || "/home/coder/TRINITY-DOCKER/var/docker/docker_ide/scripts/trinity-agent.sh";
   return resolveBackendPath(configured, fs.existsSync);
 }
-const OVH_SECRET_DIRECTORY = "/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity";
+const TRINITY_SECRET_DIRECTORY = "/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity";
 const BILLING_SECRETS = {
-  project: "OVH_CLOUD_PROJECT", applicationKey: "OVH_APPLICATION_KEY",
-  applicationSecret: "OVH_APPLICATION_SECRET", consumerKey: "OVH_CONSUMER_KEY",
-  baseUrl: "OVH_API_BASE_URL",
+  project: "TRINITY_OVHCLOUD_PROJECT", applicationKey: "TRINITY_OVHCLOUD_APPLICATION_KEY",
+  applicationSecret: "TRINITY_OVHCLOUD_APPLICATION_SECRET", consumerKey: "TRINITY_OVHCLOUD_CONSUMER_KEY",
+  baseUrl: "TRINITY_OVHCLOUD_API_BASE_URL",
+};
+const INFERENCE_PROVIDERS = {
+  ovhcloud: {label:"OVHcloud AI Endpoints",host:"oai.endpoints.kepler.ai.cloud.ovh.net",secret:"TRINITY_OVHCLOUD_API_KEY",storage:"trinityAgent.apiKey"},
+  deepseek: {label:"DeepSeek",host:"api.deepseek.com",secret:"TRINITY_DEEPSEEK_API_KEY",storage:"trinityAgent.deepseekApiKey"},
+  openai: {label:"OpenAI Codex API",host:"api.openai.com",secret:"TRINITY_OPENAI_API_KEY",storage:"trinityAgent.openaiApiKey"},
 };
 function readServerSecret(name) {
-  for (const file of [path.join("/run/secrets", name), path.join(OVH_SECRET_DIRECTORY, name)]) {
+  for (const file of [path.join("/run/secrets", name), path.join(TRINITY_SECRET_DIRECTORY, name)]) {
     try { return fs.readFileSync(file, "utf8").trim(); }
     catch (error) { if (error.code !== "ENOENT") throw error; }
   }
@@ -41,7 +46,7 @@ function readServerSecret(name) {
 function persistServerSecret(name, value) {
   const secret = String(value || "").trim();
   if (!secret || /[\r\n\0]/.test(secret)) throw new Error(t("Secret OVH invalide."));
-  const file = path.join(OVH_SECRET_DIRECTORY, name);
+  const file = path.join(TRINITY_SECRET_DIRECTORY, name);
   // Preserve the inode used by Docker's bind-mounted file secrets.
   const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW, 0o600);
   try {
@@ -52,14 +57,15 @@ function persistServerSecret(name, value) {
   return secret;
 }
 function inferenceProvider() {
-  return vscode.workspace.getConfiguration?.("ovhAgent")?.get?.("provider", process.env.OVH_AGENT_PROVIDER || "ovhcloud") === "deepseek" ? "deepseek" : "ovhcloud";
+  const selected=vscode.workspace.getConfiguration?.("trinityAgent")?.get?.("provider",process.env.TRINITY_AGENT_PROVIDER||"ovhcloud");
+  return Object.hasOwn(INFERENCE_PROVIDERS,selected)?selected:"ovhcloud";
 }
-function inferenceSecretName() { return inferenceProvider() === "deepseek" ? "DEEPSEEK_API_KEY" : "OVH_AI_API_KEY"; }
+function inferenceSecretName() { return INFERENCE_PROVIDERS[inferenceProvider()].secret; }
 function readPersistentKey() { return readServerSecret(inferenceSecretName()); }
 function persistKey(value) { return persistServerSecret(inferenceSecretName(), value); }
 
 
-class OvhAgentViewProvider {
+class TrinityAgentViewProvider {
   constructor(extensionUri, secrets, state) {
     this.state = state;
     const initial = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || require("os").homedir();
@@ -76,11 +82,11 @@ class OvhAgentViewProvider {
     this.startPromise = undefined;
     this.deleting = false;
     this.providerRestartPending = false;
-    this.pendingModel = state?.get?.("ovhAgent.pendingModel") || undefined;
+    this.pendingModel = state?.get?.("trinityAgent.pendingModel") || undefined;
     this.pendingArchiveId = undefined;
     this.store = new ArchiveStore(this.workspace);
     try {
-      const remembered=state?.get("ovhAgent.projectRoot") ?? new ProjectStore(this.store.dataRoot).active(initial)?.root;
+      const remembered=state?.get("trinityAgent.projectRoot") ?? new ProjectStore(this.store.dataRoot).active(initial)?.root;
       if(remembered && remembered!==initial) {
         const archive=new ArchiveStore(remembered,this.store.dataRoot);
         // Only a saved conversation can restore a project context, never a folder selection alone.
@@ -88,7 +94,7 @@ class OvhAgentViewProvider {
         if (/^[0-9A-Za-z_-]+$/.test(current) && archive.readCached(path.join(archive.root,current,"meta.json"))) {this.workspace=remembered;this.store=archive;}
       }
     } catch {}
-    this.newConversationProject = state?.get("ovhAgent.newConversationProject");
+    this.newConversationProject = state?.get("trinityAgent.newConversationProject");
   }
 
   async resolveWebviewView(webviewView) {
@@ -141,7 +147,7 @@ class OvhAgentViewProvider {
         model: String(message.model || "auto-balanced"),
         archive_revision: message.archive_revision,
       });
-      if (message.type === "webviewReady") { i18n.setLanguage(i18n.resolveLanguage(process.env.OVH_AGENT_LANG, [message.language, vscode.env.language])); this.showArchives(); void this.refreshBilling(false); }
+      if (message.type === "webviewReady") { i18n.setLanguage(i18n.resolveLanguage(process.env.TRINITY_AGENT_LANG, [message.language, vscode.env.language])); this.showArchives(); void this.refreshBilling(false); }
     });
     webviewView.onDidDispose(() => {
       if (this.view !== webviewView) return;
@@ -326,13 +332,13 @@ class OvhAgentViewProvider {
 
   async selectConversationFolder(entry) {
     this.newConversationProject = entry.id;
-    await this.state?.update("ovhAgent.newConversationProject", entry.id);
+    await this.state?.update("trinityAgent.newConversationProject", entry.id);
     this.post({type:"project_selected",project:entry.id});
   }
 
   async clearConversationFolder() {
     this.newConversationProject = undefined;
-    await this.state?.update("ovhAgent.newConversationProject", undefined);
+    await this.state?.update("trinityAgent.newConversationProject", undefined);
     this.post({type:"project_selected",project:null});
   }
 
@@ -359,7 +365,7 @@ class OvhAgentViewProvider {
     new ProjectStore(dataRoot).activate(this.initialWorkspace,entry.root,{register:!conversation});
     this.workspace=entry.root;
     this.store=new ArchiveStore(entry.root,dataRoot);
-    await this.state?.update("ovhAgent.projectRoot",entry.root);
+    await this.state?.update("trinityAgent.projectRoot",entry.root);
     // Keep the webview and expanded history folders alive while switching backends.
     if (!conversation) await this.ensureAgent();
     this.showArchives();
@@ -426,7 +432,7 @@ class OvhAgentViewProvider {
       if (project.id !== message.project) {
         if (this.newConversationProject === message.project) {
           this.newConversationProject = project.id;
-          await this.state?.update("ovhAgent.newConversationProject", project.id);
+          await this.state?.update("trinityAgent.newConversationProject", project.id);
         }
         if (this.pendingConversationProject === message.project) this.pendingConversationProject = project.id;
       }
@@ -469,7 +475,7 @@ class OvhAgentViewProvider {
       this.post({ type: "error", text: t("Impossible d’enregistrer la clé API sur le serveur. Vérifie les droits du dossier de secrets serveur.") });
       return false;
     }
-    await this.secrets.delete(inferenceProvider() === "deepseek" ? "ovhAgent.deepseekApiKey" : "ovhAgent.apiKey");
+    await this.secrets.delete(inferenceProvider() === "deepseek" ? "trinityAgent.deepseekApiKey" : "trinityAgent.apiKey");
     this.stopAgent(false);
     this.post({ type: "configured" });
     return true;
@@ -544,17 +550,18 @@ class OvhAgentViewProvider {
   cachedBilling(provider) {
     try {
       const cache = this.store.readCached(path.join(this.store.root,
-        provider === "deepseek" ? "billing-deepseek.json" : "billing.json"));
+        `billing-${provider}.json`));
       if (!cache || Array.isArray(cache) || !cache.available || !Number.isFinite(cache.credit_available)) return;
       const result = {...cache, provider};
-      if (provider === "deepseek") {
-        if (cache.provider !== provider || cache.schema_version !== 2 || cache.currency !== "EUR" ||
-            cache.credit_currency !== "EUR" || !readServerSecret("DEEPSEEK_API_KEY")) return;
+      if (provider === "deepseek" || provider === "openai") {
+        const expectedCurrency=provider==="deepseek"?"EUR":"USD";
+        if (cache.provider !== provider || cache.schema_version !== 2 || cache.currency !== expectedCurrency ||
+            !readServerSecret(INFERENCE_PROVIDERS[provider].secret)) return;
       } else {
-        const project = readServerSecret("OVH_CLOUD_PROJECT");
+        const project = readServerSecret("TRINITY_OVHCLOUD_PROJECT");
         if (cache.schema_version !== 2 || !project || cache.project !== project ||
             (cache.provider && cache.provider !== provider)) return;
-        if (!Object.values(BILLING_SECRETS).filter(name => name !== "OVH_API_BASE_URL").every(readServerSecret)) return;
+        if (!Object.values(BILLING_SECRETS).filter(name => name !== "TRINITY_OVHCLOUD_API_BASE_URL").every(readServerSecret)) return;
         delete result.credit_remaining;
         delete result.credit_remaining_display;
         delete result.balance_error;
@@ -568,7 +575,7 @@ class OvhAgentViewProvider {
       }
       const age = Date.now() / 1000 - cache.cached_at;
       if (!Number.isFinite(age) || age < 0) return;
-      const ttl = Number(cache.refresh_seconds) || Number(process.env.OVH_AGENT_BILLING_CACHE_SECONDS) || 60;
+      const ttl = Number(cache.refresh_seconds) || Number(process.env.TRINITY_AGENT_BILLING_CACHE_SECONDS) || 60;
       result.stale = Boolean(cache.stale) || age >= Math.max(1, ttl);
       return result;
     } catch { /* A missing or invalid cache never prevents a live refresh. */ }
@@ -593,8 +600,8 @@ class OvhAgentViewProvider {
           result = await this.billingChannel.request(payload => agent.stdin.write(JSON.stringify(payload)+"\n"), configureIfMissing);
         } else {
           const credentials = provider === "ovhcloud" ? await this.billingCredentials() : undefined;
-          const key = provider === "deepseek" ? readServerSecret("DEEPSEEK_API_KEY") : undefined;
-          if (provider === "deepseek" ? !key : !credentials) {
+          const key = provider !== "ovhcloud" ? readServerSecret(INFERENCE_PROVIDERS[provider].secret) : undefined;
+          if (provider !== "ovhcloud" ? !key : !credentials) {
             if (current()) {
               this.post({type: "billing_status", provider, configured: false, available: false, silent: true});
               if (configureIfMissing && provider === "ovhcloud") await this.configureBilling();
@@ -605,11 +612,11 @@ class OvhAgentViewProvider {
           result = await new Promise((resolve, reject) => {
             execFile(agentPath(), ["--billing-status"], {
               cwd: workspace, timeout: 30000, maxBuffer: 1024 * 1024,
-              env: {...process.env, OVH_AGENT_WORKSPACE: workspace, OVH_AGENT_PROVIDER: provider,
-                ...(provider === "deepseek" ? {DEEPSEEK_API_KEY: key} : {
-                  OVH_APPLICATION_KEY: credentials.applicationKey, OVH_APPLICATION_SECRET: credentials.applicationSecret,
-                  OVH_CONSUMER_KEY: credentials.consumerKey, OVH_CLOUD_PROJECT: credentials.project,
-                  OVH_API_BASE_URL: credentials.baseUrl,
+              env: {...process.env, TRINITY_AGENT_WORKSPACE: workspace, TRINITY_AGENT_PROVIDER: provider,
+                ...(provider !== "ovhcloud" ? {[INFERENCE_PROVIDERS[provider].secret]:key} : {
+                  TRINITY_OVHCLOUD_APPLICATION_KEY: credentials.applicationKey, TRINITY_OVHCLOUD_APPLICATION_SECRET: credentials.applicationSecret,
+                  TRINITY_OVHCLOUD_CONSUMER_KEY: credentials.consumerKey, TRINITY_OVHCLOUD_PROJECT: credentials.project,
+                  TRINITY_OVHCLOUD_API_BASE_URL: credentials.baseUrl,
                 })},
             }, (error, stdout) => {
               if (error) return reject(new Error(t("L’API de facturation ne répond pas.")));
@@ -702,7 +709,7 @@ class OvhAgentViewProvider {
       if(result.error)throw new Error(result.error);
       if(this.newConversationProject===project) {
         this.newConversationProject=undefined;
-        await this.state?.update('ovhAgent.newConversationProject',undefined);
+        await this.state?.update('trinityAgent.newConversationProject',undefined);
       }
       if(this.pendingConversationProject===project)this.pendingConversationProject=undefined;
       this.post({type:'project_deleted',project});
@@ -739,18 +746,18 @@ class OvhAgentViewProvider {
 
   performanceMode() {
     if (this.performanceOverride) return this.performanceOverride;
-    const config = vscode.workspace.getConfiguration?.('ovhAgent');
+    const config = vscode.workspace.getConfiguration?.('trinityAgent');
     const settings = config?.inspect?.('performanceMode');
     const mode = settings
-      ? settings.workspaceFolderValue ?? settings.workspaceValue ?? settings.globalValue ?? process.env.OVH_AGENT_PERFORMANCE_MODE
-      : config?.get?.('performanceMode') ?? process.env.OVH_AGENT_PERFORMANCE_MODE;
+      ? settings.workspaceFolderValue ?? settings.workspaceValue ?? settings.globalValue ?? process.env.TRINITY_AGENT_PERFORMANCE_MODE
+      : config?.get?.('performanceMode') ?? process.env.TRINITY_AGENT_PERFORMANCE_MODE;
     return mode === 'max' ? 'max' : 'auto';
   }
 
   async setPerformance(mode) {
     if (!['auto', 'max'].includes(mode)) return;
     try {
-      await vscode.workspace.getConfiguration('ovhAgent').update('performanceMode', mode, vscode.ConfigurationTarget.Global);
+      await vscode.workspace.getConfiguration('trinityAgent').update('performanceMode', mode, vscode.ConfigurationTarget.Global);
       this.performanceOverride = mode;
       if (this.agent && !this.agent.killed && this.agent.stdin.writable) {
         this.agent.stdin.write(JSON.stringify({type: 'set_performance', mode}) + '\n');
@@ -774,16 +781,17 @@ class OvhAgentViewProvider {
     if (!this.windowLock) return false;
     if (this.agent && !this.agent.killed) return true;
     if (!fs.existsSync(agentPath())) {
-      this.post({ type: "error", text: t("Serveur TRINITY absent : configure ovhAgent.backendPath. Consulte le guide d’installation de l’extension.") });
+      this.post({ type: "error", text: t("Serveur TRINITY absent : configure trinityAgent.backendPath. Consulte le guide d’installation de l’extension.") });
       return false;
     }
     const provider = inferenceProvider();
-    const secretName = provider === "deepseek" ? "DEEPSEEK_API_KEY" : "OVH_AI_API_KEY";
+    const providerConfig=INFERENCE_PROVIDERS[provider];
+    const secretName=providerConfig.secret;
     let apiKey;
     try {
       apiKey = readServerSecret(secretName);
       if (!apiKey) {
-        try { apiKey = await this.secrets.get(provider === "deepseek" ? "ovhAgent.deepseekApiKey" : "ovhAgent.apiKey"); } catch {}
+        try { apiKey = await this.secrets.get(providerConfig.storage); } catch {}
         if (apiKey) persistServerSecret(secretName, apiKey);
       }
     } catch {
@@ -799,25 +807,23 @@ class OvhAgentViewProvider {
       apiKey = readServerSecret(secretName);
     }
     const workspace = this.workspace;
-    const billing = provider === "deepseek" ? null : await this.billingCredentials();
+    const billing = provider === "ovhcloud" ? await this.billingCredentials() : null;
     if (!this.windowLock || this.windowClosing || inferenceProvider() !== provider) return false;
     this.decoder.reset();
     const agent = spawn(agentPath(), ["--json-lines"], {
       cwd: workspace,
       env: {
         ...process.env,
-        OVH_AGENT_WORKSPACE: workspace,
-        OVH_AGENT_PERFORMANCE_MODE: this.performanceMode(),
-        OVH_AGENT_PROVIDER: provider,
-        ...(provider === "deepseek" ? { DEEPSEEK_API_KEY: apiKey } : {
-          OVH_AI_API_KEY: apiKey, OVHCLOUD_API_KEY: apiKey,
-        }),
+        TRINITY_AGENT_WORKSPACE: workspace,
+        TRINITY_AGENT_PERFORMANCE_MODE: this.performanceMode(),
+        TRINITY_AGENT_PROVIDER: provider,
+        [providerConfig.secret]: apiKey,
         ...(billing ? {
-          OVH_APPLICATION_KEY: billing.applicationKey,
-          OVH_APPLICATION_SECRET: billing.applicationSecret,
-          OVH_CONSUMER_KEY: billing.consumerKey,
-          OVH_CLOUD_PROJECT: billing.project,
-          OVH_API_BASE_URL: billing.baseUrl,
+          TRINITY_OVHCLOUD_APPLICATION_KEY: billing.applicationKey,
+          TRINITY_OVHCLOUD_APPLICATION_SECRET: billing.applicationSecret,
+          TRINITY_OVHCLOUD_CONSUMER_KEY: billing.consumerKey,
+          TRINITY_OVHCLOUD_PROJECT: billing.project,
+          TRINITY_OVHCLOUD_API_BASE_URL: billing.baseUrl,
         } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
@@ -828,7 +834,7 @@ class OvhAgentViewProvider {
     if (pendingModel && pendingModel.provider === inferenceProvider() && pendingModel.model) {
       // Applied before the first message so the switched API runs the chosen model.
       this.pendingModel = undefined;
-      void this.state?.update?.("ovhAgent.pendingModel", undefined);
+      void this.state?.update?.("trinityAgent.pendingModel", undefined);
       agent.stdin.write(`${JSON.stringify({ type: "set_model", model: pendingModel.model })}\n`);
     }
     agent.stdin.on?.("error", error => {
@@ -1007,7 +1013,7 @@ class OvhAgentViewProvider {
         if (provider && provider!==inferenceProvider()) {
           this.restoringProvider=true;
           try {
-            await vscode.workspace.getConfiguration("ovhAgent").update("provider",provider,vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration("trinityAgent").update("provider",provider,vscode.ConfigurationTarget.Global);
           } finally { this.restoringProvider=false; }
           await this.providerChanged();
         }
@@ -1045,7 +1051,7 @@ class OvhAgentViewProvider {
       this.workspace=selected?.root || this.initialWorkspace;
       this.store=new ArchiveStore(this.workspace,dataRoot);
       new ProjectStore(dataRoot).activate(this.initialWorkspace,this.workspace,{register:false});
-      await this.state?.update("ovhAgent.projectRoot",this.workspace);
+      await this.state?.update("trinityAgent.projectRoot",this.workspace);
       if (!(await this.ensureAgent())) {
         this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, "initialization failed") });
         return;
@@ -1097,11 +1103,10 @@ class OvhAgentViewProvider {
 
   async selectProvider() {
     const picked = await vscode.window.showQuickPick([
-      { label: "OVHcloud AI Endpoints", description: "oai.endpoints.kepler.ai.cloud.ovh.net", value: "ovhcloud" },
-      { label: "DeepSeek", description: "api.deepseek.com", value: "deepseek" },
+      ...Object.entries(INFERENCE_PROVIDERS).map(([value,item])=>({label:item.label,description:item.host,value})),
     ], { title: t("Fournisseur d’inférence"), ignoreFocusOut: true });
     if (!picked) return false;
-    await vscode.workspace.getConfiguration("ovhAgent").update("provider", picked.value, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration("trinityAgent").update("provider", picked.value, vscode.ConfigurationTarget.Global);
     // The configuration listener applies the change; a same-value update is a no-op.
     return true;
   }
@@ -1109,7 +1114,7 @@ class OvhAgentViewProvider {
   async selectModel(model, provider) {
     const name = String(model || "").trim();
     if (!name) return;
-    const target = provider === "deepseek" || provider === "ovhcloud" ? provider : "";
+    const target = Object.hasOwn(INFERENCE_PROVIDERS,provider) ? provider : "";
     if (!target || target === inferenceProvider()) {
       await this.sendControl({ type: "set_model", model: name });
       return;
@@ -1118,8 +1123,8 @@ class OvhAgentViewProvider {
     // model valid for the backend that will run it. A running task keeps its
     // provider until idle, then the new backend applies the pending model.
     this.pendingModel = name === "auto-balanced" ? undefined : { model: name, provider: target };
-    await this.state?.update?.("ovhAgent.pendingModel", this.pendingModel);
-    await vscode.workspace.getConfiguration("ovhAgent").update("provider", target, vscode.ConfigurationTarget.Global);
+    await this.state?.update?.("trinityAgent.pendingModel", this.pendingModel);
+    await vscode.workspace.getConfiguration("trinityAgent").update("provider", target, vscode.ConfigurationTarget.Global);
     // A same-value update fires no configuration event: report the switch here.
     if (this.providerRestartPending || this.busy || this.clearingConversation) {
       this.providerRestartPending = true;
@@ -1161,46 +1166,46 @@ class OvhAgentViewProvider {
 
   getHtml(webview) {
     return buildChatHtml({extensionUri:this.extensionUri, brand:BRAND_NAME,
-      performanceMode:this.performanceMode(), env:{...process.env, OVH_AGENT_PROVIDER:inferenceProvider()}, joinPath:vscode.Uri.joinPath}, webview);
+      performanceMode:this.performanceMode(), env:{...process.env, TRINITY_AGENT_PROVIDER:inferenceProvider()}, joinPath:vscode.Uri.joinPath}, webview);
   }
 }
 
 async function activate(context) {
   // Remove obsolete browser copies only after server persistence is confirmed.
   const migrated = {
-    "ovhAgent.apiKey": "OVH_AI_API_KEY", "ovhAgent.cloudProject": "OVH_CLOUD_PROJECT",
-    "ovhAgent.applicationKey": "OVH_APPLICATION_KEY", "ovhAgent.applicationSecret": "OVH_APPLICATION_SECRET",
-    "ovhAgent.consumerKey": "OVH_CONSUMER_KEY", "ovhAgent.apiBaseUrl": "OVH_API_BASE_URL",
+    "trinityAgent.apiKey": "TRINITY_OVHCLOUD_API_KEY", "trinityAgent.cloudProject": "TRINITY_OVHCLOUD_PROJECT",
+    "trinityAgent.applicationKey": "TRINITY_OVHCLOUD_APPLICATION_KEY", "trinityAgent.applicationSecret": "TRINITY_OVHCLOUD_APPLICATION_SECRET",
+    "trinityAgent.consumerKey": "TRINITY_OVHCLOUD_CONSUMER_KEY", "trinityAgent.apiBaseUrl": "TRINITY_OVHCLOUD_API_BASE_URL",
   };
   for (const [key, name] of Object.entries(migrated)) {
     if (readServerSecret(name)) await context.secrets.delete(key);
   }
-  const provider = new OvhAgentViewProvider(context.extensionUri, context.secrets, context.workspaceState);
+  const provider = new TrinityAgentViewProvider(context.extensionUri, context.secrets, context.workspaceState);
   const registration = vscode.window.registerWebviewViewProvider(
-    "ovhAgent.launch",
+    "trinityAgent.launch",
     provider,
     { webviewOptions: { retainContextWhenHidden: true } },
   );
-  const start = vscode.commands.registerCommand("ovhAgent.start", async () => {
-    await vscode.commands.executeCommand("workbench.view.extension.ovhAgent");
+  const start = vscode.commands.registerCommand("trinityAgent.start", async () => {
+    await vscode.commands.executeCommand("workbench.view.extension.trinityAgent");
   });
-  const configure = vscode.commands.registerCommand("ovhAgent.configureKey", () => provider.configureKey());
-  const selectProject = vscode.commands.registerCommand("ovhAgent.selectProject", async () => {
-    await vscode.commands.executeCommand("workbench.view.extension.ovhAgent");
+  const configure = vscode.commands.registerCommand("trinityAgent.configureKey", () => provider.configureKey());
+  const selectProject = vscode.commands.registerCommand("trinityAgent.selectProject", async () => {
+    await vscode.commands.executeCommand("workbench.view.extension.trinityAgent");
     await provider.selectProject();
   });
-  const selectProvider = vscode.commands.registerCommand("ovhAgent.selectProvider", () => provider.selectProvider());
+  const selectProvider = vscode.commands.registerCommand("trinityAgent.selectProvider", () => provider.selectProvider());
   const providerChange = vscode.workspace.onDidChangeConfiguration((event) => {
-    if (!event.affectsConfiguration("ovhAgent.provider")) return;
+    if (!event.affectsConfiguration("trinityAgent.provider")) return;
     void provider.providerChanged();
   });
-  const editProfile = vscode.commands.registerCommand("ovhAgent.editProfile", () => provider.editProfile());
-  const configureBilling = vscode.commands.registerCommand("ovhAgent.configureBilling", () => provider.configureBilling());
+  const editProfile = vscode.commands.registerCommand("trinityAgent.editProfile", () => provider.editProfile());
+  const configureBilling = vscode.commands.registerCommand("trinityAgent.configureBilling", () => provider.configureBilling());
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   status.name = BRAND_NAME;
   status.text = BRAND_NAME;
   status.tooltip = `Ouvrir le chat ${BRAND_NAME}`;
-  status.command = "ovhAgent.start";
+  status.command = "trinityAgent.start";
   status.show();
   context.subscriptions.push(registration, start, configure, configureBilling, selectProject, selectProvider, providerChange, editProfile, status, provider);
 }

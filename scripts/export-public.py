@@ -20,7 +20,7 @@ secrets = set()
 for directory in [Path('/etc/trinity/docker-trinity'), Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity')]:
     if directory.is_dir():
         for file in directory.iterdir():
-            if file.is_file() and file.name != 'OVH_API_BASE_URL':
+            if file.is_file() and file.name != 'TRINITY_OVHCLOUD_API_BASE_URL':
                 value = file.read_bytes().strip()
                 if len(value) >= 8:
                     secrets.add(value)
@@ -42,29 +42,29 @@ for relative in paths:
     if relative == 'extension/package.json':
         package = json.loads(content)
         if package.get('icon', '').startswith('media/custom-'):
-            package['icon'] = 'media/ovh-agent.svg'
+            package['icon'] = 'media/trinity-agent.svg'
         for view in package.get('contributes', {}).get('viewsContainers', {}).get('activitybar', []):
             if view.get('icon', '').startswith('media/custom-'):
-                view['icon'] = 'media/ovh-activity.svg'
+                view['icon'] = 'media/trinity-activity-legacy.svg'
         content = (json.dumps(package, indent=2, ensure_ascii=False) + '\n').encode()
     prepared[relative] = (content, file.stat().st_mode & 0o777)
 # Publish a parameterized deployment example instead of the live host configuration.
 compose = (source / 'docker-compose.yml').read_text()
 # Public defaults must not inherit local branding, including commented local overrides.
 public_branding = {
-    'OVH_AGENT_LANG': '"${OVH_AGENT_LANG:-auto}"',
-    'OVH_AGENT_NAME': '"${OVH_AGENT_NAME:-TRINITY Agent}"',
-    'OVH_AGENT_PRIMARY_COLOR': '"${OVH_AGENT_PRIMARY_COLOR:-#3e3aab}"',
-    'OVH_AGENT_APP_ICON': '"${OVH_AGENT_APP_ICON:-}"',
-    'OVH_AGENT_MENU_ICON': '"${OVH_AGENT_MENU_ICON:-}"',
-    'OVH_AGENT_DARK_THEME_ICON': '"${OVH_AGENT_DARK_THEME_ICON:-}"',
+    'TRINITY_AGENT_LANG': '"${TRINITY_AGENT_LANG:-auto}"',
+    'TRINITY_AGENT_NAME': '"${TRINITY_AGENT_NAME:-TRINITY Agent}"',
+    'TRINITY_AGENT_PRIMARY_COLOR': '"${TRINITY_AGENT_PRIMARY_COLOR:-#3e3aab}"',
+    'TRINITY_AGENT_APP_ICON': '"${TRINITY_AGENT_APP_ICON:-}"',
+    'TRINITY_AGENT_MENU_ICON': '"${TRINITY_AGENT_MENU_ICON:-}"',
+    'TRINITY_AGENT_DARK_THEME_ICON': '"${TRINITY_AGENT_DARK_THEME_ICON:-}"',
 }
 for key, value in public_branding.items():
     compose = re.sub(r'^      #?\s*' + key + r':.*$', f'      # {key}: {value}', compose, flags=re.M)
 
 compose = re.sub(r'\d+\.\d+\.\d+\.\d+:\d+:8080', '${IDE_BIND_ADDRESS:-127.0.0.1}:${IDE_PORT:-5734}:8080', compose)
 compose = compose.replace('/mnt/SSHFS/TRINITY-CLOUD/mnt/ENTREPRISE/SERVER/TRINITY/codex', '${CODEX_DATA_DIR:-./data/codex}')
-compose = compose.replace('/mnt/SSHFS/TRINITY-CLOUD/mnt/ENTREPRISE/SERVER/TRINITY/ovh-agent', '${AGENT_DATA_DIR:-./data/agent}')
+compose = compose.replace('/mnt/SSHFS/TRINITY-CLOUD/mnt/ENTREPRISE/SERVER/TRINITY/trinity-agent', '${AGENT_DATA_DIR:-./data/agent}')
 compose = compose.replace('/var/lib/trinity/agent-data/codex', '${CODEX_DATA_DIR:-./data/codex}')
 compose = compose.replace('/var/lib/trinity/agent-data/trinity-agent', '${AGENT_DATA_DIR:-./data/agent}')
 compose = '\n'.join(line for line in compose.splitlines() if '/mnt/SSHFS/' not in line) + '\n'

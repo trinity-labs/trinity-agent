@@ -17,15 +17,15 @@ test('composer queues/steers without duplicate runs, edits safely and renders te
   const root = path.resolve(__dirname, '..');
   const nativeRequire = createRequire(path.join(root, 'extension.js'));
   const vscode = {workspace:{workspaceFolders:[{uri:{fsPath:root}}]}, Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'}};
-  const sandbox = {require:n=>n==='vscode'?vscode:nativeRequire(n), module:{exports:{}},process:{env:{...process.env,OVH_AGENT_LANG:'fr'}}, console,setTimeout,clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
+  const sandbox = {require:n=>n==='vscode'?vscode:nativeRequire(n), module:{exports:{}},process:{env:{...process.env,TRINITY_AGENT_LANG:'fr'}}, console,setTimeout,clearTimeout};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',sandbox);
   const provider = new sandbox.module.exports.Provider(root, {});
   const dom = new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}), {runScripts:'outside-only',url:'https://test.invalid'});
   try {
     const w=dom.window, doc=w.document, sent=[];
     w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:()=>{},postMessage:m=>sent.push(m)});
     w.HTMLElement.prototype.scrollIntoView=function(){};
-    w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
+    w.TRINITY_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
     for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js']) w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
     const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
     emit({type:'request_prepared',sources:[{path:'chat.css'},{path:'chat.css'},{path:'<img src=x onerror=alert(1)>.js'}],preparation_ms:23,partial:true});

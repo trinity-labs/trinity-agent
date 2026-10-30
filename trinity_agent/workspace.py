@@ -92,7 +92,7 @@ class WorkspaceContext:
             except (OSError,ValueError,TypeError): result.put({'matches':[],'partial':True,'retry_offset':offset})
         with _reader_lock:
             if _reader is not None and _reader.is_alive(): return {'matches':[],'partial':True,'retry_offset':offset}
-            _reader=threading.Thread(target=run,daemon=True,name='ovh-shared-memory-page');_reader.start();worker=_reader
+            _reader=threading.Thread(target=run,daemon=True,name='trinity-shared-memory-page');_reader.start();worker=_reader
         worker.join(1.1)
         try: return result.get_nowait()
         except queue.Empty: return {'matches':[],'partial':True,'retry_offset':offset}
@@ -131,7 +131,7 @@ class WorkspaceContext:
             except (OSError,ValueError,TypeError): result.put(None)
         with _reader_lock:
             if _reader is not None and _reader.is_alive(): return None
-            _reader=threading.Thread(target=run,daemon=True,name='ovh-memory-answer')
+            _reader=threading.Thread(target=run,daemon=True,name='trinity-memory-answer')
             _reader.start();worker=_reader
         worker.join(1.0)
         try: return result.get_nowait()
@@ -147,7 +147,7 @@ class WorkspaceContext:
             except (OSError, ValueError, TypeError): result.put(partial)
         with _reader_lock:
             if _reader is not None and _reader.is_alive(): return partial
-            _reader = threading.Thread(target=run, daemon=True, name='ovh-shared-memory')
+            _reader = threading.Thread(target=run, daemon=True, name='trinity-shared-memory')
             _reader.start()
             worker = _reader
         worker.join(1.1)
@@ -193,7 +193,7 @@ def inventory(workspace, data_root, refresh=False):
     """No package execution, no network, no environment or credentials dump."""
     workspace = Path(workspace).resolve()
     cache = Path(data_root)/'environment'/f'{project_id(workspace)}.json'
-    try: ttl = max(0,int(os.environ.get('OVH_AGENT_INVENTORY_TTL_SECONDS','300')))
+    try: ttl = max(0,int(os.environ.get('TRINITY_AGENT_INVENTORY_TTL_SECONDS','300')))
     except ValueError: ttl = 300
     signature = (os.environ.get('PATH',''), str(workspace),platform.node())
     key = hashlib.sha256(repr(signature).encode()).hexdigest()
@@ -224,7 +224,7 @@ def inventory(workspace, data_root, refresh=False):
              'libc':list(libc),'container_hint':Path('/.dockerenv').exists() or Path('/run/.containerenv').exists(),
              'uid':os.geteuid(),'workspace_writable':os.access(workspace,os.W_OK),'tools':paths,
              'project_tool_bins':local_bins,'project_tools':local_tools,'python':sys.version.split()[0],
-             'installation_policy':os.environ.get('OVH_AGENT_AUTO_INSTALL','project'),
+             'installation_policy':os.environ.get('TRINITY_AGENT_AUTO_INSTALL','project'),
              'limits':'Executable paths prove presence only; versions and operational readiness must be checked when needed. Mounts are not execution targets.'}
     cache.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
     atomic_write(cache,json.dumps(facts,ensure_ascii=False));cache.chmod(0o600)

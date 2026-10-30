@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.0.0
+
+- Refactor TRINITY Agent around provider-specific API configuration and add OpenAI Codex through the Responses API.
+- Rename generic settings, paths, runtime files and extension identifiers from the legacy vendor prefix to TRINITY.
+
 ## 4.0.4
 
 - Show TRINITY data size beside total used filesystem space, for example `515 MB / 52.1 GB`.
@@ -26,17 +31,17 @@
 
 ## 3.1.0
 
-- Migrate saved `ovh-agent.sh` and `ovh-agent.local.sh` backend paths to the renamed TRINITY launchers when the legacy file no longer exists.
+- Migrate saved `trinity-agent.sh` and `trinity-agent.local.sh` backend paths to the renamed TRINITY launchers when the legacy file no longer exists.
 - Restore conversation opening immediately for existing installations that retained the old backend path in VS Code settings.
 
 ## 3.0.0
 
-- Remove the remaining legacy `ovh-agent` source names from the repository root: launchers, extension sources, branding and verification configuration now use TRINITY names and dedicated folders.
+- Remove the remaining legacy `trinity-agent` source names from the repository root: launchers, extension sources, branding and verification configuration now use TRINITY names and dedicated folders.
 - Update Docker startup, release workflows, package integrity metadata, tests and documentation for the renamed paths.
 
 ## 2.0.0
 
-- Move the Python backend from root-level `ovh_*.py` modules into the `trinity_agent` package with concise module names.
+- Move the Python backend from root-level legacy provider-prefixed modules into the `trinity_agent` package with concise module names.
 - Keep `trinity_agent/__main__.py` as a compatibility launcher while updating deployment integrity checks, public exports, tests and documentation for the package layout.
 
 ## 1.17.100
@@ -145,7 +150,7 @@
 
 ## 1.17.78
 
-- Raise the bounded tool-retry limit from 2 to 8, configurable with `OVH_AGENT_TOOL_RETRIES`, so a model can correct an invalid `run_command` call instead of failing the turn with `exceeded max retries count of 2`.
+- Raise the bounded tool-retry limit from 2 to 8, configurable with `TRINITY_AGENT_TOOL_RETRIES`, so a model can correct an invalid `run_command` call instead of failing the turn with `exceeded max retries count of 2`.
 
 ## 1.17.77
 
@@ -315,7 +320,7 @@
 
 ## 1.17.46 — 2026-10-24
 
-- Disable the default model-call count ceiling; `OVH_AGENT_REQUEST_LIMIT=0` allows unlimited calls.
+- Disable the default model-call count ceiling; `TRINITY_AGENT_REQUEST_LIMIT=0` allows unlimited calls.
 - Show release blocks with an orange Bootstrap exclamation triangle and errors with a red exclamation diamond, at font weight 500, including archived messages.
 
 ## 1.17.44 — 2026-10-24
@@ -351,7 +356,7 @@
 - Read a conversation in a read-only dialog while another task is generating; opening it for real waits for the next idle instead of being refused.
 - Report the last output line and elapsed seconds every 10 s during a long command instead of only its start and end.
 - Render resume continuations as one divider; the full instruction stays in the model history but is no longer archived as a repeated user prompt.
-- Keep the documented fallback for files no suite covers (backup plus syntax/content validation) instead of refusing the edit; new files still require a declared suite, and reference check files stay read-only unless `OVH_AGENT_ALLOW_PROTECTED_EDITS=1`.
+- Keep the documented fallback for files no suite covers (backup plus syntax/content validation) instead of refusing the edit; new files still require a declared suite, and reference check files stay read-only unless `TRINITY_AGENT_ALLOW_PROTECTED_EDITS=1`.
 - Name the real provider in the model catalogue panel and its price footer.
 
 ## 1.17.37 — 2026-10-24
@@ -359,7 +364,7 @@
 - Cache the DeepSeek account balance before the first conversation exists, so a refresh no longer reports a cache error next to a valid balance.
 - Never replay a model persisted under the other provider: an unavailable selection now routes automatically instead of blocking the next message.
 - Name the provider's own image reader and explain its limits instead of reporting a missing OVHcloud model.
-- Add a "Choose the inference provider" command and restart an idle backend when `ovhAgent.provider` changes; an active task finishes before the switch.
+- Add a "Choose the inference provider" command and restart an idle backend when `trinityAgent.provider` changes; an active task finishes before the switch.
 
 ## 1.17.36 — 2026-10-24
 
@@ -483,7 +488,7 @@
 ## 1.17.13 — 2026-10-22
 
 - Restore the purple logo set for light themes and use the supplied white TRINITY set for dark and high-contrast themes across the header, local application icon and VS Code navigation.
-- Add `OVH_AGENT_DARK_THEME_ICON` as the shared dark-set branding override while retaining independent light application and navigation overrides.
+- Add `TRINITY_AGENT_DARK_THEME_ICON` as the shared dark-set branding override while retaining independent light application and navigation overrides.
 
 ## 1.17.12 — 2026-10-22
 
@@ -530,7 +535,7 @@
 
 ## 1.17.3 — 2026-10-20
 
-- Confirm that model-change dividers display the exact OVH Agent catalogue identifiers selected by the user, such as `gpt-oss-120b` and `Qwen3.8-27B`; Codex product names are never substituted.
+- Confirm that model-change dividers display the exact TRINITY Agent catalogue identifiers selected by the user, such as `gpt-oss-120b` and `Qwen3.8-27B`; Codex product names are never substituted.
 
 ## 1.17.2 — 2026-10-20
 

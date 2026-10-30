@@ -41,11 +41,11 @@ class BudgetExceeded(BudgetLedgerError):
     def __init__(self, status: dict, amount: Decimal):
         self.status = status
         self.amount = amount
-        labels = {"daily": "quotidien", "weekly": "hebdomadaire", "monthly": "mensuel", "credit": "crédit temporaire", "ovh": "solde OVH"}
+        labels = {"daily": "quotidien", "weekly": "hebdomadaire", "monthly": "mensuel", "credit": "crédit temporaire", "provider": "solde fournisseur"}
         exceeded = [
             f"{labels[name]} ({period['limit']:.2f} €, réinitialisation {period['reset_at']})"
             for name, period in status["periods"].items()
-            if (period["limit"] > 0 or name == "ovh") and name in status.get("exceeded_periods", [])
+            if (period["limit"] > 0 or name == "provider") and name in status.get("exceeded_periods", [])
         ]
         super().__init__(
             f"Budget {' / '.join(exceeded)} insuffisant : "
@@ -380,7 +380,7 @@ class BudgetLedger:
             return self._status(data, now)
 
 
-class OvhBalanceLedger(BudgetLedger):
+class ProviderBalanceLedger(BudgetLedger):
     """Enforce the greater of OVH observations and durable local accounting.
 
     Daily/weekly counters measure observed changes since their first sample,
@@ -403,17 +403,19 @@ class OvhBalanceLedger(BudgetLedger):
         if not existed:
             return data
         try:
-            ovh = data['ovh']
+            if 'provider' not in data and 'ovh' in data:
+                data['provider'] = data.pop('ovh')
+            observation = data['provider']
             for key in ('usage', 'credit', 'total'):
-                _money(ovh[key])
+                _money(observation[key])
             for key in ('reported_at', 'fetched_at'):
-                if datetime.fromisoformat(ovh[key].replace('Z', '+00:00')).tzinfo is None:
+                if datetime.fromisoformat(observation[key].replace('Z', '+00:00')).tzinfo is None:
                     raise ValueError('Date OVH invalide')
-            if not isinstance(ovh['project'], str) or not ovh['project']:
+            if not isinstance(observation['project'], str) or not observation['project']:
                 raise ValueError('Projet OVH absent')
-            datetime.strptime(ovh['month'], '%Y-%m-%d')
+            datetime.strptime(observation['month'], '%Y-%m-%d')
             for period in ('daily', 'weekly'):
-                baseline = ovh['baselines'][period]
+                baseline = observation['baselines'][period]
                 _money(baseline['total'])
                 date = datetime.strptime(baseline['key'], '%Y-%m-%d').replace(tzinfo=UTC)
                 if _periods(date)[period][0] != baseline['key']:
@@ -422,8 +424,8 @@ class OvhBalanceLedger(BudgetLedger):
                     raise ValueError('Début de suivi absent')
                 if type(baseline['partial']) is not bool:
                     raise ValueError('Couverture du suivi invalide')
-            if 'local' in ovh:
-                local = ovh['local']
+            if 'local' in observation:
+                local = observation['local']
                 if datetime.fromisoformat(local['started_at'].replace('Z', '+00:00')).tzinfo is None:
                     raise ValueError('Date du suivi local invalide')
                 for field in ('spent', 'opening', 'provider_adjustment'):
@@ -476,7 +478,7 @@ class OvhBalanceLedger(BudgetLedger):
             raise BudgetLedgerError('Budget OVH : solde vérifié indisponible ; configurez ou actualisez le suivi OVH.') from error
 
     def _observe(self, data, now, snapshot):
-        old = data.get('ovh')
+        old = data.get('provider')
         if old and old['project'] != snapshot['project']:
             raise BudgetLedgerError('Le projet de facturation OVH a changé ; registre distinct requis.')
         # A concurrent backend may still hold a valid but older cache.
@@ -497,11 +499,11 @@ class OvhBalanceLedger(BudgetLedger):
                 baselines[period] = baseline
             data['spent'][period][key] = str(max(ZERO, _difference(total, _money(baseline['total']))))
         local = {'local': old['local']} if old and 'local' in old else {}
-        data['ovh'] = {**snapshot, 'total': str(total), 'baselines': baselines, **local}
+        data['provider'] = {**snapshot, 'total': str(total), 'baselines': baselines, **local}
         self._ensure_local(data, now)
 
     def _ensure_local(self, data, now):
-        local = data['ovh'].setdefault('local', {
+        local = data['provider'].setdefault('local', {
             'started_at': _iso(now), 'spent': {period: {} for period in PERIODS},
             'opening': {period: {} for period in PERIODS},
             'provider_adjustment': {period: {} for period in PERIODS}})
@@ -536,16 +538,16 @@ class OvhBalanceLedger(BudgetLedger):
 
     def _accounted_spent(self, data, period, key):
         provider = super()._accounted_spent(data, period, key)
-        local = data.get('ovh', {}).get('local', {}).get('spent', {}).get(period, {}).get(key, '0')
+        local = data.get('provider', {}).get('local', {}).get('spent', {}).get(period, {}).get(key, '0')
         return max(provider, _money(local))
 
     def _available(self, data, now):
-        ovh = data['ovh']
+        observation = data['provider']
         monthly = self._accounted_spent(data, 'monthly', _periods(now)['monthly'][0])
-        available = max(ZERO, _difference(_money(ovh['credit']), monthly))
+        available = max(ZERO, _difference(_money(observation['credit']), monthly))
         if self.credit_policy:
             start, end, cap = self.credit_policy
-            local = ovh['local']
+            local = observation['local']
             spent = _total(self._local_requests(local, 'daily', day) for day in local['spent']['daily']
                            if start.date().isoformat() <= day <= now.date().isoformat())
             available = min(available, max(ZERO, _difference(cap, spent))) if start <= now < end else ZERO
@@ -553,27 +555,27 @@ class OvhBalanceLedger(BudgetLedger):
 
     def _status(self, data, now):
         result = super()._status(data, now)
-        ovh = data['ovh']
+        observation = data['provider']
         reserved = _total(_money(item['amount']) for item in data['reservations'].values())
         available = self._available(data, now)
-        local = ovh.get('local', {})
+        local = observation.get('local', {})
         for period, (key, _) in _periods(now).items():
             result['periods'][period].update(
                 local_spent=float(self._local_requests(local, period, key)),
                 local_opening=float(_money(local['opening'][period].get(key, '0'))),
                 provider_adjustment=float(_money(local['provider_adjustment'][period].get(key, '0'))))
-        result['periods']['ovh'] = {
-            'limit': float(_money(ovh['credit'])), 'spent': float(_money(ovh['usage'])),
+        result['periods']['provider'] = {
+            'limit': float(_money(observation['credit'])), 'spent': float(_money(observation['usage'])),
             'reserved': float(reserved), 'remaining': float(max(ZERO, _difference(available, reserved))),
             'accounted_spent': result['periods']['monthly']['accounted_spent'],
             'local_spent': result['periods']['monthly']['local_spent'],
             'reset_at': _iso(self.credit_policy[1]) if self.credit_policy else _iso(_periods(now)['monthly'][1]),
         }
         for period in ('daily', 'weekly'):
-            result['periods'][period].update(measurement='observed_ovh_variation',
-                                            **{key:ovh['baselines'][period][key] for key in ('since','partial')})
-        result.update(source='OVHcloud Public Cloud API', provider_reported_at=ovh['reported_at'],
-                      provider_balance=float(max(ZERO, _difference(_money(ovh['credit']), _money(ovh['usage'])))),
+            result['periods'][period].update(measurement='observed_provider_variation',
+                                            **{key:observation['baselines'][period][key] for key in ('since','partial')})
+        result.update(source='OVHcloud Public Cloud API', provider_reported_at=observation['reported_at'],
+                      provider_balance=float(max(ZERO, _difference(_money(observation['credit']), _money(observation['usage'])))),
                       authorized_balance=float(available), reporting_delayed=True,
                       accounting_policy='max_local_provider',
                       local_accounting_started_at=local.get('started_at'),
@@ -592,7 +594,7 @@ class OvhBalanceLedger(BudgetLedger):
                 reserved = _total(_money(item['amount']) for item in data['reservations'].values())
                 if reserved > self._available(data, now):
                     status = self._status(data, now)
-                    status.update(blocked=True, exceeded_periods=['ovh'])
+                    status.update(blocked=True, exceeded_periods=['provider'])
                     raise BudgetExceeded(status, reserved)
 
     def settle(self, reservation_id, actual_amount):
@@ -603,7 +605,7 @@ class OvhBalanceLedger(BudgetLedger):
         with super()._transaction() as (data, now):
             if not self._valid_id(reservation_id, data):
                 raise BudgetLedgerError('Réservation inconnue.')
-            if not data.get('ovh'):
+            if not data.get('provider'):
                 raise BudgetLedgerError('Relevé OVH absent du registre.')
             local = self._ensure_local(data, now)
             reservation = data['reservations'].pop(reservation_id, None)

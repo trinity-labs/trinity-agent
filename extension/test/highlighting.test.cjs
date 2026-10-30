@@ -11,14 +11,14 @@ function browser(minified, saved) {
   const nativeRequire = createRequire(path.join(root, 'extension.js'));
   const vscode = {workspace:{workspaceFolders:[{uri:{fsPath:root}}]}, Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)}, env:{language:'fr'}};
   const scope = {require:name=>name==='vscode'?vscode:nativeRequire(name), module:{exports:{}}, process, console, setTimeout, clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports={Provider:OvhAgentViewProvider,renderMarkdown};',scope);
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports={Provider:TrinityAgentViewProvider,renderMarkdown};',scope);
   const provider = new scope.module.exports.Provider(root, {});
   const dom = new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}), {runScripts:'outside-only',url:'https://test.invalid'});
   const w = dom.window;
   const states=[],posted=[];
   w.acquireVsCodeApi=()=>({getState:()=>saved,setState:value=>states.push(value),postMessage:value=>posted.push(value)});
   w.HTMLElement.prototype.scrollIntoView=function(){};
-  w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
+  w.TRINITY_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','highlight.min.js','chat.js']) w.eval(fs.readFileSync(minified && ['i18n.js','safe-html.js','chat.js'].includes(name) ? path.join(minified,name.replace('.js','.min.js')) : path.join(root,'media',name),'utf8'));
   return {dom, w, states, posted, render:scope.module.exports.renderMarkdown,
     emit:data=>w.dispatchEvent(new w.MessageEvent('message',{data}))};
@@ -460,7 +460,7 @@ test('model selection closes the catalogue and survives delayed catalogue and ar
 test('automatic model context remains descriptive until a provider limit is known',()=>{
   const {dom,w,emit}=browser();
   try {
-    w.OvhI18n.setLanguage('fr');
+    w.TrinityI18n.setLanguage('fr');
     for(const context_length of [null,undefined,0,NaN]) {
       emit({type:'models',selected:'auto-balanced',items:[
         {id:'auto-balanced',kind:'auto',selectable:true,context_length}

@@ -83,7 +83,7 @@ with tempfile.TemporaryDirectory() as directory:
     other.put('independent memory')
     assert other.search('calyx') == ''
     assert other.search('independent')
-    with patch.dict(os.environ, {'OVH_AGENT_INDEX_CACHE_MB':'0'}):
+    with patch.dict(os.environ, {'TRINITY_AGENT_INDEX_CACHE_MB':'0'}):
         other.put('another document')
         assert other.search('another')
         assert not (other.root / 'cache' / 'search-v1.json').exists()

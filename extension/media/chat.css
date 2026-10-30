@@ -168,11 +168,11 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   text-align: left;
   cursor: pointer;
 }
-.model-item:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ovh-primary) 45%, transparent); background: transparent; }
+.model-item:hover:not(:disabled) { border-color: color-mix(in srgb, var(--trinity-primary) 45%, transparent); background: transparent; }
 .model-item.selected {
   border-color: var(--vscode-focusBorder);
-  color: var(--ovh-primary-text);
-  background: var(--ovh-primary-selected);
+  color: var(--trinity-primary-text);
+  background: var(--trinity-primary-selected);
 }
 .model-item:disabled { opacity: .68; cursor: default; }
 .model-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
@@ -185,13 +185,13 @@ header span { color: var(--vscode-descriptionForeground); font-size: 11px; }
   opacity: 0.66;
   padding: 3px 8px;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--ovh-primary) 45%, transparent);
-  color: var(--ovh-primary-text);
+  border: 1px solid color-mix(in srgb, var(--trinity-primary) 45%, transparent);
+  color: var(--trinity-primary-text);
   background: transparent;
   font-size: 8px;
 }
-.model-item.selected .model-title span { border-color: var(--ovh-primary); color: var(--ovh-primary-text); }
-.model-price { margin-top: 5px; color: var(--ovh-primary-text); font-size: 10px; font-weight: 500; }
+.model-item.selected .model-title span { border-color: var(--trinity-primary); color: var(--trinity-primary-text); }
+.model-price { margin-top: 5px; color: var(--trinity-primary-text); font-size: 10px; font-weight: 500; }
 .model-meta { margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 9px; }
 .model-empty { padding: 18px 10px; color: var(--vscode-descriptionForeground); text-align: center; }
 #model-availability { white-space: normal; }
@@ -224,7 +224,7 @@ footer .agent-disclaimer { margin: 6px 0 0; font-size: 8px; line-height: 1.25; }
   border-radius: 6px;
   background: transparent;
 }
-.icon:hover:not(:disabled) { background: var(--ovh-primary-pastel); }
+.icon:hover:not(:disabled) { background: var(--trinity-primary-pastel); }
 .billing { position: relative; }
 .billing-dot {
   position: absolute;
@@ -262,18 +262,18 @@ main {
   color: var(--vscode-descriptionForeground);
 }
 .welcome::before {
-  content: var(--ovh-brand-badge, "OVH");
+  content: var(--trinity-brand-badge, "OVH");
   display: grid;
   place-items: center;
   width: 46px;
   height: 46px;
   margin: 0 auto 12px;
-  border: 1px solid var(--ovh-primary);
+  border: 1px solid var(--trinity-primary);
   border-radius: 13px;
   color: #fff;
   font-weight: 700;
   letter-spacing: -.5px;
-  background: var(--ovh-primary);
+  background: var(--trinity-primary);
 }
 .welcome h2 { margin: 0 0 5px; color: var(--vscode-foreground); font-size: 16px; }
 .welcome p { margin: 0; font-size: 12px; }
@@ -388,7 +388,7 @@ main {
 }
 .activity .activity-row .activity-command {
   color: var(--vscode-foreground);
-  border-left: 2px solid color-mix(in srgb, var(--ovh-primary) 40%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--trinity-primary) 40%, transparent);
 }
 .activity .activity-row .activity-output:empty { display: none; }
 .file-change {
@@ -536,7 +536,7 @@ main {
   height: 14px;
   margin-left: 2px;
   vertical-align: -2px;
-  background: var(--ovh-primary);
+  background: var(--trinity-primary);
   animation: blink .9s step-end infinite;
 }
 .markdown > :first-child { margin-top: 0; }
@@ -561,8 +561,8 @@ main {
   background: var(--vscode-textBlockQuote-background);
 }
 .markdown hr { height: 1px; margin: 18px 0; border: 0; background: var(--vscode-panel-border); }
-.markdown a { color: var(--ovh-primary-text); text-decoration: none; }
-.markdown a:hover { color: var(--ovh-primary-text); text-decoration: underline; }
+.markdown a { color: var(--trinity-primary-text); text-decoration: none; }
+.markdown a:hover { color: var(--trinity-primary-text); text-decoration: underline; }
 .markdown :not(pre) > code {
   padding: 3px 7px;
   border-radius: 4px;
@@ -793,42 +793,42 @@ button:disabled { cursor: default; opacity: .45; }
 
 /* OVH brand palette, scoped to this webview. */
 :root {
-  --ovh-primary: #3e3aab;
-  --ovh-primary-hover: color-mix(in srgb, var(--ovh-primary) 82%, #000);
-  --ovh-primary-text: var(--ovh-primary);
-  --ovh-primary-pastel: color-mix(in srgb, var(--ovh-primary) 7%, var(--vscode-sideBar-background));
-  --ovh-primary-selected: color-mix(in srgb, var(--ovh-primary) 12%, var(--vscode-sideBar-background));
-  --vscode-focusBorder: var(--ovh-primary);
-  --vscode-button-background: var(--ovh-primary);
-  --vscode-button-hoverBackground: var(--ovh-primary-hover);
+  --trinity-primary: #3e3aab;
+  --trinity-primary-hover: color-mix(in srgb, var(--trinity-primary) 82%, #000);
+  --trinity-primary-text: var(--trinity-primary);
+  --trinity-primary-pastel: color-mix(in srgb, var(--trinity-primary) 7%, var(--vscode-sideBar-background));
+  --trinity-primary-selected: color-mix(in srgb, var(--trinity-primary) 12%, var(--vscode-sideBar-background));
+  --vscode-focusBorder: var(--trinity-primary);
+  --vscode-button-background: var(--trinity-primary);
+  --vscode-button-hoverBackground: var(--trinity-primary-hover);
   --vscode-button-foreground: #fff;
 }
 header {
-  border-bottom-color: color-mix(in srgb, var(--ovh-primary) 35%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--trinity-primary) 35%, transparent);
   /* The header follows its host surface; keep branding on text and controls. */
   background: transparent;
 }
-.brand strong { color: var(--ovh-primary); }
-.back-history { color: var(--ovh-primary); }
-.model-item.selected { border-color: var(--ovh-primary); }
-.model-item.selected .model-title span { background: transparent; color: var(--ovh-primary-text); }
-.composer:focus-within { border-color: var(--ovh-primary); }
-.run-spinner { border-top-color: var(--ovh-primary); }
-.selection-quote { border-color: var(--ovh-primary); }
-.selection-quote:hover:not(:disabled) { color: #fff; background: var(--ovh-primary); }
+.brand strong { color: var(--trinity-primary); }
+.back-history { color: var(--trinity-primary); }
+.model-item.selected { border-color: var(--trinity-primary); }
+.model-item.selected .model-title span { background: transparent; color: var(--trinity-primary-text); }
+.composer:focus-within { border-color: var(--trinity-primary); }
+.run-spinner { border-top-color: var(--trinity-primary); }
+.selection-quote { border-color: var(--trinity-primary); }
+.selection-quote:hover:not(:disabled) { color: #fff; background: var(--trinity-primary); }
 body.vscode-dark .brand strong, body.vscode-high-contrast .brand strong,
 body.vscode-dark .back-history {
-  color: color-mix(in srgb, var(--ovh-primary) 55%, #fff);
+  color: color-mix(in srgb, var(--trinity-primary) 55%, #fff);
 }
 #live-balance { padding: 0; border: 0; background: transparent; cursor: pointer; }
 #live-balance:hover:not(:disabled) { text-decoration: underline; }
 
 /* Keep the send control independent of injected VS Code theme variables. */
 #send, #send:hover, #send:active, #send:focus-visible {
-  background: var(--ovh-primary);
+  background: var(--trinity-primary);
   color: #fff;
 }
-#send:disabled { background: var(--ovh-primary); opacity: 1; }
+#send:disabled { background: var(--trinity-primary); opacity: 1; }
 #send:disabled svg { opacity: .45; }
 
 /* Full access uses orange in both light and dark themes. */
@@ -837,19 +837,19 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 /* History rows share the header background on hover and keyboard focus. */
 .archive-item { display: flex; align-items: center; padding: 0; cursor: default; }
 .archive-open { flex: 1; min-width: 0; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.archive-item:hover, .archive-item:focus-within { background: var(--ovh-primary-pastel); }
+.archive-item:hover, .archive-item:focus-within { background: var(--trinity-primary-pastel); }
 .archive-action {
   flex-shrink: 0;
   margin-right: 4px;
   visibility: hidden;
-  color: var(--ovh-primary);
+  color: var(--trinity-primary);
   opacity: .33;
   background: transparent;
 }
 .archive-item:hover .archive-action,
 .archive-item:has(:focus-visible) .archive-action { visibility: visible; }
 .archive-action:hover:not(:disabled), .archive-action:focus-visible {
-  color: var(--ovh-primary);
+  color: var(--trinity-primary);
   opacity: 1;
   background: transparent;
 }
@@ -878,7 +878,7 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 #delete-dialog::backdrop { background: #0007; }
 .delete-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .delete-dialog-actions button {
-  --dialog-button-color: var(--ovh-primary);
+  --dialog-button-color: var(--trinity-primary);
   border: 0; border-radius: 4px; padding: 6px 10px;
   background: var(--dialog-button-color); color: #fff; cursor: pointer;
   transition: background-color 140ms ease, box-shadow 140ms ease;
@@ -900,8 +900,8 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 dialog .agent-icon { opacity: .33; }
 
 /* Derived brand text stays visible on dark backgrounds. */
-body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 55%, #fff); }
-#send:hover:not(:disabled) { background: var(--ovh-primary-hover); }
+body.vscode-dark, body.vscode-high-contrast { --trinity-primary-text: color-mix(in srgb, var(--trinity-primary) 55%, #fff); }
+#send:hover:not(:disabled) { background: var(--trinity-primary-hover); }
 
 /* Compact activity journal: one muted line, details only on demand. */
 .activity { border: 0; border-radius: 0; background: transparent; }
@@ -964,28 +964,28 @@ body.vscode-dark, body.vscode-high-contrast { --ovh-primary-text: color-mix(in s
 .header-actions .icon, .project-edit, .project-add, .project-caret { color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent); }
 .header-actions .icon:hover:not(:disabled), .header-actions .icon:focus-visible,
 .project-edit:hover:not(:disabled), .project-edit:focus-visible, .project-add:hover:not(:disabled), .project-add:focus-visible, .project-caret:hover:not(:disabled), .project-caret:focus-visible {
-  color: var(--ovh-primary-text);
+  color: var(--trinity-primary-text);
 }
 .back-history:hover:not(:disabled), .back-history:focus-visible {
-  background: color-mix(in srgb, var(--ovh-primary) 16%, transparent);
+  background: color-mix(in srgb, var(--trinity-primary) 16%, transparent);
 }
 #send {
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 #send:hover:not(:disabled), #send:focus-visible:not(:disabled) {
-  background: color-mix(in srgb, var(--ovh-primary) 70%, #000);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ovh-primary) 24%, transparent),
+  background: color-mix(in srgb, var(--trinity-primary) 70%, #000);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--trinity-primary) 24%, transparent),
               inset 0 0 0 1px rgb(255 255 255 / 20%);
 }
 #send:active:not(:disabled) {
-  background: color-mix(in srgb, var(--ovh-primary) 60%, #000);
+  background: color-mix(in srgb, var(--trinity-primary) 60%, #000);
 }
 @media (prefers-reduced-motion: reduce) {
   button { transition: none; }
   .header-actions .icon, .back-history, .project-edit, .project-add, .project-caret, #send, .delete-dialog-actions button { transition: none; }
 }
 
-#live-balance .balance-amount { color: var(--ovh-primary-text); font-weight: 500; }
+#live-balance .balance-amount { color: var(--trinity-primary-text); font-weight: 500; }
 #live-balance .balance-amount.negative { color: var(--vscode-errorForeground, #d32f2f); }
 
 #archive-banner[hidden] { display: none; }
@@ -1005,7 +1005,7 @@ svg.agent-icon path { fill: inherit; stroke: none; }
 
 .copy-diff .agent-icon { width: 12px; height: 12px; }
 
-.history-brand { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; color: var(--ovh-primary); }
+.history-brand { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; color: var(--trinity-primary); }
 .history-brand .header-app-logo { width: 28px; height: 28px; object-fit: contain; grid-area: 1 / 1; }
 .header-app-logo-light { display: block; }
 .header-app-logo-dark { display: none; }
@@ -1016,14 +1016,14 @@ body.vscode-dark .header-app-logo-dark, body.vscode-high-contrast .header-app-lo
 #configure .icon-key { transform: rotate(135deg) scaleY(-1); transform-origin: center; }
 /* The dark header needs a lighter brand accent, especially for its logo. */
 body.vscode-dark header, body.vscode-high-contrast header {
-  --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
+  --trinity-primary-text: color-mix(in srgb, var(--trinity-primary) 35%, #fff);
   background: transparent;
-  border-bottom-color: color-mix(in srgb, var(--ovh-primary-text) 35%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--trinity-primary-text) 35%, transparent);
 }
 body.vscode-dark header .brand strong, body.vscode-high-contrast header .brand strong,
 body.vscode-dark header .back-history, body.vscode-high-contrast header .back-history,
 body.vscode-dark header .history-brand, body.vscode-high-contrast header .history-brand {
-  color: var(--ovh-primary-text);
+  color: var(--trinity-primary-text);
 }
 body.vscode-dark header .brand strong,
 body.vscode-high-contrast header .brand strong { color: #fff; }
@@ -1039,10 +1039,10 @@ body.vscode-high-contrast header .brand strong { color: #fff; }
 
 /* Follow-ups share the configured brand and stay outside the transcript. */
 .followups { max-height: 160px; overflow-y: auto; margin-bottom: 8px; }
-.followup-row { position: relative; cursor: grab; display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 4px; background: color-mix(in srgb, var(--ovh-primary) 8%, transparent); }
+.followup-row { position: relative; cursor: grab; display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 4px; background: color-mix(in srgb, var(--trinity-primary) 8%, transparent); }
 .followup-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.followups button { color: var(--ovh-primary); border: 0; border-radius: 4px; padding: 6px; background: transparent; cursor: pointer; }
-.followups button:hover:not(:disabled) { background: color-mix(in srgb, var(--ovh-primary) 18%, transparent); }
+.followups button { color: var(--trinity-primary); border: 0; border-radius: 4px; padding: 6px; background: transparent; cursor: pointer; }
+.followups button:hover:not(:disabled) { background: color-mix(in srgb, var(--trinity-primary) 18%, transparent); }
 .followups .agent-icon { width: 14px; height: 14px; }
 .verification-status {
   opacity: .5;
@@ -1074,10 +1074,10 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .diff-scroller .hljs :is(.hljs-comment, .hljs-meta, .hljs-quote, .hljs-deletion) { color: var(--diff-comment); }
 
 /* Only explicitly selected conversations appear in project folders. */
-.archive-project { margin-bottom: 4px; --project-color: var(--ovh-primary); }
+.archive-project { margin-bottom: 4px; --project-color: var(--trinity-primary); }
 .archive-item .icon, .archive-item .icon:hover:not(:disabled), .archive-item .icon:focus-visible {
-  color: var(--project-color, var(--ovh-primary));
-  outline-color: var(--project-color, var(--ovh-primary));
+  color: var(--project-color, var(--trinity-primary));
+  outline-color: var(--project-color, var(--trinity-primary));
 }
 #archive-list > .archive-project:has(+ .archive-ungrouped) {
   border-bottom: 1px solid var(--vscode-panel-border);
@@ -1087,7 +1087,7 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .archive-project + .archive-ungrouped:not(.archive-ungrouped-empty) { margin-top: 16px; }
 .archive-project > summary { display: flex; align-items: center; gap: 8px; padding: 10px; cursor: pointer; list-style: none; border-radius: 6px; }
 .archive-project > summary::-webkit-details-marker { display: none; }
-.archive-project > summary:hover { background: var(--ovh-primary-pastel); }
+.archive-project > summary:hover { background: var(--trinity-primary-pastel); }
 .project-folder-icon { display: inline-flex; color: var(--project-color); }
 .project-folder-icon .agent-icon { width: 18px; height: 18px; }
 .project-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -1100,7 +1100,7 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .project-caret:hover:not(:disabled) svg.agent-icon, .project-edit:hover:not(:disabled) svg.agent-icon, .project-add:hover:not(:disabled) svg.agent-icon,
 .project-caret:focus-visible svg.agent-icon, .project-edit:focus-visible svg.agent-icon, .project-add:focus-visible svg.agent-icon { opacity: .65; }
 .project-conversations {
-  --ovh-primary-pastel: color-mix(in srgb, var(--project-color) 7%, var(--vscode-sideBar-background));
+  --trinity-primary-pastel: color-mix(in srgb, var(--project-color) 7%, var(--vscode-sideBar-background));
   margin-left: 18px; padding-left: 6px;
   border-left: 1px solid color-mix(in srgb, var(--project-color) 25%, transparent);
 }
@@ -1113,10 +1113,10 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .project-editor input[type=color] { width: 42px; padding: 2px; cursor: pointer; }
 .project-editor button { cursor: pointer; }
 .project-editor button:not(.project-delete):is(:hover, :focus-visible):not(:disabled) {
-  background: var(--ovh-primary-pastel);
-  border-color: var(--ovh-primary);
+  background: var(--trinity-primary-pastel);
+  border-color: var(--trinity-primary);
 }
-.project-editor input[type=color]:is(:hover, :focus-visible):not(:disabled) { border-color: var(--ovh-primary); }
+.project-editor input[type=color]:is(:hover, :focus-visible):not(:disabled) { border-color: var(--trinity-primary); }
 .questionnaire > button:is(:hover, :focus-visible):not(:disabled) { background: var(--vscode-button-hoverBackground); }
 .questionnaire-option:has(input:disabled) { cursor: default; }
 .project-editor button:disabled { cursor: default; }
@@ -1143,17 +1143,17 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .archive-drag-source { opacity: .45; }
 .archive-ungrouped { border-radius: 6px; }
 .archive-ungrouped-empty { display: none; }
-.dragging-conversation .archive-ungrouped-empty { display: block; border: 1px dashed var(--ovh-primary); margin: 8px 0 14px; padding: 8px 0; }
+.dragging-conversation .archive-ungrouped-empty { display: block; border: 1px dashed var(--trinity-primary); margin: 8px 0 14px; padding: 8px 0; }
 .archive-drop-hint { margin: 8px 10px; font-size: 11px; color: var(--vscode-descriptionForeground); }
 .archive-project.archive-drop-target > summary, .archive-ungrouped.archive-drop-target {
-  background: var(--ovh-primary-selected);
-  outline: 2px solid var(--project-color, var(--ovh-primary));
+  background: var(--trinity-primary-selected);
+  outline: 2px solid var(--project-color, var(--trinity-primary));
   outline-offset: -2px;
 }
 .archive-project > summary { position: relative; }
 .project-drop-before > summary::before, .project-drop-after > summary::after {
   content: ""; position: absolute; left: 8px; right: 8px; height: 3px;
-  border-radius: 2px; background: var(--ovh-primary); pointer-events: none;
+  border-radius: 2px; background: var(--trinity-primary); pointer-events: none;
 }
 .project-drop-before > summary::before { top: -2px; }
 .project-drop-after > summary::after { bottom: -2px; }
@@ -1165,49 +1165,49 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .project-documents:not([open]) > summary > .summary-chevron { transform: rotate(-90deg); }
 .project-documents > summary > .summary-chevron { margin-left: 0; width: 9px; height: 9px; }
 .project-document { display: block; width: 100%; padding: 6px 8px; text-align: left; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
-.project-document:hover:not(:disabled), .project-document:focus-visible { background: var(--ovh-primary-pastel); }
+.project-document:hover:not(:disabled), .project-document:focus-visible { background: var(--trinity-primary-pastel); }
 .project-document strong, .project-document span { display: block; }
 .project-document span { font-size: 10px; opacity: .5; overflow-wrap: anywhere; }
 
 .followups .followup-drag-handle { cursor: grab; flex-shrink: 0; }
 .followups .followup-drag-handle .agent-icon { opacity: .15; }
 .followup-row.followup-drag-source { opacity: .45; cursor: grabbing; }
-.followup-drop-before::before, .followup-drop-after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--ovh-primary); pointer-events: none; }
+.followup-drop-before::before, .followup-drop-after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--trinity-primary); pointer-events: none; }
 .followup-drop-before::before { top: 0; }
 .followup-drop-after::after { bottom: 0; }
 .followups[aria-busy="true"] .followup-drag-handle { cursor: progress; }
 
-#performance-mode { border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ovh-primary); font: inherit; font-size: 11px; padding: 4px; cursor: pointer; max-width: 100px; }
-#performance-mode:hover, #performance-mode:focus-visible { border-color: var(--ovh-primary); }
+#performance-mode { border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--trinity-primary); font: inherit; font-size: 11px; padding: 4px; cursor: pointer; max-width: 100px; }
+#performance-mode:hover, #performance-mode:focus-visible { border-color: var(--trinity-primary); }
 #performance-mode:disabled { opacity: .5; cursor: progress; }
 .composer-left { flex-wrap: wrap; }
 
 /* Keep composer accents legible against dark input backgrounds. */
 body.vscode-dark .composer, body.vscode-high-contrast .composer {
-  --ovh-primary-text: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
+  --trinity-primary-text: color-mix(in srgb, var(--trinity-primary) 35%, #fff);
   border-color: color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
 }
 body.vscode-dark .composer:focus-within, body.vscode-high-contrast .composer:focus-within {
-  border-color: var(--ovh-primary-text);
+  border-color: var(--trinity-primary-text);
 }
 body.vscode-dark #performance-mode, body.vscode-high-contrast #performance-mode {
-  color: var(--ovh-primary-text);
-  outline-color: var(--ovh-primary-text);
+  color: var(--trinity-primary-text);
+  outline-color: var(--trinity-primary-text);
 }
 body.vscode-dark #performance-mode:hover, body.vscode-dark #performance-mode:focus-visible,
 body.vscode-high-contrast #performance-mode:hover, body.vscode-high-contrast #performance-mode:focus-visible {
-  border-color: var(--ovh-primary-text);
-  background: color-mix(in srgb, var(--ovh-primary-text) 10%, transparent);
+  border-color: var(--trinity-primary-text);
+  background: color-mix(in srgb, var(--trinity-primary-text) 10%, transparent);
 }
 body.vscode-dark #send, body.vscode-high-contrast #send {
-  background: var(--ovh-primary-text);
+  background: var(--trinity-primary-text);
   color: #181818;
 }
 body.vscode-dark #send:hover:not(:disabled), body.vscode-high-contrast #send:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ovh-primary-text) 85%, #fff);
+  background: color-mix(in srgb, var(--trinity-primary-text) 85%, #fff);
 }
 body.vscode-dark #send:active:not(:disabled), body.vscode-high-contrast #send:active:not(:disabled) {
-  background: color-mix(in srgb, var(--ovh-primary-text) 85%, #000);
+  background: color-mix(in srgb, var(--trinity-primary-text) 85%, #000);
 }
 
 /* Drag handles stay neutral in dark themes, independent of folder accents. */
@@ -1223,13 +1223,13 @@ body.vscode-high-contrast .conversation-drag-handle:focus-visible {
 
 /* Display accents are lighter in dark themes; saved project colors stay intact. */
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item {
-  --ovh-icon-accent: color-mix(in srgb, var(--project-color, var(--ovh-primary)) 40%, #fff);
+  --trinity-icon-accent: color-mix(in srgb, var(--project-color, var(--trinity-primary)) 40%, #fff);
 }
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action,
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover:not(:disabled),
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:focus-visible {
-  color: var(--ovh-icon-accent);
-  outline-color: var(--ovh-icon-accent);
+  color: var(--trinity-icon-accent);
+  outline-color: var(--trinity-icon-accent);
   opacity: .85;
 }
 body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:hover:not(:disabled),
@@ -1237,7 +1237,7 @@ body:is(.vscode-dark, .vscode-high-contrast) .archive-item .archive-action:focus
   opacity: 1;
 }
 body:is(.vscode-dark, .vscode-high-contrast) .followups button:not(.followup-drag-handle) {
-  color: color-mix(in srgb, var(--ovh-primary) 40%, #fff);
+  color: color-mix(in srgb, var(--trinity-primary) 40%, #fff);
 }
 
 .project-color-controls { display: flex; align-items: center; gap: 6px; }
@@ -1281,41 +1281,41 @@ main.archive-loading { position: relative; overflow: hidden; min-height: 12rem; 
 .archive-loading-overlay {
   position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 12px; pointer-events: all;
-  background: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 14%, transparent);
+  background: color-mix(in srgb, var(--archive-loading-color, var(--trinity-primary)) 14%, transparent);
   backdrop-filter: blur(2px);
   color: var(--vscode-editor-foreground, #eee);
 }
 .archive-loading-spinner { width: 28px; height: 28px; border-radius: 50%;
   border: 3px solid color-mix(in srgb, var(--vscode-editor-foreground, #eee) 20%, transparent);
-  border-top-color: var(--archive-loading-color, var(--ovh-primary-text, var(--ovh-primary))); animation: archive-spin .8s linear infinite;
+  border-top-color: var(--archive-loading-color, var(--trinity-primary-text, var(--trinity-primary))); animation: archive-spin .8s linear infinite;
 }
 .archive-loading-title { font-size: 1rem; padding: 16px; }
 .archive-skeleton { height: 8rem; margin: 16px; border-radius: 12px;
-  background: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 8%, transparent); }
+  background: color-mix(in srgb, var(--archive-loading-color, var(--trinity-primary)) 8%, transparent); }
 @keyframes archive-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .archive-loading-spinner { animation: none; } }
 
 .archive-loading-overlay > span:last-child {
   --archive-loading-label-color: color-mix(in srgb, var(--archive-loading-color) 45%, var(--vscode-editor-foreground, #222));
   padding: 8px 12px; border-radius: 8px;
-  color: var(--archive-loading-label-color, var(--ovh-primary-text));
-  background: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 7%, var(--vscode-sideBar-background));
+  color: var(--archive-loading-label-color, var(--trinity-primary-text));
+  background: color-mix(in srgb, var(--archive-loading-color, var(--trinity-primary)) 7%, var(--vscode-sideBar-background));
 }
 body:is(.vscode-dark, .vscode-high-contrast) .archive-loading-overlay > span:last-child {
   --archive-loading-label-color: color-mix(in srgb, var(--archive-loading-color) 55%, var(--vscode-editor-foreground, #fff));
 }
 body.vscode-dark .archive-loading-spinner,
 body.vscode-high-contrast .archive-loading-spinner {
-  border-top-color: color-mix(in srgb, var(--archive-loading-color, var(--ovh-primary)) 55%, var(--vscode-editor-foreground, #fff));
+  border-top-color: color-mix(in srgb, var(--archive-loading-color, var(--trinity-primary)) 55%, var(--vscode-editor-foreground, #fff));
 }
 
 /* Match the softened dark-mode send button, including its blink transparency. */
 body:is(.vscode-dark, .vscode-high-contrast) .markdown.streaming::after {
-  background: color-mix(in srgb, var(--ovh-primary) 35%, #fff);
+  background: color-mix(in srgb, var(--trinity-primary) 35%, #fff);
 }
 
 /* Explicit destination for the next new conversation. */
-.archive-project.selected > summary { background: var(--ovh-primary-selected); }
+.archive-project.selected > summary { background: var(--trinity-primary-selected); }
 
 /* Resume continuations are system-made prompts: a divider, not a user bubble. */
 .resume-divider { margin: 6px 0; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; border-top: 1px dashed var(--vscode-panel-border); padding-top: 6px; }

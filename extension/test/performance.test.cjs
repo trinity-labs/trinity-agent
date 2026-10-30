@@ -11,14 +11,14 @@ function setup(settings={},env={}) {
   const config={get:key=>settings[key],inspect:key=>({globalValue:settings[key]}),update:async(key,value)=>{updates.push({key,value});settings[key]=value;}};
   const vscode={commands:{executeCommand:name=>executed.push(name)},workspace:{workspaceFolders:[{uri:{fsPath:root}}],getConfiguration:()=>config},Uri:{joinPath:(_, ...parts)=>path.join(root,...parts)},env:{language:'fr'},ConfigurationTarget:{Global:1}};
   const spawn=(command,args,options)=>{
-    spawned.push({command,args,mode:options.env.OVH_AGENT_PERFORMANCE_MODE,env:options.env});
+    spawned.push({command,args,mode:options.env.TRINITY_AGENT_PERFORMANCE_MODE,env:options.env});
     const process=new EventEmitter();
     for(const name of ['stdout','stderr']){process[name]=new EventEmitter();process[name].setEncoding=()=>{};}
     process.stdin={writable:true,write:line=>sent.push(JSON.parse(line))};
     return process;
   };
-  const sandbox={require:name=>name==='vscode'?vscode:name==='child_process'?{...native(name),spawn}:native(name),module:{exports:{}},process:{env:{OVH_AGENT_LANG:'fr',...env}},console,setTimeout,clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider; readServerSecret=()=>"test-only-key";',sandbox);
+  const sandbox={require:name=>name==='vscode'?vscode:name==='child_process'?{...native(name),spawn}:native(name),module:{exports:{}},process:{env:{TRINITY_AGENT_LANG:'fr',...env}},console,setTimeout,clearTimeout};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider; readServerSecret=()=>"test-only-key";',sandbox);
   const provider=new sandbox.module.exports.Provider(root,{});
   const posted=[];provider.post=value=>posted.push(JSON.parse(JSON.stringify(value)));
   return {provider,posted,config,settings,updates,spawned,sent,executed};
@@ -47,7 +47,7 @@ test('performance choice persists without starting an idle backend and updates a
 
 test('launch inherits performance setting over environment and invalid settings fall back to Auto',async()=>{
   for(const [mode,environment,expected] of [[undefined,'max','max'],['auto','max','auto'],['max','auto','max'],['invalid','max','auto']]){
-    const {provider,spawned}=setup({backendPath:path.join(root,'extension.js'),performanceMode:mode},{OVH_AGENT_PERFORMANCE_MODE:environment});
+    const {provider,spawned}=setup({backendPath:path.join(root,'extension.js'),performanceMode:mode},{TRINITY_AGENT_PERFORMANCE_MODE:environment});
     provider.windowLock={};provider.billingCredentials=async()=>undefined;
     assert.equal(await provider.startAgent(),true);
     assert.equal(spawned[0].mode,expected);
@@ -59,10 +59,10 @@ test('DeepSeek launch selects its key and skips OVH billing credentials',async()
   const {provider,spawned}=setup({backendPath:path.join(root,'extension.js'),provider:'deepseek'});
   provider.windowLock={};provider.billingCredentials=async()=>{throw Error('OVH billing must not be requested');};
   assert.equal(await provider.startAgent(),true);
-  assert.equal(spawned[0].env.OVH_AGENT_PROVIDER,'deepseek');
-  assert.equal(spawned[0].env.DEEPSEEK_API_KEY,'test-only-key');
-  assert.equal(spawned[0].env.OVH_AI_API_KEY,undefined);
-  assert.equal(spawned[0].env.OVHCLOUD_API_KEY,undefined);
+  assert.equal(spawned[0].env.TRINITY_AGENT_PROVIDER,'deepseek');
+  assert.equal(spawned[0].env.TRINITY_DEEPSEEK_API_KEY,'test-only-key');
+  assert.equal(spawned[0].env.TRINITY_OVHCLOUD_API_KEY,undefined);
+  assert.equal(spawned[0].env.TRINITY_OVHCLOUD_API_KEY,undefined);
 });
 
 test('chat selector displays actual resource profile, waits for acknowledgement and recovers from errors',t=>{
@@ -72,7 +72,7 @@ test('chat selector displays actual resource profile, waits for acknowledgement 
   const w=dom.window,doc=w.document,sent=[];
   w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:()=>{},postMessage:m=>sent.push(JSON.parse(JSON.stringify(m)))});
   w.HTMLElement.prototype.scrollIntoView=function(){};
-  w.OVH_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
+  w.TRINITY_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for(const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js'])w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
   const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
   const picker=doc.getElementById('performance-mode');assert.equal(picker.value,'max');

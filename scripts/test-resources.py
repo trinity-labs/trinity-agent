@@ -26,8 +26,8 @@ KEYS = ['RAM_CACHE_MB', 'RAM_CACHE_ENTRIES', 'PREFLIGHT_WORKERS', 'PREFLIGHT_MAX
 class Resources(unittest.TestCase):
     def setUp(self):
         self.addCleanup(patch.stopall)
-        patch.dict(os.environ, {'OVH_AGENT_' + key: 'auto' for key in KEYS}).start()
-        patch.dict(os.environ, {'OVH_AGENT_PERFORMANCE_MODE': 'auto'}).start()
+        patch.dict(os.environ, {'TRINITY_AGENT_' + key: 'auto' for key in KEYS}).start()
+        patch.dict(os.environ, {'TRINITY_AGENT_PERFORMANCE_MODE': 'auto'}).start()
 
     def detect(self, files, cpus=32, affinity=16):
         with patch.object(r, '_read', side_effect=lambda path: files.get(str(path), '')), \
@@ -133,23 +133,23 @@ class Resources(unittest.TestCase):
 
     def test_manual_values_are_ceilings_and_zero_disables_cache_or_scan(self):
         policy = r.ResourcePolicy(lambda: r.Hardware(6,24*1024*r.MIB,20*1024*r.MIB))
-        with patch.dict(os.environ, {'OVH_AGENT_RAM_CACHE_MB':'128','OVH_AGENT_RAM_CACHE_ENTRIES':'40',
-                                    'OVH_AGENT_PREFLIGHT_WORKERS':'2','OVH_AGENT_PREFLIGHT_MAX_FILES':'50',
-                                    'OVH_AGENT_PREFLIGHT_FILE_CHARS':'1024'}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_RAM_CACHE_MB':'128','TRINITY_AGENT_RAM_CACHE_ENTRIES':'40',
+                                    'TRINITY_AGENT_PREFLIGHT_WORKERS':'2','TRINITY_AGENT_PREFLIGHT_MAX_FILES':'50',
+                                    'TRINITY_AGENT_PREFLIGHT_FILE_CHARS':'1024'}):
             profile = policy.profile()
             self.assertEqual((profile.cache_mb,profile.cache_entries,profile.workers,profile.max_files,profile.file_chars),
                              (128,40,2,50,1024))
-        with patch.dict(os.environ, {'OVH_AGENT_RAM_CACHE_MB':'999999','OVH_AGENT_PREFLIGHT_WORKERS':'999999'}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_RAM_CACHE_MB':'999999','TRINITY_AGENT_PREFLIGHT_WORKERS':'999999'}):
             self.assertLess(policy.profile().cache_mb,5000)
             self.assertEqual(policy.profile().workers,6)
-        with patch.dict(os.environ, {'OVH_AGENT_RAM_CACHE_MB':'0','OVH_AGENT_PREFLIGHT_MAX_FILES':'0'}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_RAM_CACHE_MB':'0','TRINITY_AGENT_PREFLIGHT_MAX_FILES':'0'}):
             self.assertEqual((policy.profile().cache_mb,policy.profile().cache_entries,policy.profile().max_files),(0,0,0))
 
     def test_invalid_settings_fall_back_to_auto(self):
         policy = r.ResourcePolicy(lambda: r.Hardware(2,2048*r.MIB,1024*r.MIB))
         expected = policy.profile()
         for value in ['', 'invalid', '-42']:
-            with patch.dict(os.environ, {'OVH_AGENT_' + key:value for key in KEYS}):
+            with patch.dict(os.environ, {'TRINITY_AGENT_' + key:value for key in KEYS}):
                 self.assertEqual(policy.profile(),expected)
 
     def test_index_archive_and_document_budgets_follow_memory_and_explicit_ceilings(self):
@@ -159,12 +159,12 @@ class Resources(unittest.TestCase):
             self.assertGreater(getattr(large,name),getattr(small,name))
         self.assertLessEqual(large.index_build_bytes*8,20*1024*r.MIB//16)
         policy=r.ResourcePolicy(lambda:r.Hardware(6,24*1024*r.MIB,20*1024*r.MIB))
-        with patch.dict(os.environ,{'OVH_AGENT_INDEX_CACHE_MB':'2','OVH_AGENT_ARCHIVE_CACHE_MB':'1',
-                                    'OVH_AGENT_MEMORY_DOCUMENT_CHARS':'12000'}):
+        with patch.dict(os.environ,{'TRINITY_AGENT_INDEX_CACHE_MB':'2','TRINITY_AGENT_ARCHIVE_CACHE_MB':'1',
+                                    'TRINITY_AGENT_MEMORY_DOCUMENT_CHARS':'12000'}):
             profile=policy.profile()
             self.assertEqual((profile.index_cache_mb,profile.archive_cache_mb,profile.memory_document_chars),(2,1,12000))
             self.assertLessEqual(profile.index_build_bytes,2*r.MIB)
-        with patch.dict(os.environ,{'OVH_AGENT_INDEX_CACHE_MB':'0','OVH_AGENT_ARCHIVE_CACHE_MB':'0'}):
+        with patch.dict(os.environ,{'TRINITY_AGENT_INDEX_CACHE_MB':'0','TRINITY_AGENT_ARCHIVE_CACHE_MB':'0'}):
             profile=policy.profile()
             self.assertEqual((profile.index_cache_mb,profile.archive_cache_mb),(0,0))
             self.assertGreater(profile.index_build_bytes,0,'Disabled snapshots must not disable transient search')
@@ -235,7 +235,7 @@ class Resources(unittest.TestCase):
         hw = r.Hardware(128,256*1024*r.MIB,240*1024*r.MIB)
         policy = r.ResourcePolicy(lambda:hw)
         auto = policy.profile()
-        with patch.dict(os.environ, {'OVH_AGENT_' + key:'1' for key in KEYS}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_' + key:'1' for key in KEYS}):
             policy.set_mode('max')
             maximum = policy.profile()
         self.assertEqual(maximum.mode, 'max')

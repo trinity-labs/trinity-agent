@@ -1,7 +1,7 @@
 (function (root) {
   "use strict";
   const catalog = typeof module === "object" && module.exports
-    ? require("./translations.json") : root.OVH_TRANSLATIONS;
+    ? require("./translations.json") : root.TRINITY_TRANSLATIONS;
   const supported = ["fr", "en", "de", "es"];
   const normalize = value => String(value || "").trim().toLowerCase().split(/[-_]/)[0];
   function resolveLanguage(override, preferences = []) {
@@ -79,5 +79,5 @@
   }
   const api = {t, message, markup, translateStatic, translateSnapshot, resolveLanguage, setLanguage, get language() {return language;}};
   if (typeof module === "object" && module.exports) module.exports = api;
-  else root.OvhI18n = api;
+  else root.TrinityI18n = api;
 })(typeof window !== "undefined" ? window : globalThis);

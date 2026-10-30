@@ -1,7 +1,12 @@
 # Publishing TRINITY Agent
 
-First Marketplace release: **1.13.3**, published on **2026-10-16** under
-[`stopyz.ovh-agent`](https://marketplace.visualstudio.com/items?itemName=stopyz.ovh-agent).
+Releases through 4.0.4 used the former Marketplace identity. Version 5.0.0 removes
+that vendor-prefixed extension ID and is published as
+[`stopyz.trinity-agent`](https://marketplace.visualstudio.com/items?itemName=stopyz.trinity-agent).
+Marketplace IDs cannot be renamed in place: existing Marketplace users must uninstall
+the former listing once, install `stopyz.trinity-agent`, then reload VS Code. The local
+updater performs the equivalent replacement automatically and removes the former local
+identity after the new package is installed, so two TRINITY entries are not retained.
 
 ## One-time Marketplace connection
 
@@ -120,13 +125,13 @@ standalone Python installer. That prerequisite is prominent in the Marketplace R
 ## Local automatic updates
 
 The Docker entrypoint starts `scripts/auto-update.py --watch`. Set
-`OVH_AGENT_AUTO_UPDATE=false` to disable it, or `OVH_AGENT_UPDATE_INTERVAL=21600`
+`TRINITY_AGENT_AUTO_UPDATE=false` to disable it, or `TRINITY_AGENT_UPDATE_INTERVAL=21600`
 to select the check interval in seconds (minimum 300). Defaults: enabled, six hours.
 Run `python3 scripts/auto-update.py` inside the IDE container for an immediate check.
 Messages appear in the container log; checks require public GitHub access, no token.
 
 Each tagged release includes a separate `trinity-agent-local-VERSION.vsix` for the
-local `trinity.ovh-agent` identity. The Marketplace package remains `stopyz.ovh-agent`.
+local `trinity.trinity-agent` identity. The Marketplace package remains `stopyz.trinity-agent`.
 The updater checks the GitHub SHA-256 digest, package identity, stable version and
 backend source hashes before invoking the code-server installer. It rejects
 downgrades, reapplies local branding and leaves running editor sessions untouched.
@@ -148,7 +153,7 @@ branding variables take precedence; an explicitly empty icon variable resets tha
 icon to its bundled default. Missing or invalid configured assets defer the update
 instead of silently resetting the branding. Colors remain controlled by the existing
 runtime environment. Keep custom asset files on a persistent mount outside the
-versioned extension directory. `OVH_AGENT_PUBLISHER_NAME` optionally overrides the
+versioned extension directory. `TRINITY_AGENT_PUBLISHER_NAME` optionally overrides the
 local publisher display name; otherwise the installed value is preserved.
 
 The branding helper only changes installed manifests, never the source manifest.

@@ -45,7 +45,7 @@ function invalidateProjectMemory(dataRoot, project) {
   fs.mkdirSync(root,{recursive:true,mode:0o700});
   writeAtomic(path.join(root,'.revision'),crypto.randomUUID().replace(/-/g,''));
   const namespace=crypto.createHash('sha256').update(fs.realpathSync(dataRoot)).digest('hex').slice(0,20);
-  const cache=process.env.OVH_AGENT_MEMORY_INDEX_DIR || path.join(process.env.XDG_CACHE_HOME || path.join(require('os').homedir(),'.cache'),'ovh-agent/project-memory');
+  const cache=process.env.TRINITY_AGENT_MEMORY_INDEX_DIR || path.join(process.env.XDG_CACHE_HOME || path.join(require('os').homedir(),'.cache'),'trinity-agent/project-memory');
   for(const file of [path.join(root,'MEMORY.md'),path.join(root,'INDEX.md'),path.join(root,'REGRESSIONS.md'),path.join(dataRoot,'memory/AGGREGATE.md'),path.join(cache,namespace,project,'index.json.gz')]) {
     try {fs.unlinkSync(file);} catch(error) {if(error.code!=='ENOENT')throw error;}
   }

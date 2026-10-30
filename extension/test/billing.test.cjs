@@ -24,6 +24,20 @@ test('DeepSeek shows the converted euro balance without OVH billing instructions
     assert.equal(w.liveBalance.querySelector('.balance-amount'),null);
   } finally { dom.window.close(); }
 });
+test('OpenAI shows configured allowance, local token usage and official-billing notice', () => {
+  const dom=billingView(),w=dom.window;
+  try {
+    w.applyBillingStatus({provider:'openai',configured:true,available:true,currency:'USD',
+      credit_available:100,current_usage:1.25,credit_remaining:98.75,input_tokens:1200,
+      output_tokens:300,requests:2,refresh_seconds:60});
+    assert.match(w.liveBalance.textContent,/OpenAI Codex/);
+    assert.match(w.liveBalance.textContent,/98,75/);
+    assert.match(w.liveBalance.title,/1,25/);
+    assert.match(w.liveBalance.title,/1.?200 tokens entrée/);
+    assert.match(w.liveBalance.title,/source officielle/);
+    assert.doesNotMatch(w.liveBalance.title,/OVH/);
+  } finally {dom.window.close();}
+});
 function billingView() {
   const dom = new JSDOM('<button id="billing"></button><button id="balance"></button>', {runScripts: 'outside-only'});
   const w = dom.window;
@@ -126,14 +140,14 @@ function setupBillingProvider(t, providerName, cache) {
  const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'trinity-billing-review-'));
  const archives=native('./archive-store');
  const settings={provider:providerName},calls=[],posts=[];
- const fakeSecrets={DEEPSEEK_API_KEY:'test-deepseek-key',OVH_AI_API_KEY:'test-ovh-key',OVH_APPLICATION_KEY:'test-app-key',OVH_APPLICATION_SECRET:'test-app-secret',OVH_CONSUMER_KEY:'test-consumer-key',OVH_CLOUD_PROJECT:'project-a',OVH_API_BASE_URL:'https://example.invalid'};
+ const fakeSecrets={TRINITY_DEEPSEEK_API_KEY:'test-deepseek-key',TRINITY_OVHCLOUD_API_KEY:'test-ovh-key',TRINITY_OVHCLOUD_APPLICATION_KEY:'test-app-key',TRINITY_OVHCLOUD_APPLICATION_SECRET:'test-app-secret',TRINITY_OVHCLOUD_CONSUMER_KEY:'test-consumer-key',TRINITY_OVHCLOUD_PROJECT:'project-a',TRINITY_OVHCLOUD_API_BASE_URL:'https://example.invalid'};
  const vscode={workspace:{workspaceFolders:[{uri:{fsPath:temporary}}],getConfiguration:()=>({get:(key,fallback)=>settings[key] ?? fallback})},env:{language:'fr'}};
- const scope={require:name=>name==='vscode'?vscode:(name==='node:child_process'||name==='child_process')?{...native(name),execFile:(file,argv,options,done)=>calls.push({file,argv,options,done}),spawn:()=>{throw Error('Unexpected inference process startup');}}:name==='./archive-store'?{...archives,ArchiveStore:class extends archives.ArchiveStore{constructor(workspace){super(workspace,path.join(temporary,'data'));}}}:native(name),module:{exports:{}},process:{env:{OVH_AGENT_PROVIDER:'ovhcloud'}},console,setTimeout,clearTimeout,readFakeSecret:name=>fakeSecrets[name]||''};
- vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nreadServerSecret=readFakeSecret;module.exports.Provider=OvhAgentViewProvider;',scope);
+ const scope={require:name=>name==='vscode'?vscode:(name==='node:child_process'||name==='child_process')?{...native(name),execFile:(file,argv,options,done)=>calls.push({file,argv,options,done}),spawn:()=>{throw Error('Unexpected inference process startup');}}:name==='./archive-store'?{...archives,ArchiveStore:class extends archives.ArchiveStore{constructor(workspace){super(workspace,path.join(temporary,'data'));}}}:native(name),module:{exports:{}},process:{env:{TRINITY_AGENT_PROVIDER:'ovhcloud'}},console,setTimeout,clearTimeout,readFakeSecret:name=>fakeSecrets[name]||''};
+ vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nreadServerSecret=readFakeSecret;module.exports.Provider=TrinityAgentViewProvider;',scope);
  const provider=new scope.module.exports.Provider(root,{}, {get:()=>undefined});
  provider.view={webview:{postMessage:message=>posts.push(message)}};
  fs.mkdirSync(provider.store.root,{recursive:true});
- if(cache)fs.writeFileSync(path.join(provider.store.root,providerName==='deepseek'?'billing-deepseek.json':'billing.json'),JSON.stringify(cache));
+ if(cache)fs.writeFileSync(path.join(provider.store.root,`billing-${providerName}.json`),JSON.stringify(cache));
  t.after(()=>{provider.billingChannel.cancel();fs.rmSync(temporary,{recursive:true,force:true});});
  return {provider,settings,calls,posts,done:(index,result)=>calls[index].done(null,JSON.stringify(result))};
 }
@@ -143,13 +157,13 @@ test('cached DeepSeek balance is sent before the upstream response and refresh u
  const h=setupBillingProvider(t,'deepseek',deepCache);let ovhCalls=0;h.provider.billingCredentials=async()=>{ovhCalls++;return undefined;};
  const pending=h.provider.refreshBilling(false);await tick();
  assert(h.posts.some(p=>p.provider==='deepseek'&&p.available&&p.credit_available===12.34),'No immediate cached DeepSeek balance');
- assert.equal(ovhCalls,0);assert.equal(h.calls.length,1);assert.equal(h.calls[0].options.env.OVH_AGENT_PROVIDER,'deepseek');
+ assert.equal(ovhCalls,0);assert.equal(h.calls.length,1);assert.equal(h.calls[0].options.env.TRINITY_AGENT_PROVIDER,'deepseek');
  h.done(0,{...deepCache,credit_available:13});await pending;assert.equal(h.posts.at(-1).credit_available,13);
 });
 test('OVH cached estimate is derived without waiting for API and never uses another project',async t=>{
  const h=setupBillingProvider(t,'ovhcloud',ovhCache);const pending=h.provider.refreshBilling(false);await tick();
  const cached=h.posts.find(p=>p.available&&p.balance_estimated);assert(cached,'No immediate OVH cached estimate');assert.equal(cached.credit_remaining,87.66);
- assert.equal(h.calls[0].options.env.OVH_AGENT_PROVIDER,'ovhcloud');h.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await pending;
+ assert.equal(h.calls[0].options.env.TRINITY_AGENT_PROVIDER,'ovhcloud');h.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await pending;
  const wrong=setupBillingProvider(t,'ovhcloud',{...ovhCache,project:'another-project',credit_available:999});const next=wrong.provider.refreshBilling(false);await tick();
  assert(!wrong.posts.some(p=>p.available),'Balance from another OVH project was displayed');wrong.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await next;
 });
@@ -168,7 +182,7 @@ test('DeepSeek without cache or OVH credentials fetches its configured provider 
   h.provider.billingCredentials = async () => assert.fail('DeepSeek must not consult OVH credentials');
   const pending = h.provider.refreshBilling(false); await tick();
   assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0].options.env.OVH_AGENT_PROVIDER, 'deepseek');
+  assert.equal(h.calls[0].options.env.TRINITY_AGENT_PROVIDER, 'deepseek');
   assert(h.posts.every(p => p.provider === 'deepseek'));
   h.done(0, {...deepCache, credit_available: 20}); await pending;
   assert.equal(h.posts.at(-1).credit_available, 20);

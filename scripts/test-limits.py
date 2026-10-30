@@ -1,4 +1,4 @@
-#!/opt/ovh-agent/bin/python
+#!/opt/trinity-agent/bin/python
 """Offline model-window, automatic allowance and explicit-cap regressions."""
 from dataclasses import asdict
 import importlib.util
@@ -18,8 +18,8 @@ from trinity_agent.limits import NAMES, UNKNOWN_WINDOW, limit_setting, resolve_l
 class Limits(unittest.TestCase):
     def setUp(self):
         self.environment = patch.dict(os.environ, {
-            **{'OVH_AGENT_' + name: 'auto' for name in NAMES},
-            'OVH_AGENT_CONTEXT_RESERVE_TOKENS': '4096'})
+            **{'TRINITY_AGENT_' + name: 'auto' for name in NAMES},
+            'TRINITY_AGENT_CONTEXT_RESERVE_TOKENS': '4096'})
         self.environment.start()
         self.addCleanup(self.environment.stop)
 
@@ -78,7 +78,7 @@ class Limits(unittest.TestCase):
                 'SUMMARY_TOKENS':600,'SUMMARY_SOURCE_CHARS':3000,'SUMMARY_GENERATION_TOKENS':1200,
                 'TOOL_OUTPUT_CHARS':1500,'MEMORY_CHARS':700,'SHARED_MEMORY_CHARS':400,
                 'PREFLIGHT_CONTEXT_CHARS':1000}
-        with patch.dict(os.environ, {'OVH_AGENT_'+key:str(value) for key,value in caps.items()}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_'+key:str(value) for key,value in caps.items()}):
             for complex_task in (False,True):
                 result=resolve_limits(self.card(),complex_task=complex_task)
                 for key,value in caps.items():
@@ -86,7 +86,7 @@ class Limits(unittest.TestCase):
                         continue
                     self.assertLessEqual(getattr(result,key.lower()),value)
                 self.assertLessEqual(result.output_tokens,900 if complex_task else 800)
-        with patch.dict(os.environ, {'OVH_AGENT_OUTPUT_TOKENS':str(10**10)}):
+        with patch.dict(os.environ, {'TRINITY_AGENT_OUTPUT_TOKENS':str(10**10)}):
             self.assertEqual(resolve_limits(self.card(maximum=512)).output_tokens,512)
 
     def test_compaction_allowance_follows_remaining_input_and_generation(self):
@@ -95,22 +95,22 @@ class Limits(unittest.TestCase):
         self.assertEqual(small.context_tokens,5000)
         self.assertLess(small.summary_tokens,full.summary_tokens)
         self.assertLess(small.summary_source_chars,full.summary_source_chars)
-        with patch.dict(os.environ,{'OVH_AGENT_SUMMARY_GENERATION_TOKENS':'1024'}):
+        with patch.dict(os.environ,{'TRINITY_AGENT_SUMMARY_GENERATION_TOKENS':'1024'}):
             limited=resolve_limits(self.card(262144,65536))
             self.assertLessEqual(limited.summary_tokens,512)
             self.assertLessEqual(limited.summary_generation_tokens,1024)
 
     def test_zero_disables_optional_excerpts_and_malformed_values_are_not_auto(self):
         keys=['MEMORY_CHARS','SHARED_MEMORY_CHARS','PREFLIGHT_CONTEXT_CHARS','TOOL_OUTPUT_CHARS']
-        with patch.dict(os.environ,{'OVH_AGENT_'+key:'0' for key in keys}):
+        with patch.dict(os.environ,{'TRINITY_AGENT_'+key:'0' for key in keys}):
             result=resolve_limits(self.card())
             for key in keys:self.assertEqual(getattr(result,key.lower()),0)
         for value in ['automatic','-1','1.5','nan','true']:
-            with self.subTest(value=value),patch.dict(os.environ,{'OVH_AGENT_CONTEXT_TOKENS':value}):
+            with self.subTest(value=value),patch.dict(os.environ,{'TRINITY_AGENT_CONTEXT_TOKENS':value}):
                 with self.assertRaises(ValueError):resolve_limits(self.card())
         for value in ['auto','']:
-            with patch.dict(os.environ,{'OVH_AGENT_CONTEXT_TOKENS':value}):
-                self.assertIsNone(limit_setting('OVH_AGENT_CONTEXT_TOKENS'))
+            with patch.dict(os.environ,{'TRINITY_AGENT_CONTEXT_TOKENS':value}):
+                self.assertIsNone(limit_setting('TRINITY_AGENT_CONTEXT_TOKENS'))
 
     def test_small_model_does_not_allocate_output_over_instructions(self):
         result=resolve_limits(self.card(8192,2048),overhead=7000)
@@ -118,9 +118,9 @@ class Limits(unittest.TestCase):
         self.assertEqual(result.context_tokens,0)
 
     def test_auto_does_not_modify_financial_or_execution_policy(self):
-        policy={'OVH_AGENT_BUDGET_DAILY_EUR':'2','OVH_AGENT_BUDGET_WEEKLY_EUR':'15',
-                'OVH_AGENT_BUDGET_MONTHLY_EUR':'60','OVH_AGENT_REQUEST_LIMIT':'80',
-                'OVH_AGENT_SUMMARY_TIMEOUT_SECONDS':'15'}
+        policy={'TRINITY_AGENT_BUDGET_DAILY_EUR':'2','TRINITY_AGENT_BUDGET_WEEKLY_EUR':'15',
+                'TRINITY_AGENT_BUDGET_MONTHLY_EUR':'60','TRINITY_AGENT_REQUEST_LIMIT':'80',
+                'TRINITY_AGENT_SUMMARY_TIMEOUT_SECONDS':'15'}
         with patch.dict(os.environ,policy):
             resolve_limits(self.card(262144,65536),complex_task=True)
             self.assertEqual({key:os.environ[key] for key in policy},policy)
@@ -176,7 +176,7 @@ class Limits(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(backend,'MODEL_CATALOG',None), \
              patch.object(backend,'MODEL_CACHE_FILE',Path(directory)/'missing.json'), \
-             patch.dict(os.environ,{'OVH_AI_API_KEY':'offline-placeholder'}), \
+             patch.dict(os.environ,{'TRINITY_OVHCLOUD_API_KEY':'offline-placeholder'}), \
              patch.object(backend.urllib.request,'urlopen',side_effect=OSError('offline')):
             card=backend.fetch_model_catalog(force=True)[0]
         self.assertEqual(card['metadata_source'],'fallback')

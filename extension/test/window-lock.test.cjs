@@ -18,8 +18,8 @@ function providerType(root) {
   const projectStore = {...stores, ProjectStore:class extends stores.ProjectStore {
     constructor(dataRoot) { super(dataRoot, root); }
   }};
-  const sandbox = {require:n=>n==='vscode'?vscode:n==='./project-store'?projectStore:nativeRequire(n),module:{exports:{}},process:{env:{...process.env,OVH_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=OvhAgentViewProvider;',sandbox);
+  const sandbox = {require:n=>n==='vscode'?vscode:n==='./project-store'?projectStore:nativeRequire(n),module:{exports:{}},process:{env:{...process.env,TRINITY_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',sandbox);
   return sandbox.module.exports.Provider;
 }
 

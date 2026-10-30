@@ -839,8 +839,8 @@ class Sessions(unittest.TestCase):
         with a.backend_session():
             result = subprocess.run(
                 [sys.executable, '-m', 'trinity_agent', '--json-lines'],
-                env={**os.environ, 'OVH_AGENT_DATA_ROOT': str(self.root),
-                     'OVH_AGENT_WORKSPACE': str(other_workspace)},
+                env={**os.environ, 'TRINITY_AGENT_DATA_ROOT': str(self.root),
+                     'TRINITY_AGENT_WORKSPACE': str(other_workspace)},
                 input=json.dumps({'type': 'shutdown'}) + '\n',
                 capture_output=True, text=True, timeout=15,
             )

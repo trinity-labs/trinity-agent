@@ -5,8 +5,8 @@ const { resolveBackendPath } = require("../backend-path");
 
 test("legacy launchers migrate to an available TRINITY launcher", () => {
   for (const [legacy, replacement] of [
-    ["ovh-agent.local.sh", "scripts/trinity-agent.local.sh"],
-    ["ovh-agent.sh", "scripts/trinity-agent.sh"],
+    ["trinity-agent.local.sh", "scripts/trinity-agent.local.sh"],
+    ["trinity-agent.sh", "scripts/trinity-agent.sh"],
     ["trinity-agent.local.sh", "scripts/trinity-agent.local.sh"],
     ["trinity-agent.sh", "scripts/trinity-agent.sh"],
   ]) {

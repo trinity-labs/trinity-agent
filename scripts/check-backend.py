@@ -16,7 +16,7 @@ def main():
         raise SystemExit('No backend tests found')
     for suite in suites:
         result = subprocess.run([sys.executable, str(suite)], cwd=ROOT,
-                                env={**os.environ, 'OVH_AGENT_PROVIDER': 'ovhcloud',
+                                env={**os.environ, 'TRINITY_AGENT_PROVIDER': 'ovhcloud',
                                      'PYDANTIC_AI_NO_BANNER': '1'})
         if result.returncode:
             failed.append(suite.name)

@@ -27,21 +27,21 @@ class Validation(unittest.TestCase):
     def test_only_explicit_branding_survives_replacement(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            old = root / 'trinity.ovh-agent-1.0.0'
+            old = root / 'trinity.trinity-agent-1.0.0'
             old.mkdir()
             (old / 'logo.svg').write_text('<svg/>')
             (old / 'package.json').write_text(json.dumps(dict(displayName='Customer Agent', icon='logo.svg')))
-            (root / 'extensions.json').write_text(json.dumps([dict(identifier=dict(id='trinity.ovh-agent'), relativeLocation=old.name, metadata=dict(publisherDisplayName='Customer'))]))
+            (root / 'extensions.json').write_text(json.dumps([dict(identifier=dict(id='trinity.trinity-agent'), relativeLocation=old.name, metadata=dict(publisherDisplayName='Customer'))]))
             stage = root / 'stage'
             stage.mkdir()
             with patch.dict(u.os.environ, {}, clear=True):
                 env = u.branding_environment(stage, root)
-                self.assertEqual(env['OVH_AGENT_NAME'], 'TRINITY Agent')
-                self.assertEqual(env['OVH_AGENT_PUBLISHER_NAME'], 'TRINITY')
-                self.assertEqual(env['OVH_AGENT_APP_ICON'], '')
-            with patch.dict(u.os.environ, {'OVH_AGENT_APP_ICON': str(old / 'logo.svg')}, clear=True):
+                self.assertEqual(env['TRINITY_AGENT_NAME'], 'TRINITY Agent')
+                self.assertEqual(env['TRINITY_AGENT_PUBLISHER_NAME'], 'TRINITY')
+                self.assertEqual(env['TRINITY_AGENT_APP_ICON'], '')
+            with patch.dict(u.os.environ, {'TRINITY_AGENT_APP_ICON': str(old / 'logo.svg')}, clear=True):
                 env = u.branding_environment(stage, root)
-                self.assertEqual(Path(env['OVH_AGENT_APP_ICON']).read_text(), '<svg/>')
+                self.assertEqual(Path(env['TRINITY_AGENT_APP_ICON']).read_text(), '<svg/>')
                 (old / 'logo.svg').unlink()
                 with self.assertRaisesRegex(ValueError, 'deferred'):
                     u.branding_environment(stage, root)
@@ -55,6 +55,15 @@ class Validation(unittest.TestCase):
             with self.assertRaises(ValueError):
                 u.version(invalid)
 
+    def test_previous_local_identity_is_discovered_from_manifest(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); installed=root/'legacy-agent-4.0.4'; installed.mkdir()
+            (installed/'package.json').write_text(json.dumps({'displayName':'TRINITY Agent'}))
+            entry={'identifier':{'id':'trinity.legacy-agent'},'version':'4.0.4',
+                   'relativeLocation':installed.name,'metadata':{}}
+            (root/'extensions.json').write_text(json.dumps([entry]))
+            self.assertEqual(u.installed_entry(root),entry)
+
     def test_package_identity_backend_and_paths(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -67,7 +76,7 @@ class Validation(unittest.TestCase):
             def package(publisher='trinity', unsafe=False):
                 data = io.BytesIO()
                 with zipfile.ZipFile(data, 'w') as z:
-                    z.writestr('extension/package.json', json.dumps(dict(publisher=publisher, name='ovh-agent', version='1.14.0')))
+                    z.writestr('extension/package.json', json.dumps(dict(publisher=publisher, name='trinity-agent', version='1.14.0')))
                     z.writestr('extension/local-update.json', json.dumps(dict(backend=backend)))
                     if unsafe:
                         z.writestr('../outside', 'bad')

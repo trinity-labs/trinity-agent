@@ -22,10 +22,11 @@ import time
 
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 READ_BYTES = 65536
-RUNTIME_DIRECTORIES = ('/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt/ovh-agent')
+RUNTIME_DIRECTORIES = ('/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt/trinity-agent')
 _SENSITIVE_NAME = re.compile(r'(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_KEY|ACCESS_KEY|PRIVATE_KEY|AUTHORIZATION|COOKIE|(?:^|_)PAT(?:_|$))')
 _PROVIDER_PREFIXES = ('OVH_', 'OVHCLOUD_', 'OPENAI_', 'ANTHROPIC_', 'GEMINI_', 'DEEPSEEK_',
-                      'MISTRAL_', 'TOGETHER_', 'GITHUB_', 'GH_', 'VSCE_', 'GIT_CONFIG_')
+                      'MISTRAL_', 'TOGETHER_', 'GITHUB_', 'GH_', 'VSCE_', 'GIT_CONFIG_',
+                      'TRINITY_OVHCLOUD_', 'TRINITY_DEEPSEEK_', 'TRINITY_OPENAI_')
 _UNSAFE_ENV = {'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_SSH_COMMAND',
                'BASH_ENV', 'ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'PYTHONSTARTUP', 'PYTHONPATH', 'PYTHONHOME',
                # Commands are new processes without code-server's parent IPC.
@@ -189,7 +190,7 @@ def sandbox_argv(argv, cwd, workspace, binary):
         command += ['--ro-bind', str(path), str(path)]
     # No host /etc, home, /run, SSH agent, Docker socket or host network mount.
     command += ['--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--tmpfs', '/run',
-                '--dir', '/tmp/ovh-home']
+                '--dir', '/tmp/trinity-home']
     for parent in reversed(root.parents):
         if str(parent) not in {'/', '/tmp', '/run'}:
             command += ['--dir', str(parent)]
@@ -244,8 +245,8 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
                 result['error'] = 'sandbox_unavailable'
                 return finish()
             command = sandbox_argv(command, cwd, workspace, binary)
-            environment.update(HOME='/tmp/ovh-home', TMPDIR='/tmp', XDG_CACHE_HOME='/tmp/ovh-home/.cache',
-                               XDG_CONFIG_HOME='/tmp/ovh-home/.config', XDG_RUNTIME_DIR='/run')
+            environment.update(HOME='/tmp/trinity-home', TMPDIR='/tmp', XDG_CACHE_HOME='/tmp/trinity-home/.cache',
+                               XDG_CONFIG_HOME='/tmp/trinity-home/.config', XDG_RUNTIME_DIR='/run')
             information = tempfile.TemporaryFile()
             command[1:1] = ['--info-fd', str(information.fileno())]
         process = subprocess.Popen(command, cwd=cwd, env=environment, stdin=subprocess.DEVNULL,

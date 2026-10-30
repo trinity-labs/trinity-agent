@@ -80,7 +80,7 @@ def comparable_scores(reports, grouped):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('reports',nargs='+',type=Path)
-    parser.add_argument('--data-root',type=Path,default=Path.home()/'.ovh-agent')
+    parser.add_argument('--data-root',type=Path,default=Path.home()/'.trinity-agent')
     parser.add_argument('--workspace',type=Path,default=Path('/home/coder'))
     parser.add_argument('--apply',action='store_true')
     args=parser.parse_args()
