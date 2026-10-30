@@ -620,6 +620,8 @@ test('opening another source keeps expanded folders and displays only the select
   document.querySelector('.project-documents')?.setAttribute('open','');
   document.querySelector('.archive-open').click();
   assert.equal(sent.at(-1).type,'openProject');
+  emit({type:'error',text:'Late error from the previous conversation'});
+  assert.equal(document.getElementById('messages').getAttribute('aria-busy'),'true');
   emit({type:'ready',conversation:'previous',model:'model'});
   emit({type:'archive_loaded',id:'previous',messages:[{type:'user',text:'Wrong conversation'}]});
   assert(!document.getElementById('messages').textContent.includes('Wrong conversation'));

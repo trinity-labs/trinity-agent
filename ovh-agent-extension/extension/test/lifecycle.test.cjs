@@ -101,7 +101,9 @@ test('a failed backend startup or control write reports archive failure and allo
   h.provider.startAgent=start;
   h.document.querySelector('[data-archive-id="existing"] .archive-open').click();await h.flush();
   assert.equal(h.commands.at(-1).type,'load_archive');
-  h.emit({type:'archive_open_failed',text:'Failed load'});
+  h.emit({type:'error',text:'Failed load'});
+  assert.equal(h.document.getElementById('messages').hasAttribute('aria-busy'),false);
+  assert.equal(h.provider.pendingArchiveId,undefined);
   h.provider.agent.stdin.write=()=>{throw new Error('Closed pipe');};
   h.document.querySelector('[data-archive-id="existing"] .archive-open').click();await h.flush();
   assert.equal(h.document.getElementById('messages').hasAttribute('aria-busy'),false);

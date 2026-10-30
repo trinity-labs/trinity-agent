@@ -2670,19 +2670,9 @@ window.addEventListener("message", ({ data }) => {
   rememberExchangeRates(data);
   if (data.exchange_rates) refreshDeepSeekCosts();
   // Only accept revision tokens after conversation-ID filtering below.
-  if (data.type === "archive_open_failed" || (loadingArchive && ["error", "idle", "session_busy"].includes(data.type))) {
+  if (data.type === "archive_open_failed" && (!data.id || !loadingArchive || data.id === loadingArchive)) {
     loadingArchive = null;
     archiveModelRevision = null;
-    if (data.type !== "archive_open_failed") {
-      stopping = false;
-      pendingSubmission = null;
-      creatingConversation = false;
-      clear.disabled = false;
-      interruptPendingFollowup();
-      if (performancePicker) performancePicker.disabled = false;
-      if (currentRun) finishRun("error");
-      setBusy(false);
-    }
     endArchiveLoading();
     setArchiveVisible(true);
     setStatus(data.text || t("Termine ou arrête la tâche avant de changer de projet."), "warning");

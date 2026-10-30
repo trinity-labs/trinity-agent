@@ -48,6 +48,9 @@ class Validation(unittest.TestCase):
 
     def test_versions(self):
         self.assertGreater(u.version('1.14.0'), u.version('1.9.9'))
+        self.assertGreater(u.version('1.18.0'), u.version('1.17.99'))
+        self.assertGreater(u.version('2.0.0'), u.version('1.99.99'))
+        self.assertLess(u.version('1.17.10'), u.version('1.18.0'))
         for invalid in ('../1.0.0', 'v1.0.0', '1.0.0-rc1', None):
             with self.assertRaises(ValueError):
                 u.version(invalid)

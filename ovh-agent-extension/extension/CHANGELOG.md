@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.100
+
+- Keep conversation loading attached to the requested archive so delayed errors from the previous backend cannot cancel a newer open.
+- Release the loading interface on every correlated backend failure, including startup, process exit and control-write errors, so opening can be retried immediately.
+
 ## 1.17.99
 
 - Clear folder and conversation highlights when clicking anywhere outside their rows, including the Conversations header and mount-point display.

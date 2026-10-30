@@ -315,7 +315,7 @@ test('legacy archive uses the last chronological choice after an earlier automat
 });
 
 for (const failure of ['error','session_busy','idle'])
-test(`${failure} while opening an archive releases loading and permits opening another conversation`,()=>{
+test(`${failure} from the previous conversation cannot cancel a newer archive open`,()=>{
   const {dom,w,emit,posted}=browser();
   try {
     emit({type:'archives',items:[{id:'a',title:'A'},{id:'b',title:'B'}]});
@@ -323,6 +323,8 @@ test(`${failure} while opening an archive releases loading and permits opening a
     click('a');
     emit({type:'status',conversation:'a',text:'Loading'});
     emit({type:failure,text:'Backend unavailable'});
+    assert.equal(w.document.getElementById('messages').hasAttribute('aria-busy'),true);
+    emit({type:'archive_open_failed',id:'a',text:'Archive unavailable'});
     assert.equal(w.document.getElementById('messages').hasAttribute('aria-busy'),false);
     click('b');
     assert.equal(posted.filter(e=>e.type==='loadArchive').at(-1).id,'b');

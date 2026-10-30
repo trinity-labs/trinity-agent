@@ -75,6 +75,7 @@ class OvhAgentViewProvider {
     this.deleting = false;
     this.providerRestartPending = false;
     this.pendingModel = state?.get?.("ovhAgent.pendingModel") || undefined;
+    this.pendingArchiveId = undefined;
     this.store = new ArchiveStore(this.workspace);
     try {
       const remembered=state?.get("ovhAgent.projectRoot") ?? new ProjectStore(this.store.dataRoot).active(initial)?.root;
@@ -364,9 +365,9 @@ class OvhAgentViewProvider {
   }
 
   async openProject(id, conversation) {
-    if(!this.windowLock) {this.post({type:"archive_open_failed"});return;}
+    if(!this.windowLock) {this.post({type:"archive_open_failed",id:conversation});return;}
     if((conversation && this.busy) || this.switchingProject || this.startPromise || this.deleting) {
-      this.post({type:"archive_open_failed"});
+      this.post({type:"archive_open_failed",id:conversation});
       vscode.window.showInformationMessage(t("Termine ou arrête la tâche avant de changer de projet."));return;
     }
     this.switchingProject=true;
@@ -377,7 +378,7 @@ class OvhAgentViewProvider {
       if(conversation && !(entry.root===this.workspace ? this.store : new ArchiveStore(entry.root,this.store.dataRoot)).has(conversation))throw new Error(t("Conversation introuvable."));
       if(conversation)await this.activateProject(entry,conversation);
       else {projects.register(entry.root);await this.selectConversationFolder(entry);this.showArchives();}
-    } catch(error) {this.post({type:"archive_open_failed",text:String(error.message)});vscode.window.showErrorMessage(String(error.message));}
+    } catch(error) {this.post({type:"archive_open_failed",id:conversation,text:String(error.message)});vscode.window.showErrorMessage(String(error.message));}
     finally {this.switchingProject=false;}
   }
 
@@ -833,6 +834,11 @@ class OvhAgentViewProvider {
       this.billingChannel.cancel(error);
       this.busy=false;
       this.clearingConversation=false;
+      if (this.pendingArchiveId) {
+        const id = this.pendingArchiveId; this.pendingArchiveId = undefined;
+        this.post({type:"archive_open_failed",id,text:`Écriture vers le backend interrompue : ${error.message}`});
+        return;
+      }
       this.post({type:"error",text:`Écriture vers le backend interrompue : ${error.message}`});
     });
     agent.stdout.setEncoding("utf8");
@@ -847,6 +853,12 @@ class OvhAgentViewProvider {
       this.busy = false;
       this.clearingConversation = false;
       this.billingChannel.cancel(error);
+      if (this.pendingArchiveId) {
+        const id = this.pendingArchiveId; this.pendingArchiveId = undefined;
+        this.post({ type: "archive_open_failed", id, text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, error.message) });
+        if (this.agent === agent) this.agent = undefined;
+        return;
+      }
       this.post({ type: "error", text: t("Impossible de démarrer {0} : {1}", BRAND_NAME, error.message) });
       if (this.agent === agent) this.agent = undefined;
     });
@@ -856,6 +868,10 @@ class OvhAgentViewProvider {
       this.clearingConversation = false;
       this.billingChannel.cancel();
       this.flushDelta();
+      if (this.pendingArchiveId) {
+        const id = this.pendingArchiveId; this.pendingArchiveId = undefined;
+        this.post({ type: "archive_open_failed", id, text: t("Impossible de charger la conversation.") });
+      }
       if (code && code !== 0) {
         this.post({ type: "error", text: t("{0} s’est arrêté (code {1}{2}).", BRAND_NAME, code, signal ? `, ${signal}` : "") });
       }
@@ -880,6 +896,14 @@ class OvhAgentViewProvider {
       try {
         const message = JSON.parse(line);
         if (!message || typeof message !== "object" || Array.isArray(message) || typeof message.type !== "string") continue;
+        if (this.pendingArchiveId && ["archive_loaded", "snapshot_loaded"].includes(message.type)) {
+          if (message.id !== this.pendingArchiveId) continue;
+          this.pendingArchiveId = undefined;
+        } else if (this.pendingArchiveId && ["error", "idle", "session_busy"].includes(message.type)) {
+          const id = this.pendingArchiveId; this.pendingArchiveId = undefined;
+          this.post({type:"archive_open_failed",id,text:message.text});
+          continue;
+        }
         if(message.type === "billing_status") {
           const received=this.billingChannel.receive(message);
           // Late correlated replies must not overwrite the newer displayed balance.
@@ -976,7 +1000,7 @@ class OvhAgentViewProvider {
   async sendControl(payload) {
     try {
       if (payload.type === "load_archive") {
-        if (this.busy) { this.post({type:"archive_open_failed"}); return; }
+        if (this.busy) { this.post({type:"archive_open_failed",id:payload.id}); return; }
         const {provider}=this.store.modelSelection(payload.id);
         if (provider && provider!==inferenceProvider()) {
           this.restoringProvider=true;
@@ -987,15 +1011,17 @@ class OvhAgentViewProvider {
         }
       }
       if (!(await this.ensureAgent())) {
-        if (payload.type === "load_archive") this.post({type:"archive_open_failed"});
+        if (payload.type === "load_archive") this.post({type:"archive_open_failed",id:payload.id});
         return;
       }
+      if (payload.type === "load_archive") this.pendingArchiveId = payload.id;
       if (payload.type === "resume_archive" || (payload.type === "followup" && ["add", "steer", "continue"].includes(payload.action))) this.busy = true;
       this.agent.stdin.write(`${JSON.stringify(payload)}\n`);
     } catch (error) {
       this.busy=false;
       this.clearingConversation=false;
-      this.post({type:payload.type==="load_archive" ? "archive_open_failed" : "error",text:String(error.message)});
+      if (payload.type === "load_archive") this.pendingArchiveId = undefined;
+      this.post({type:payload.type==="load_archive" ? "archive_open_failed" : "error",id:payload.type==="load_archive" ? payload.id : undefined,text:String(error.message)});
     }
   }
 
