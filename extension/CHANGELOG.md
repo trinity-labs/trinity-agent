@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.3.4
+
+- Restore Marketplace upgrade compatibility by publishing to the historical `stopyz.ovh-agent` identifier while keeping the local `trinity.trinity-agent` identity.
+
 ## 5.3.3
 
 - Switch the Activity Bar logo automatically: purple in light themes and white in dark themes.

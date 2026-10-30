@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '..');
 const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json')));
 const publisher = process.env.MARKETPLACE_PUBLISHER || 'stopyz';
+const packageName = publisher === 'trinity' ? 'trinity-agent' : 'ovh-agent';
 const {configuredDarkTheme} = require(path.resolve(__dirname, '../../branding/trinity-branding.cjs'));
 const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.HistoryDemo';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
@@ -44,7 +45,7 @@ try {
     const readme = fs.readFileSync(readmePath, 'utf8');
     const previewLink = '](media/trinity_agent_screenshot.png)';
     if (!readme.includes(previewLink)) throw Error('README must reference the bundled preview screenshot');
-    const previewUrl = `https://${publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/${publisher}/extension/${manifest.name}/${manifest.version}/assetbyname/${previewAssetType}`;
+    const previewUrl = `https://${publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/${publisher}/extension/${packageName}/${manifest.version}/assetbyname/${previewAssetType}`;
     fs.writeFileSync(readmePath, readme.replace(previewLink, `](${previewUrl})`));
   }
   // Generate from readable sources in the isolated stage: never trust stale build output.
@@ -60,7 +61,10 @@ try {
   }
   delete manifest.__metadata;
   manifest.publisher = publisher;
-  manifest.displayName = publisher === 'trinity' ? 'TRINITY Agent' : 'TRINITY Agent API Relay';
+  // The public Marketplace identity must remain stopyz.ovh-agent so existing
+  // installations receive upgrades. The private package keeps its refactored ID.
+  manifest.name = packageName;
+  manifest.displayName = 'TRINITY Agent';
   // Choose the local icon before code-server caches the installed manifest.
   const darkLocalIcon = publisher === 'trinity' && configuredDarkTheme();
   manifest.icon = darkLocalIcon ? 'media/trinity-activity.png' : 'media/trinity-icon.png';
