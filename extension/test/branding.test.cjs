@@ -55,7 +55,7 @@ test('packaged local icon matches the theme before installation; Marketplace sta
           assert.deepEqual(fs.readFileSync(path.join(stage, manifest.icon)),
             fs.readFileSync(path.resolve(__dirname, '..', expected)));
           assert.equal(manifest.trinityAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
-          assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.png');
+          assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.svg');
           const start = manifest.contributes.commands.find(item => item.command === 'trinityAgent.start');
           assert.deepEqual(start.icon, {light:'media/trinity-title-black.png', dark:'media/trinity-header-white.png'});
           assert.deepEqual(manifest.contributes.menus['editor/title'], [
@@ -183,7 +183,10 @@ test('webview header uses fully opaque dedicated light and dark logos', () => {
   const css = fs.readFileSync(path.join(root, 'media/chat.css'), 'utf8');
   assert.doesNotMatch(css, /\.history-brand\s*\{[^}]*opacity\s*:/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json')))
-    .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.png');
+    .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu.svg');
+  const menu = fs.readFileSync(path.join(root, 'media/trinity-menu.svg'), 'utf8');
+  assert.match(menu, /^<svg[^>]+viewBox="0 0 1254 1254"/);
+  assert.match(menu, /href="data:image\/png;base64,[A-Za-z0-9+/=]+"/);
 });
 
 test('mount point setting controls both the archive path and its storage usage', () => {

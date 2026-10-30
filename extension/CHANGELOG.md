@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.3.2
+
+- Restore the TRINITY Activity Bar icon after the extension identifier refactor by shipping the requested menu artwork through a VS Code-compatible SVG asset.
+
 ## 5.3.1
 
 - Display OpenAI catalogue prices in the configured currency and install the current UI instead of leaving the IDE on an older package.
