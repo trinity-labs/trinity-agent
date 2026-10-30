@@ -1,6 +1,10 @@
 import tempfile
 from decimal import Decimal
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from trinity_agent.budget import AvailableBalanceLedger, BudgetExceeded, BudgetLedgerError
 
