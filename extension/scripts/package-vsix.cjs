@@ -60,7 +60,7 @@ try {
   }
   delete manifest.__metadata;
   manifest.publisher = publisher;
-  manifest.displayName = 'TRINITY Agent';
+  manifest.displayName = publisher === 'trinity' ? 'TRINITY Agent' : 'TRINITY Agent API Relay';
   // Choose the local icon before code-server caches the installed manifest.
   const darkLocalIcon = publisher === 'trinity' && configuredDarkTheme();
   manifest.icon = darkLocalIcon ? 'media/trinity-activity.png' : 'media/trinity-icon.png';

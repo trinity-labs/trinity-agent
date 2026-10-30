@@ -2,7 +2,9 @@
 
 Releases through 4.0.4 used the former Marketplace identity. Version 5.0.0 removes
 that vendor-prefixed extension ID and is published as
-[`stopyz.trinity-agent`](https://marketplace.visualstudio.com/items?itemName=stopyz.trinity-agent).
+[`stopyz.trinity-agent`](https://marketplace.visualstudio.com/items?itemName=stopyz.trinity-agent)
+under the distinct listing name **TRINITY Agent API Relay**. Marketplace keeps the
+former listing's display name reserved, while local packages retain **TRINITY Agent**.
 Marketplace IDs cannot be renamed in place: existing Marketplace users must uninstall
 the former listing once, install `stopyz.trinity-agent`, then reload VS Code. The local
 updater performs the equivalent replacement automatically and removes the former local
