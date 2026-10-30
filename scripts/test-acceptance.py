@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_acceptance import AcceptanceSuite, MAX_FILE_BYTES
-from ovh_verification import ChangeGuard
+from trinity_agent.acceptance import AcceptanceSuite, MAX_FILE_BYTES
+from trinity_agent.verification import ChangeGuard
 
 
 class AcceptanceTests(unittest.TestCase):

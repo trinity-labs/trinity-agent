@@ -99,7 +99,7 @@ def atomic_report(path, report):
 
 
 def load_backend():
-    spec = importlib.util.spec_from_file_location('ovh_evaluation_backend', ROOT/'ovh-agent.py')
+    spec = importlib.util.spec_from_file_location('ovh_evaluation_backend', ROOT/'trinity_agent/agent.py')
     backend = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = backend
     spec.loader.exec_module(backend)
@@ -125,7 +125,7 @@ def run_in_agent_loop(coroutine):
 def source_fingerprint():
     # Fingerprint implementation and harness, not Git HEAD: dirty source is real
     # executable input too. This makes pre-release and installed runs comparable.
-    files = [ROOT/'ovh-agent.py', *sorted(ROOT.glob('ovh_*.py')), Path(__file__)]
+    files = [*sorted((ROOT/'trinity_agent').glob('*.py')), Path(__file__)]
     return sha('\n'.join(f'{path.name}:{sha(path.read_bytes())}' for path in files))
 
 
@@ -278,8 +278,8 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         raise ValueError("Experimental advice must be a string of at most 1200 characters")
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
     from pydantic_ai.usage import RunUsage, UsageLimits
-    from ovh_context import compact_context
-    from ovh_memory import ConversationMemory
+    from trinity_agent.context import compact_context
+    from trinity_agent.memory import ConversationMemory
     case_source = source_fingerprint()
     root = base/name/'project'
     root.mkdir(parents=True)
@@ -400,7 +400,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
         stack.enter_context(patch.object(backend,'agent_tools',side_effect=lambda:
             [tool for tool in original_tools() if tool.name in ALLOWED_TOOLS]))
         instructions = backend.load_infrastructure_instructions()
-        from ovh_workspace import project_id
+        from trinity_agent.workspace import project_id
         # The real context contains a workspace-derived memory namespace as well
         # as the workspace itself. Normalize only these disposable locations.
         normalized_instructions = instructions.replace(
@@ -482,7 +482,7 @@ def run_case(backend, base, name, *, seed, model=None, request_limit=18, token_l
                         and 'Contrôles de référence modifiés' in event.get('output', '')
                         for event in events))
     if error is not None:
-        from ovh_task_engine import classify_failure
+        from trinity_agent.task_engine import classify_failure
         category = classify_failure(error)
         loop_failure = isinstance(error, RuntimeError) and bool(re.search(r'event loop|different loop', str(error), re.I))
         origin = ('harness' if loop_failure else 'budget' if type(error).__name__ in {'UsageLimitExceeded', 'BudgetExceeded'}
@@ -584,8 +584,8 @@ def run_campaign(*, seed=20261019, cases=None, real_model=None,
         model, ledger, card = None, None, None
         if real_model:
             try:
-                from ovh_budget import BudgetLedger
-                from ovh_budget_model import BudgetedModel
+                from trinity_agent.budget import BudgetLedger
+                from trinity_agent.budget_model import BudgetedModel
                 billing_cache = backend.billing_file()
                 backend.billing_file = lambda: billing_cache
                 account = backend.budget_ledger()

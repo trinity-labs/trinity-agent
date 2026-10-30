@@ -10,7 +10,7 @@ from unittest.mock import patch
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 sys.argv.append('--billing-status')
-spec = importlib.util.spec_from_file_location('agent_billing', root / 'ovh-agent.py')
+spec = importlib.util.spec_from_file_location('agent_billing', root / 'trinity_agent/agent.py')
 a = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = a
 spec.loader.exec_module(a)

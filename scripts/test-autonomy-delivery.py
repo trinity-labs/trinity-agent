@@ -20,7 +20,7 @@ class DeliveryRecovery(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch.object(sys, 'argv', ['delivery-test', '--billing-status']):
-            spec = importlib.util.spec_from_file_location('delivery_test_backend', ROOT/'ovh-agent.py')
+            spec = importlib.util.spec_from_file_location('delivery_test_backend', ROOT/'trinity_agent/agent.py')
             cls.backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(cls.backend)
 

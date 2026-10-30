@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import ovh_context as c
-from ovh_memory import ConversationMemory
+from trinity_agent import context as c
+from trinity_agent.memory import ConversationMemory
 from pydantic_ai.messages import ModelRequest,ModelResponse,UserPromptPart,SystemPromptPart,ToolCallPart,ToolReturnPart
 
 

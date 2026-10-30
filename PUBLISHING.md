@@ -134,7 +134,7 @@ Reload the editor to activate an installed update. Archives and secrets are not
 part of the package and are never overwritten.
 
 Only the extension client is updated automatically. A release with changed backend
-sources is deferred until the deployment's `ovh-agent.py`, `ovh_memory.py` and
+sources is deferred until the deployment's `trinity_agent/agent.py`, `trinity_agent/memory.py` and
 `ovh-agent.sh` match that release. This avoids silently replacing custom backend
 code or installing a client for a different backend. Docker images and Python
 dependencies remain deployment-managed. Marketplace installations use the editor's

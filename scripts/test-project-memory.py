@@ -11,10 +11,10 @@ import time
 import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from ovh_cache import CACHE
-from ovh_memory import ConversationMemory
-from ovh_workspace import WorkspaceContext
-from ovh_project_memory import ProjectMemory, aggregate, notes, markdown_note
+from trinity_agent.cache import CACHE
+from trinity_agent.memory import ConversationMemory
+from trinity_agent.workspace import WorkspaceContext
+from trinity_agent.project_memory import ProjectMemory, aggregate, notes, markdown_note
 
 class MarkdownMemoryTests(unittest.TestCase):
     def setUp(self):
@@ -29,8 +29,8 @@ class MarkdownMemoryTests(unittest.TestCase):
 
     def test_slow_mount_keeps_complete_partial_paths_without_rewalking(self):
         source=self.work/'known.md';source.write_text('Observed local source')
-        with patch('ovh_project_memory.subprocess.run',side_effect=subprocess.TimeoutExpired(
-                ['rg'],2,output=b'known.md\ntruncated')), patch('ovh_project_memory.os.walk') as walk:
+        with patch('trinity_agent.project_memory.subprocess.run',side_effect=subprocess.TimeoutExpired(
+                ['rg'],2,output=b'known.md\ntruncated')), patch('trinity_agent.project_memory.os.walk') as walk:
             self.assertEqual(self.memory.root_documents(refresh=True),[source])
             walk.assert_not_called()
     def test_registered_empty_project_does_not_abort_export(self):
@@ -68,17 +68,17 @@ class MarkdownMemoryTests(unittest.TestCase):
         self.assertIn('Orchidée',self.ctx.read('project','notes'))
     def test_warm_lookup_does_not_scan_sources_or_read_document_bodies(self):
         ref=ConversationMemory(self.folder).put('Architecture zéphyr PostgreSQL.');self.memory.index()
-        with patch('ovh_project_memory.SCAN_SECONDS',10**10):
+        with patch('trinity_agent.project_memory.SCAN_SECONDS',10**10):
             self.memory.index()
             with patch.object(self.memory,'sources',side_effect=AssertionError('No source scan on warm hit')):
                 self.assertIn(ref,self.memory.search('zéphyr'))
     def test_disk_index_reuses_unchanged_bodies_after_ram_clear(self):
         ConversationMemory(self.folder).put('Quartz architecture PostgreSQL');self.memory.index();CACHE.clear()
-        from ovh_project_memory import read_text_cached
+        from trinity_agent.project_memory import read_text_cached
         def guarded(file,*args,**kwargs):
             if Path(file).suffix=='.md':raise AssertionError('Unchanged Markdown should not be reread')
             return read_text_cached(file,*args,**kwargs)
-        with patch('ovh_project_memory.read_text_cached',side_effect=guarded):
+        with patch('trinity_agent.project_memory.read_text_cached',side_effect=guarded):
             self.assertIn('Quartz',self.memory.search('Quartz'))
     def test_new_documents_invalidate_warm_cache(self):
         self.memory.index();ref=ConversationMemory(self.folder).put('Nouveau choix magnolia')
@@ -195,7 +195,7 @@ class MarkdownMemoryTests(unittest.TestCase):
         source=self.work/'DESCRIPTION.md';source.write_text('Contrat indigo du projet.')
         dependency=self.work/'node_modules'/'package';dependency.mkdir(parents=True)
         (dependency/'README.md').write_text('Secret dépendance écarlate')
-        with patch('ovh_project_memory.subprocess.run',side_effect=FileNotFoundError):
+        with patch('trinity_agent.project_memory.subprocess.run',side_effect=FileNotFoundError):
             documents=self.memory.root_documents(refresh=True)
         self.assertIn(source,documents)
         self.assertFalse(any('node_modules' in str(file) for file in documents))
@@ -276,7 +276,7 @@ class MarkdownMemoryTests(unittest.TestCase):
     def test_local_answer_refuses_source_swapped_to_external_symlink(self):
         question='Quel outil utilise le projet ?';file=self.work/'FAQ.md'
         file.write_text('## '+question+'\nPython\n');outside=self.root/'outside.md';outside.write_text(file.read_text())
-        import ovh_project_memory as module
+        from trinity_agent import project_memory as module
         original=module.read_text_cached
         def replace_source(path,**kwargs):
             text=original(path,**kwargs)

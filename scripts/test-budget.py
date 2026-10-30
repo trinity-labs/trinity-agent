@@ -16,7 +16,7 @@ from unittest.mock import patch
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ovh_budget import BudgetExceeded, BudgetLedger, BudgetLedgerError
+from trinity_agent.budget import BudgetExceeded, BudgetLedger, BudgetLedgerError
 
 
 UTC = timezone.utc
@@ -319,7 +319,7 @@ class BudgetTests(unittest.TestCase):
         ledger = self.ledger({"daily": 1})
         ledger.reserve("0.2")
         before = self.path.read_bytes()
-        with patch("ovh_budget.os.replace", side_effect=OSError("unavailable storage")):
+        with patch("trinity_agent.budget.os.replace", side_effect=OSError("unavailable storage")):
             with self.assertRaises(BudgetLedgerError):
                 ledger.reserve("0.3")
         self.assertEqual(self.path.read_bytes(), before)
@@ -343,7 +343,7 @@ class BudgetTests(unittest.TestCase):
 
 class OvhBalanceTests(unittest.TestCase):
     def setUp(self):
-        from ovh_budget import OvhBalanceLedger
+        from trinity_agent.budget import OvhBalanceLedger
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)

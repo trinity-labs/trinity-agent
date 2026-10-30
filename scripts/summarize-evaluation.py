@@ -11,8 +11,8 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from ovh_memory import atomic_write
-from ovh_evaluation import comparison_key
+from trinity_agent.memory import atomic_write
+from trinity_agent.evaluation import comparison_key
 spec=importlib.util.spec_from_file_location('catalog_benchmark',ROOT/'scripts/evaluate-catalog.py')
 b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
 
@@ -128,7 +128,7 @@ def main():
         if all(row['settings'].get('openai_reasoning_effort')=='none' for row in rows) and score['passed']==score['samples'] and not score['errors']:
             model['settings']['reasoning_effort']='none';model['settings']['reasoning_domains'].append(domain)
     if args.apply:
-        from ovh_evaluation import load_evidence
+        from trinity_agent.evaluation import load_evidence
         target=args.data_root/'model-evaluations.json'
         if target.exists(): atomic_write(target.with_suffix('.previous.json'),target.read_text())
         atomic_write(target,json.dumps(evidence,ensure_ascii=False,indent=2))

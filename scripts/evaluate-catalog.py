@@ -186,7 +186,7 @@ def case_digest(case):
 def routing_protocol(args):
     # Include the driver, backend settings and grading source. A later change
     # invalidates comparability without deleting earlier human-readable reports.
-    sources = [Path(__file__), ROOT/'ovh-agent.py', ROOT/'ovh_budget_model.py',
+    sources = [Path(__file__), ROOT/'trinity_agent/agent.py', ROOT/'trinity_agent/budget_model.py',
                ROOT/'scripts/summarize-evaluation.py']
     digest = hashlib.sha256()
     for source in sources:
@@ -217,14 +217,14 @@ def main():
     args=parser.parse_args()
     if not args.live: parser.error('--live is required')
     sys.path.insert(0,str(ROOT));sys.argv.append('--billing-status')
-    spec=importlib.util.spec_from_file_location('catalog_agent',ROOT/'ovh-agent.py')
+    spec=importlib.util.spec_from_file_location('catalog_agent',ROOT/'trinity_agent/agent.py')
     a=importlib.util.module_from_spec(spec);sys.modules[spec.name]=a;spec.loader.exec_module(a)
     from pydantic_ai import Agent, BinaryContent, ModelRetry, capture_run_messages
     from pydantic_ai.messages import ToolCallPart, RetryPromptPart
     from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
     from pydantic_ai.usage import UsageLimits, RunUsage
-    from ovh_budget_model import BudgetedModel
-    from ovh_memory import atomic_write
+    from trinity_agent.budget_model import BudgetedModel
+    from trinity_agent.memory import atomic_write
     class OVHResponsesExperiment(OpenAIResponsesModel):
         async def _map_messages(self, *positional, **keyword):
             instructions, messages = await super()._map_messages(*positional, **keyword)

@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import ovh_repository as repository
-from ovh_cache import CACHE
+from trinity_agent import repository as repository
+from trinity_agent.cache import CACHE
 
 
 class RepositoryMapTests(unittest.TestCase):

@@ -34,7 +34,9 @@ Repository layout
 -----------------
 
 ``ovh-agent-extension/extension/`` contains the VS Code extension and tests.
-``ovh-agent.py`` and ``ovh_memory.py`` contain the Python agent and memory layer.
+The ``trinity_agent`` package contains the Python backend and its memory,
+execution, verification, routing and provider layers. ``ovh-agent.py`` remains
+only as a compatibility launcher for deployments predating version 2.0.
 ``ovh-agent.sh`` loads credentials from server secret files.
 ``ovh-branding.cjs`` applies deployment branding before code-server starts.
 ``Dockerfile`` describes the development container.
@@ -491,7 +493,7 @@ accelerate local preparation/retrieval, not the model's token generation rate.
 Local request preparation
 -------------------------
 
-``ovh_request.py`` classifies the request locally (intent, domain, scope, images
+``trinity_agent/request.py`` classifies the request locally (intent, domain, scope, images
 and likely verification needs), without a model call. Short follow-ups can reuse
 references from the last four user messages for retrieval. The original user
 request is sent unchanged; classification does not change model selection,
@@ -651,7 +653,7 @@ optional upper bounds; omitted or empty values also select automatic sizing.
 The reusable reader pool adjusts concurrency without accumulating pools on slow
 mounts. Selected context remains bounded by
 ``OVH_AGENT_PREFLIGHT_CONTEXT_CHARS=auto``. Inspect the current calculated
-profile with ``python ovh_resources.py`` using the backend's environment.
+profile with ``python -m trinity_agent.resources`` using the backend's environment.
 
 Local Auto / Max performance modes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1083,7 +1085,7 @@ l'utilisateur reste indépendante. Les budgets API ne sont pas modifiés.
 
 Export local sans modèle, depuis le dossier du backend::
 
-    python3 ovh_project_memory.py --workspace /chemin/projet-a --workspace /chemin/projet-b
+    python3 -m trinity_agent.project_memory --workspace /chemin/projet-a --workspace /chemin/projet-b
 
 Ajouter ``--data-root /chemin/memoire`` pour une autre installation.
 

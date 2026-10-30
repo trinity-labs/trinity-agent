@@ -16,7 +16,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 with patch.object(sys, 'argv', ['coherence-test', '--billing-status']):
-    spec = importlib.util.spec_from_file_location('coherence_agent', ROOT / 'ovh-agent.py')
+    spec = importlib.util.spec_from_file_location('coherence_agent', ROOT / 'trinity_agent/agent.py')
     a = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(a)
 
@@ -77,7 +77,7 @@ class CoherenceTests(unittest.TestCase):
         self.assertIsNone(engine.last_acceptance)
 
     def test_command_guard_distinguishes_arguments_from_executables(self):
-        from ovh_process import command_is_destructive
+        from trinity_agent.process import command_is_destructive
         blocked = ['rm -rf  /', '/bin/rm -f -r -- /', 'sudo rm -rf /',
             'true; mkfs.ext4 /dev/example', 'shutdown -h now', 'dd if=/dev/zero of=/dev/example',
             "sh -c 'reboot'", ':(){ :|:& };:']

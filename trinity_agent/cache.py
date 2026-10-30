@@ -5,7 +5,7 @@ from pathlib import Path
 import threading
 import time
 
-from ovh_resources import resource_profile
+from trinity_agent.resources import resource_profile
 
 
 def positive_env(name, default):

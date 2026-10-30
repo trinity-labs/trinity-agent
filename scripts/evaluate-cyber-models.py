@@ -25,7 +25,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(root))
     sys.argv.append('--billing-status')  # Suppress user-conversation creation on import.
-    spec = importlib.util.spec_from_file_location('agent', root / 'ovh-agent.py')
+    spec = importlib.util.spec_from_file_location('agent', root / 'trinity_agent/agent.py')
     a = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(a)
     from pydantic_ai import Agent

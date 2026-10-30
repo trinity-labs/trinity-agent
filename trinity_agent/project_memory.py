@@ -14,8 +14,8 @@ import tempfile
 from urllib.parse import quote
 import uuid
 from datetime import datetime, timezone
-from ovh_cache import CACHE, file_signature, read_text_cached, positive_env, memory_index_limits
-from ovh_memory import atomic_write, terms, execution_evidence
+from trinity_agent.cache import CACHE, file_signature, read_text_cached, positive_env, memory_index_limits
+from trinity_agent.memory import atomic_write, terms, execution_evidence
 
 SCAN_SECONDS = positive_env('OVH_AGENT_MEMORY_SCAN_SECONDS', 5)
 IGNORED_SOURCE_DIRS = frozenset({'.git','.hg','.svn','node_modules','vendor','dist','build','coverage',
@@ -341,7 +341,7 @@ class ProjectMemory:
         assistant transcripts. The result is labelled as a document excerpt, not
         as a new verification of running code. A partial scan fails closed.
         """
-        from ovh_request import analyze_request, normalized
+        from trinity_agent.request import analyze_request, normalized
         question = ' '.join(query.split()).strip()
         analysis = analyze_request(question)
         if ('\n' in query or len(question) > 500 or question.count('?') != 1 or not question.endswith('?')

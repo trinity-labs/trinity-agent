@@ -251,7 +251,7 @@ def parse_response(text):
 
 
 def failure_origin(error):
-    from ovh_task_engine import classify_failure
+    from trinity_agent.task_engine import classify_failure
     if classify_failure(error) in {'timeout', 'network', 'provider_auth', 'provider_quota',
                                    'provider_unavailable', 'dependency_missing'}:
         return 'infrastructure'
@@ -290,8 +290,8 @@ def run_rlm(documents, question, complete, *, image='python:3.12-alpine'):
 class LiveModel:
     """One shared budget/account and request counter for roots, baselines and children."""
     def __init__(self, model_id, directory, *, max_cost_eur=.25, request_limit=30):
-        from ovh_budget import BudgetLedger
-        from ovh_budget_model import BudgetedModel
+        from trinity_agent.budget import BudgetLedger
+        from trinity_agent.budget_model import BudgetedModel
         from pydantic_ai import Agent
         self.backend = evaluation.load_backend()
         card = next(c for c in self.backend.fetch_model_catalog() if c['id'] == model_id)

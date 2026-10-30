@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0
+
+- Move the Python backend from root-level `ovh_*.py` modules into the `trinity_agent` package with concise module names.
+- Keep `ovh-agent.py` as a compatibility launcher while updating deployment integrity checks, public exports, tests and documentation for the package layout.
+
 ## 1.17.100
 
 - Keep conversation loading attached to the requested archive so delayed errors from the previous backend cannot cancel a newer open.

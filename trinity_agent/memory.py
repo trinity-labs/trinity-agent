@@ -7,7 +7,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from ovh_cache import CACHE, file_signature, read_text_cached, memory_index_limits
+from trinity_agent.cache import CACHE, file_signature, read_text_cached, memory_index_limits
 
 STOP_WORDS = set('avec dans pour les des une que qui est sur pas plus cette comme mais donc tout tous fait faire peux veut veux nous vous elle elles ils aux du de le la un et en à au ce ces il on je tu se ne ou'.split())
 EVIDENCE_EVENT_BYTES = 2 * 1024 * 1024
@@ -126,7 +126,7 @@ class ConversationMemory:
             stream.write(f'- [{digest}](documents/{digest}.md) - {len(text)} caractères\n')
         (self.root / 'JOURNAL.md').chmod(0o600)
         self.write_overview()
-        from ovh_project_memory import ProjectMemory
+        from trinity_agent.project_memory import ProjectMemory
         project=ProjectMemory.for_conversation(self.folder)
         if project: project.changed()
         return digest

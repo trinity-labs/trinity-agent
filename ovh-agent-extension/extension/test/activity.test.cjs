@@ -95,7 +95,7 @@ test('context, routing and usage stay in the journal without replacing the curre
     emit({type:'plan_updated',steps:['Examiner la comptabilité','Tester les flux'],current_step:0});
     emit(context);
     assert.equal(summary(),'Examiner la comptabilité');
-    emit({type:'tool_start',id:'read',tool:'read',title:'Lecture du fichier',detail:'ovh_budget.py · lignes 1–80'});
+    emit({type:'tool_start',id:'read',tool:'read',title:'Lecture du fichier',detail:'trinity_agent/budget.py · lignes 1–80'});
     const action=summary();
     emit({type:'plan_updated',steps:['Lire le code','Tester les flux'],current_step:1});
     emit({type:'model_active',model:'Qwen3.5-9B'});

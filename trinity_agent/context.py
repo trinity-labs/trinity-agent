@@ -9,8 +9,8 @@ from pydantic_ai.messages import (
     BinaryContent, ModelRequest, ModelResponse, ModelMessagesTypeAdapter,
     SystemPromptPart, UserPromptPart, TextPart, ThinkingPart, ToolCallPart, ToolReturnPart, RetryPromptPart,
 )
-from ovh_memory import ConversationMemory, atomic_write
-from ovh_limits import limit_setting, resolve_limits
+from trinity_agent.memory import ConversationMemory, atomic_write
+from trinity_agent.limits import limit_setting, resolve_limits
 
 SUMMARY_PREFIX = '[OVH_CONTEXT_SUMMARY]\n'
 SUMMARY_VERSION = 'Mémoire non vérifiée v2. '

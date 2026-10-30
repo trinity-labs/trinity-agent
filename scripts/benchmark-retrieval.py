@@ -9,8 +9,8 @@ import time
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ovh_cache import CACHE
-from ovh_request import analyze_request, retrieve_context
+from trinity_agent.cache import CACHE
+from trinity_agent.request import analyze_request, retrieve_context
 
 
 def main():

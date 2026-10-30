@@ -19,9 +19,9 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.usage import RequestUsage
-from ovh_budget import BudgetLedger, BudgetExceeded
-from ovh_budget_model import BudgetedModel, NormalizedStream
-from ovh_budget_model import normalize_tool_call_names
+from trinity_agent.budget import BudgetLedger, BudgetExceeded
+from trinity_agent.budget_model import BudgetedModel, NormalizedStream
+from trinity_agent.budget_model import normalize_tool_call_names
 
 # Some OVH chat templates occasionally append an OpenAI channel marker to a
 # function name. Strip it only when the base name is an advertised tool.
@@ -126,7 +126,7 @@ with tempfile.TemporaryDirectory() as directory:
 print('PASS: per-request limits, summaries, streams, uncertain charges, native EUR prices and USD rejection')
 
 # Provider observations remain separate from durable local request accounting.
-from ovh_budget import OvhBalanceLedger, BudgetLedgerError
+from trinity_agent.budget import OvhBalanceLedger, BudgetLedgerError
 with tempfile.TemporaryDirectory() as directory:
     now = datetime.now(timezone.utc)
     snapshot = dict(available=True, currency='EUR', credit_currency='EUR', project='fixture',
@@ -248,7 +248,7 @@ print('PASS: durable request receipts on request exhaustion, failed validation a
 # compaction or a successful primary model before fallback.
 import importlib.util
 with patch.object(sys, 'argv', ['request-receipt-test', '--billing-status']):
-    spec = importlib.util.spec_from_file_location('request_receipt_backend', Path(__file__).resolve().parents[1]/'ovh-agent.py')
+    spec = importlib.util.spec_from_file_location('request_receipt_backend', Path(__file__).resolve().parents[1]/'trinity_agent/agent.py')
     backend = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(backend)
 with tempfile.TemporaryDirectory() as directory:
@@ -275,7 +275,7 @@ print('PASS: request journal persists independently; interrupted costs are repor
 
 # OVH's authenticated project/model rate limit must cover tools, summaries and
 # streams across processes, independently of financial budget reservations.
-from ovh_budget_model import OVHRateLimiter
+from trinity_agent.budget_model import OVHRateLimiter
 from pydantic_ai.exceptions import ModelHTTPError
 from unittest.mock import AsyncMock, patch
 from contextlib import asynccontextmanager
@@ -325,7 +325,7 @@ async def rate_limit_regressions(root):
         outcomes = list(workers.map(lambda _: other._slot('concurrent'), range(16)))
     assert outcomes.count(0) == 1
     command = [sys.executable, '-c',
-        'from ovh_budget_model import OVHRateLimiter; import sys; '
+        'from trinity_agent.budget_model import OVHRateLimiter; import sys; '
         'print(OVHRateLimiter(sys.argv[1], "project-a", clock=lambda: 1000.0)._slot("cross-process"))',
         str(root/'rate.sqlite3')]
     first = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)

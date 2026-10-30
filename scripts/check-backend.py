@@ -16,7 +16,8 @@ def main():
         raise SystemExit('No backend tests found')
     for suite in suites:
         result = subprocess.run([sys.executable, str(suite)], cwd=ROOT,
-                                env={**os.environ, 'PYDANTIC_AI_NO_BANNER': '1'})
+                                env={**os.environ, 'OVH_AGENT_PROVIDER': 'ovhcloud',
+                                     'PYDANTIC_AI_NO_BANNER': '1'})
         if result.returncode:
             failed.append(suite.name)
     print(f'{len(suites) - len(failed)}/{len(suites)} suites passed in {time.monotonic()-started:.1f}s', flush=True)

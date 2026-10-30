@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_limits import NAMES, UNKNOWN_WINDOW, limit_setting, resolve_limits
+from trinity_agent.limits import NAMES, UNKNOWN_WINDOW, limit_setting, resolve_limits
 
 
 class Limits(unittest.TestCase):
@@ -28,7 +28,7 @@ class Limits(unittest.TestCase):
 
     def backend(self):
         with patch.object(sys,'argv',['limits-test','--billing-status']):
-            spec=importlib.util.spec_from_file_location('limits_backend',ROOT/'ovh-agent.py')
+            spec=importlib.util.spec_from_file_location('limits_backend',ROOT/'trinity_agent/agent.py')
             backend=importlib.util.module_from_spec(spec)
             spec.loader.exec_module(backend)
         return backend
@@ -143,7 +143,7 @@ class Limits(unittest.TestCase):
         from pydantic_ai import Agent
         from pydantic_ai.models.function import FunctionModel
         from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
-        from ovh_execution import WorkflowController, ExecutionCapability
+        from trinity_agent.execution import WorkflowController, ExecutionCapability
         backend=self.backend()
         cards=[{'id':str(window),**self.card(window)} for window in (32768,262144)]
         with tempfile.TemporaryDirectory() as folder, \
@@ -168,7 +168,7 @@ class Limits(unittest.TestCase):
                 self.assertEqual(local.return_value.search.call_args.args,('logo',limits.memory_chars//2))
                 self.assertEqual(shared.return_value.search.call_args.args[-1],limits.shared_memory_chars)
                 operation,=deps.engine.journal.snapshot()['operations']
-                from ovh_task_engine import _hash
+                from trinity_agent.task_engine import _hash
                 self.assertEqual(operation['arguments_hash'],_hash({'query':'logo'}))
 
     def test_catalogue_failure_does_not_invent_provider_capacity(self):

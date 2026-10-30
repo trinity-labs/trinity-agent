@@ -27,7 +27,7 @@ import time
 import tomllib
 import uuid
 
-from ovh_memory import atomic_write
+from trinity_agent.memory import atomic_write
 
 
 class VerificationError(RuntimeError):
@@ -79,7 +79,7 @@ def contents(path: Path) -> bytes | None:
 
 def run_check(argv: list[str], cwd: Path, timeout: int = 120) -> dict:
     """Use the shared bounded executor; configured checks retain argv semantics."""
-    from ovh_process import run_process
+    from trinity_agent.process import run_process
     return run_process(argv, cwd, timeout)
 
 

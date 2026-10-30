@@ -166,8 +166,8 @@ def run_experiment(*, output, real_model=None, max_cost_eur=.25, request_limit=1
         model, ledger, adapter = None, None, None
         try:
             if real_model:
-                from ovh_budget import BudgetLedger
-                from ovh_budget_model import BudgetedModel
+                from trinity_agent.budget import BudgetLedger
+                from trinity_agent.budget_model import BudgetedModel
                 billing = backend.billing_file()
                 backend.billing_file = lambda: billing
                 account = backend.budget_ledger()

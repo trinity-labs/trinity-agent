@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_execution import ExecutionCapability, RunDependencies, WorkflowController
+from trinity_agent.execution import ExecutionCapability, RunDependencies, WorkflowController
 from pydantic_ai import Agent, Tool
 from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.models.function import FunctionModel
@@ -19,7 +19,7 @@ class ToolFallbackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch.object(sys, 'argv', ['test-tool-fallback', '--billing-status']):
-            spec = importlib.util.spec_from_file_location('fallback_backend', ROOT/'ovh-agent.py')
+            spec = importlib.util.spec_from_file_location('fallback_backend', ROOT/'trinity_agent/agent.py')
             cls.backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(cls.backend)
 

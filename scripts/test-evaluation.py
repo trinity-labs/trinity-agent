@@ -11,7 +11,7 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-import ovh_evaluation as e
+from trinity_agent import evaluation as e
 spec=importlib.util.spec_from_file_location('evaluation',ROOT/'scripts/evaluate-catalog.py')
 b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
 spec=importlib.util.spec_from_file_location('summary',ROOT/'scripts/summarize-evaluation.py')
@@ -134,7 +134,7 @@ class Evaluation(unittest.TestCase):
     def test_real_router_keeps_tools_for_image_edits_and_uses_measured_image_reader(self):
         from unittest.mock import patch
         with patch.object(sys, 'argv', ['test-evaluation', '--billing-status']):
-            spec=importlib.util.spec_from_file_location('tested_agent',ROOT/'ovh-agent.py')
+            spec=importlib.util.spec_from_file_location('tested_agent',ROOT/'trinity_agent/agent.py')
             a=importlib.util.module_from_spec(spec);spec.loader.exec_module(a)
         base={'selectable':True,'currency':'EUR','context_length':131072,'max_completion_tokens':8192,
               'input_per_million':.1,'output_per_million':.1,'free':False,'parameters_b':9}
@@ -177,7 +177,7 @@ class Evaluation(unittest.TestCase):
     def test_readonly_path_recovery_is_explicit_and_does_not_change_write_resolution(self):
         from unittest.mock import patch
         with patch.object(sys,'argv',['test','--billing-status']):
-            spec=importlib.util.spec_from_file_location('path_agent',ROOT/'ovh-agent.py')
+            spec=importlib.util.spec_from_file_location('path_agent',ROOT/'trinity_agent/agent.py')
             a=importlib.util.module_from_spec(spec);spec.loader.exec_module(a)
         with tempfile.TemporaryDirectory() as temp, patch.object(a,'WORKSPACE',Path(temp)), patch.object(a,'emit'), patch.object(a.run_dependencies(), 'verification',None):
             file=Path(temp)/'settings.json';file.write_text('{"port":8457}')

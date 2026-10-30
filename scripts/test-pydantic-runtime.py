@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pydantic_ai import Agent, ModelRetry, Tool
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel, DeltaToolCall
-from ovh_execution import ExecutionCapability, RunDependencies, WorkflowController
+from trinity_agent.execution import ExecutionCapability, RunDependencies, WorkflowController
 
 
 class NativeExecutionTests(unittest.IsolatedAsyncioTestCase):

@@ -35,7 +35,7 @@ def worker(args):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         a=module.load_backend()
     else:
-        spec=importlib.util.spec_from_file_location('benchmark_backend',ROOT/'ovh-agent.py')
+        spec=importlib.util.spec_from_file_location('benchmark_backend',ROOT/'trinity_agent/agent.py')
         a=importlib.util.module_from_spec(spec);sys.modules[spec.name]=a;spec.loader.exec_module(a)
     # Isolate policy as well as storage on every host. Merely placing the
     # fixture under /home/coder used to import that user's global AGENT.md and
@@ -88,8 +88,8 @@ def worker(args):
     reads=[]
     for _ in range(11):
         stamp=time.perf_counter();a.read_text_cached(sample);reads.append((time.perf_counter()-stamp)*1000)
-    from ovh_context import compact_context,estimate_tokens
-    from ovh_memory import ConversationMemory
+    from trinity_agent.context import compact_context,estimate_tokens
+    from trinity_agent.memory import ConversationMemory
     import asyncio
     history=[ModelRequest(parts=[UserPromptPart('Inspect all results; preserve evidence.')])]
     for i in range(160):

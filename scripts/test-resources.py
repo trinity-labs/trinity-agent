@@ -15,9 +15,9 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import ovh_resources as r
-from ovh_cache import MemoryCache
-from ovh_request import ChunkReaders, refresh_reader_limits
+from trinity_agent import resources as r
+from trinity_agent.cache import MemoryCache
+from trinity_agent.request import ChunkReaders, refresh_reader_limits
 
 KEYS = ['RAM_CACHE_MB', 'RAM_CACHE_ENTRIES', 'PREFLIGHT_WORKERS', 'PREFLIGHT_MAX_FILES', 'PREFLIGHT_FILE_CHARS',
         'INDEX_CACHE_MB', 'ARCHIVE_CACHE_MB', 'MEMORY_DOCUMENT_CHARS']
@@ -197,16 +197,16 @@ class Resources(unittest.TestCase):
         large = replace(policy.profile(),cache_mb=3,cache_entries=10)
         small = replace(large,cache_mb=1,cache_entries=1)
         cache = MemoryCache(3*r.MIB,10,adaptive=True)
-        with patch('ovh_cache.resource_profile',return_value=large):
+        with patch('trinity_agent.cache.resource_profile',return_value=large):
             for key in ['a','b','c']: cache.put(key,1,key,r.MIB)
             self.assertEqual(cache.get('a',1),'a')
         cache.next_resize=0
-        with patch('ovh_cache.resource_profile',return_value=small):
+        with patch('trinity_agent.cache.resource_profile',return_value=small):
             self.assertEqual(cache.get('a',1),'a')
             self.assertEqual(cache.bytes,r.MIB)
             self.assertIsNone(cache.get('b',1))
         cache.next_resize=0
-        with patch('ovh_cache.resource_profile',return_value=large):
+        with patch('trinity_agent.cache.resource_profile',return_value=large):
             cache.put('d',1,'d',r.MIB)
             self.assertEqual(cache.bytes,2*r.MIB)
 
@@ -223,7 +223,7 @@ class Resources(unittest.TestCase):
             return []
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);source=root/'source.py';source.write_text('test')
-            with patch('ovh_request._file_chunks',side_effect=read):
+            with patch('trinity_agent.request._file_chunks',side_effect=read):
                 loaded,partial=pool.read([(source,0)]*8,root,root,time.monotonic()+2)
         self.assertFalse(partial)
         self.assertEqual(len(loaded),8)
@@ -298,11 +298,11 @@ class Resources(unittest.TestCase):
             def read(path):
                 barrier.wait(timeout=2)
                 return [(1,1,'test',{'test':1})]
-            with patch('ovh_request._file_chunks',side_effect=read):
+            with patch('trinity_agent.request._file_chunks',side_effect=read):
                 loaded,partial=pool.read([(source,0)]*18,root,root,time.monotonic()+3,max_bytes=r.MIB)
         self.assertFalse(partial)
         self.assertEqual(len(loaded),18)
-        with patch('ovh_request._chunk_readers',pool), patch('ovh_request.resource_profile',return_value=SimpleNamespace(workers=1)):
+        with patch('trinity_agent.request._chunk_readers',pool), patch('trinity_agent.request.resource_profile',return_value=SimpleNamespace(workers=1)):
             refresh_reader_limits()
         deadline=time.monotonic()+2
         while pool.created>1 and time.monotonic()<deadline:time.sleep(.02)
@@ -313,17 +313,17 @@ class Resources(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);source=root/'source.py';source.write_text('test')
             pool=ChunkReaders(1)
-            with patch('ovh_request._file_chunks',return_value=[(1,1,'x'*2000,{'x':1})]):
+            with patch('trinity_agent.request._file_chunks',return_value=[(1,1,'x'*2000,{'x':1})]):
                 loaded,partial=pool.read([(source,0)]*100,root,root,time.monotonic()+1,max_bytes=15000)
             self.assertTrue(partial)
             self.assertEqual(len(loaded),1)
-        with patch('ovh_request.threading.Thread.start',side_effect=RuntimeError('no thread available')):
+        with patch('trinity_agent.request.threading.Thread.start',side_effect=RuntimeError('no thread available')):
             unavailable=ChunkReaders(128)
         self.assertEqual(unavailable.created,0)
         self.assertEqual(unavailable.workers,1)
 
     def test_live_performance_control_refreshes_cache_without_starting_a_request(self):
-        source=Path(__file__).resolve().parents[1]/'ovh-agent.py'
+        source=Path(__file__).resolve().parents[1]/'trinity_agent/agent.py'
         nodes=[n for n in ast.parse(source.read_text()).body if isinstance(n,ast.FunctionDef)
                and n.name in {'handle_performance','stdin_reader'}]
         policy=r.ResourcePolicy(lambda:r.Hardware(8,8192*r.MIB,6144*r.MIB))
@@ -333,7 +333,7 @@ class Resources(unittest.TestCase):
                    sys=SimpleNamespace(stdin=io.StringIO('\n'.join(json.dumps({'type':'set_performance','mode':mode}) for mode in ['max','invalid','auto']))))
         exec(compile(ast.Module(body=nodes,type_ignores=[]),str(source),'exec'),scope)
         environment=dict(os.environ)
-        with patch('ovh_cache.resource_profile',side_effect=policy.profile):scope['stdin_reader'](requests)
+        with patch('trinity_agent.cache.resource_profile',side_effect=policy.profile):scope['stdin_reader'](requests)
         self.assertEqual([event['type'] for event in events],['performance_status','performance_error','performance_status'])
         self.assertEqual([event['mode'] for event in events],['max','max','auto'])
         self.assertGreater(events[0]['cache_mb'],events[2]['cache_mb'])

@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
-import ovh_vision as v
+from trinity_agent import vision as v
 
 class Vision(unittest.TestCase):
     def test_tool_free_reader_and_text_handoff(self):

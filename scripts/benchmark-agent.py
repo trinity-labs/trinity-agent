@@ -34,12 +34,12 @@ def main():
         adapter=importlib.util.module_from_spec(spec);spec.loader.exec_module(adapter)
         a=adapter.load_backend()
     else:
-        spec=importlib.util.spec_from_file_location('pipeline_agent',ROOT/'ovh-agent.py')
+        spec=importlib.util.spec_from_file_location('pipeline_agent',ROOT/'trinity_agent/agent.py')
         a=importlib.util.module_from_spec(spec);sys.modules[spec.name]=a;spec.loader.exec_module(a)
     for path in [Path('/run/secrets/OVH_AI_API_KEY'),Path('/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity/OVH_AI_API_KEY')]:
         if not os.environ.get('OVH_AI_API_KEY') and path.is_file():os.environ['OVH_AI_API_KEY']=path.read_text().strip()
     from pydantic_ai.usage import UsageLimits,RunUsage
-    from ovh_memory import atomic_write
+    from trinity_agent.memory import atomic_write
     # Preserve every tool schema; mutations are rejected inside this benchmark only.
     for name in ['edit_file','write_file','run_command','run_host_command','remember_context','install_tools']:
         original=getattr(a,name)

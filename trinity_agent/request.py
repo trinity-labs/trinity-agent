@@ -15,8 +15,8 @@ import threading
 import time
 import unicodedata
 
-from ovh_cache import CACHE, file_signature, positive_env, read_text_cached
-from ovh_resources import resource_profile
+from trinity_agent.cache import CACHE, file_signature, positive_env, read_text_cached
+from trinity_agent.resources import resource_profile
 
 
 CONTEXT_PREFIX = "Contexte local sélectionné pour cette demande."
@@ -677,7 +677,7 @@ def prepare_request(prompt, history, workspace, allowed_root, image_count=0, *, 
     prompts, paths = recent_context(history)
     analysis = analyze_request(prompt, prompts, image_count)
     result = {'context': '', 'sources': [], 'files_scanned': 0, 'partial': False}
-    from ovh_limits import resolve_limits
+    from trinity_agent.limits import resolve_limits
     max_chars = resolve_limits(context_card, complex_task=analysis.complexity=='complex').preflight_context_chars
     timeout = positive_env('OVH_AGENT_PREFLIGHT_TIMEOUT_MS', 2500) / 1000
     if analysis.needs_workspace and max_chars and timeout:

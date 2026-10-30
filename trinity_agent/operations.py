@@ -43,8 +43,8 @@ import stat
 import sys
 import threading
 
-from ovh_task_engine import JournalError, TaskJournal
-from ovh_verification import run_check
+from trinity_agent.task_engine import JournalError, TaskJournal
+from trinity_agent.verification import run_check
 
 try:
     import fcntl

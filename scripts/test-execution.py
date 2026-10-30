@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_execution import WorkflowController, RunDependencies, ExecutionCapability, command_is_read_only, read_only_policy
+from trinity_agent.execution import WorkflowController, RunDependencies, ExecutionCapability, command_is_read_only, read_only_policy
 from pydantic_ai import Agent, ModelRetry, Tool
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
@@ -47,7 +47,7 @@ class ExecutionTests(unittest.TestCase):
 
     def test_real_backend_nonexecuted_script_retries_without_stale_incomplete_state(self):
         with patch.object(sys, 'argv', ['test-execution', '--billing-status']):
-            spec = importlib.util.spec_from_file_location('literal_command_backend', ROOT/'ovh-agent.py')
+            spec = importlib.util.spec_from_file_location('literal_command_backend', ROOT/'trinity_agent/agent.py')
             backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(backend)
         script = self.workspace/'install.sh'
@@ -269,7 +269,7 @@ class ExecutionTests(unittest.TestCase):
 import os, sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-from ovh_execution import WorkflowController
+from trinity_agent.execution import WorkflowController
 workspace, directory = Path(sys.argv[2]), Path(sys.argv[3])
 engine = WorkflowController(workspace, directory)
 def write_file(path: str, content: str) -> str:
@@ -395,7 +395,7 @@ engine.invoke(write_file, 'app.txt', 'after')
     def test_local_http_probe_refusal_is_observation_and_disables_curl_config(self):
         import socket
         with patch.object(sys, 'argv', ['test-execution', '--billing-status']):
-            spec=importlib.util.spec_from_file_location('http_probe_backend', ROOT/'ovh-agent.py')
+            spec=importlib.util.spec_from_file_location('http_probe_backend', ROOT/'trinity_agent/agent.py')
             backend=importlib.util.module_from_spec(spec);spec.loader.exec_module(backend)
         self.engine=WorkflowController(self.workspace,self.directory,trusted_diagnostics=True)
         token=backend.RUN_CONTEXT.set(RunDependencies(engine=self.engine))
@@ -427,7 +427,7 @@ engine.invoke(write_file, 'app.txt', 'after')
             self.assertFalse(command_is_read_only(command),command)
 
     def test_missing_version_probe_does_not_leave_a_phantom_mutation_after_restart(self):
-        from ovh_process import run_process
+        from trinity_agent.process import run_process
         self.engine = WorkflowController(self.workspace, self.directory, trusted_diagnostics=True)
         def run_command(command: str) -> str:
             return json.dumps(run_process(['/bin/sh', '-c', command], self.workspace))
@@ -655,7 +655,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         self.engine = WorkflowController(self.workspace, self.root / "acceptance-execution")
         self.engine.focus("Set ready to true.")
         with patch.object(sys, "argv", ["test-execution", "--billing-status"]):
-            spec = importlib.util.spec_from_file_location("execution_backend", ROOT / "ovh-agent.py")
+            spec = importlib.util.spec_from_file_location("execution_backend", ROOT / "trinity_agent/agent.py")
             backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(backend)
         rounds = []
@@ -698,7 +698,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         self.assertTrue(self.engine.final_status()['incomplete'])
 
     def test_configured_red_then_file_correction_then_green_does_not_poison_journal(self):
-        from ovh_verification import ChangeGuard
+        from trinity_agent.verification import ChangeGuard
         source = self.workspace / 'value.py'
         source.write_text('VALUE = 1\n')
         check = self.workspace / 'check.py'
@@ -734,7 +734,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         self.assertFalse(self.engine.final_status()['incomplete'])
 
     def test_nested_project_check_is_known_execution_without_root_contract(self):
-        from ovh_verification import ChangeGuard
+        from trinity_agent.verification import ChangeGuard
         nested = self.workspace / 'nested'
         nested.mkdir()
         source = nested / 'value.py'
@@ -756,7 +756,7 @@ engine.invoke(write_file, 'app.txt', 'after')
         self.assertFalse(self.engine.acceptance.describe()['configured'])
 
     def test_timed_out_or_changed_configured_check_does_not_clear_uncertainty(self):
-        from ovh_verification import ChangeGuard
+        from trinity_agent.verification import ChangeGuard
         source = self.workspace / 'value.py'
         source.write_text('VALUE = 1\n')
         (self.workspace / 'check.py').write_text('raise SystemExit(1)\n')

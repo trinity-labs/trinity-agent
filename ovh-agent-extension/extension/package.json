@@ -2,7 +2,7 @@
   "name": "ovh-agent",
   "displayName": "TRINITY Agent",
   "description": "Open-source coding assistant for OVHcloud AI Endpoints and DeepSeek: archives, task resumption, steering and queued messages. Self-hosted backend required.",
-  "version": "1.17.100",
+  "version": "2.0.0",
   "icon": "media/trinity-icon.png",
   "ovhAgentBranding": {
     "lightThemeIcon": "media/trinity-icon.png",

@@ -21,7 +21,7 @@ class Validation(unittest.TestCase):
         import re
         source = (Path(__file__).resolve().parents[1] / 'ovh-agent-extension/extension/scripts/package-vsix.cjs').read_text()
         lists = re.findall(r"for \(const name of (\[[^\]]+\])\)", source)
-        backend = next(ast.literal_eval(value) for value in lists if 'ovh-agent.py' in value)
+        backend = next(ast.literal_eval(value) for value in lists if 'trinity_agent/agent.py' in value)
         self.assertEqual(set(backend), u.BACKEND_FILES)
 
     def test_only_explicit_branding_survives_replacement(self):
@@ -60,6 +60,7 @@ class Validation(unittest.TestCase):
             root = Path(folder)
             backend = {}
             for name in u.BACKEND_FILES:
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_text(name)
                 backend[name] = hashlib.sha256(name.encode()).hexdigest()
 
@@ -78,7 +79,7 @@ class Validation(unittest.TestCase):
                 u.validate(package('stopyz'), '1.14.0', root)
             with self.assertRaisesRegex(ValueError, 'Unsafe'):
                 u.validate(package(unsafe=True), '1.14.0', root)
-            (root / 'ovh-agent.py').write_text('modified local backend')
+            (root / 'trinity_agent/agent.py').write_text('modified local backend')
             with self.assertRaisesRegex(ValueError, 'deferred'):
                 u.validate(package(), '1.14.0', root)
 

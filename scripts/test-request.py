@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import ovh_request as r
-from ovh_cache import CACHE
+from trinity_agent import request as r
+from trinity_agent.cache import CACHE
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.messages import (
     ModelRequest, ModelResponse, SystemPromptPart, UserPromptPart,
@@ -95,7 +95,7 @@ class Preparation(unittest.TestCase):
             self.assertNotEqual(r.analyze_request(prompt).intent, 'execute')
 
     def test_delivery_preserves_sources_without_disabling_execution_tools(self):
-        from ovh_execution import read_only_policy
+        from trinity_agent.execution import read_only_policy
         for prompt in ['Installe et publie la release sans modifier les sources.',
                        'Livraison de 1.17.33. Ne modifie pas les sources. Installe puis publie.',
                        'Build and install the release. Do not modify the source code.',
@@ -212,7 +212,7 @@ class Preparation(unittest.TestCase):
         self.assertEqual(result['context'], '')
 
     def test_preflight_budget_resolves_auto_from_selected_model_capacity(self):
-        from ovh_limits import NAMES, resolve_limits
+        from trinity_agent.limits import NAMES, resolve_limits
         cards = [{'context_length':32768, 'max_completion_tokens':8192},
                  {'context_length':262144, 'max_completion_tokens':32768}]
         # The same request uses the provider window without a fixed char cap.
@@ -346,7 +346,7 @@ class Preparation(unittest.TestCase):
                 else 'def unrelated():\n    return "ordinary data"\n')
         long = self.project / 'long.py'
         long.write_text('# ordinary filler\n' * 6000 + 'def nebula_recovery():\n    return "late_evidence"\n')
-        from ovh_resources import Hardware, ResourcePolicy, MIB
+        from trinity_agent.resources import Hardware, ResourcePolicy, MIB
         policy = ResourcePolicy(lambda: Hardware(4, 8192*MIB, 6144*MIB))
         with patch.object(r, 'resource_profile', side_effect=policy.profile), \
              patch.dict(os.environ, {'OVH_AGENT_PREFLIGHT_MAX_FILES':'480','OVH_AGENT_PREFLIGHT_FILE_CHARS':'524288'}):
@@ -363,7 +363,7 @@ class Preparation(unittest.TestCase):
         self.assertEqual(chunks[0][:3], (1, 1, 'complete line'))
 
     def test_max_searches_beyond_two_thousand_names_without_expanding_model_context(self):
-        from ovh_resources import ResourcePolicy, Hardware, MIB
+        from trinity_agent.resources import ResourcePolicy, Hardware, MIB
         policy=ResourcePolicy(lambda:Hardware(4,8192*MIB,6144*MIB))
         policy.set_mode('max')
         for index in range(2010):
@@ -471,7 +471,7 @@ class Preparation(unittest.TestCase):
 
     def test_backend_integration_preserves_prompt_and_protocol_without_network(self):
         with patch.object(sys, 'argv', ['test-request', '--billing-status']):
-            spec = importlib.util.spec_from_file_location('request_test_agent', ROOT / 'ovh-agent.py')
+            spec = importlib.util.spec_from_file_location('request_test_agent', ROOT / 'trinity_agent/agent.py')
             backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(backend)
         history = [ModelRequest(parts=[SystemPromptPart(r.CONTEXT_PREFIX + ' obsolete'),
@@ -503,7 +503,7 @@ class SourceEvidence(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch.object(sys, 'argv', ['test-request', '--billing-status']):
-            spec = importlib.util.spec_from_file_location('source_review_agent', ROOT / 'ovh-agent.py')
+            spec = importlib.util.spec_from_file_location('source_review_agent', ROOT / 'trinity_agent/agent.py')
             cls.backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(cls.backend)
 

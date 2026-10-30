@@ -22,8 +22,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_acceptance import AcceptanceSuite
-from ovh_task_engine import TaskJournal, UnresolvedMutation, classify_failure
+from trinity_agent.acceptance import AcceptanceSuite
+from trinity_agent.task_engine import TaskJournal, UnresolvedMutation, classify_failure
 
 
 def digest(content):
@@ -252,8 +252,8 @@ def run_evaluation(*, seed=20261019, runner=None):
         probe("infrastructure_separated_from_wrong_result", infrastructure)
 
         def correction():
-            from ovh_execution import WorkflowController
-            from ovh_repository import repository_map
+            from trinity_agent.execution import WorkflowController
+            from trinity_agent.repository import repository_map
             root = base / "correction"
             root.mkdir()
             source = root/"compute.py"

@@ -16,16 +16,16 @@ from pydantic_ai.models.function import FunctionModel
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
-from ovh_memory import atomic_write
-from ovh_request import analyze_request, SourceReview, REVIEW_INSTRUCTIONS
-from ovh_execution import RunDependencies
+from trinity_agent.memory import atomic_write
+from trinity_agent.request import analyze_request, SourceReview, REVIEW_INSTRUCTIONS
+from trinity_agent.execution import RunDependencies
 deps = RunDependencies()
 def run_dependencies():
     return deps
 
 names = {'consumed_followup_ids', 'consume_followup', 'schedule_next_followup', 'read_followups', 'write_followups',
          'publish_followups', 'handle_followup', 'apply_steering'}
-syntax = ast.parse((root / 'ovh-agent.py').read_text())
+syntax = ast.parse((root / 'trinity_agent/agent.py').read_text())
 module = ast.Module(body=[node for node in syntax.body if isinstance(node, ast.FunctionDef) and node.name in names], type_ignores=[])
 events, task = [], {'prompt': 'Original task'}
 with tempfile.TemporaryDirectory() as temporary:
@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as temporary:
                  conversation_dir=lambda: folder, emit=lambda data: events.append(data),
                  archive_event=lambda data: events.append(data), read_task_state=lambda: dict(task),
                  save_task_state=lambda **changes: task.update(changes))
-    exec(compile(module, str(root / 'ovh-agent.py'), 'exec'), scope)
+    exec(compile(module, str(root / 'trinity_agent/agent.py'), 'exec'), scope)
     requests = queue.Queue()
     def command(action, **fields):
         scope['handle_followup']({'action': action, 'conversation': 'conversation', **fields}, requests)
@@ -121,7 +121,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert requests.empty()
     # Reload the functions with a fresh process scope: order comes from disk.
     restarted = dict(scope)
-    exec(compile(module, str(root / 'ovh-agent.py'), 'exec'), restarted)
+    exec(compile(module, str(root / 'trinity_agent/agent.py'), 'exec'), restarted)
     assert restarted['read_followups']() == items
     # Stale IDs, started source/anchor, malformed requests and wrong conversation cannot resurrect tasks.
     for fields in [dict(id='gone',target='q1',position='before'), dict(id='q1',target='gone',position='after'),
@@ -154,7 +154,7 @@ with tempfile.TemporaryDirectory() as temporary:
     # Execute the real dispatch branch in a one-iteration loop (it contains continue).
     dispatch_module = ast.Module(body=[ast.For(target=ast.Name(id='_',ctx=ast.Store()),
         iter=ast.Tuple(elts=[ast.Constant(None)],ctx=ast.Load()), body=[dispatcher], orelse=[])],type_ignores=[])
-    dispatch_code = compile(ast.fix_missing_locations(dispatch_module),str(root/'ovh-agent.py'),'exec')
+    dispatch_code = compile(ast.fix_missing_locations(dispatch_module),str(root/'trinity_agent/agent.py'),'exec')
     dispatched=[]
     while scope['read_followups']():
         scope.update(request_type='next_followup',request={'conversation':'conversation',

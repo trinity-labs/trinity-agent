@@ -12,7 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_task_engine import (FailureTracker, JournalCorrupt, JournalError,
+from trinity_agent.task_engine import (FailureTracker, JournalCorrupt, JournalError,
                              TaskJournal, UnresolvedMutation, classify_failure)
 
 
@@ -28,7 +28,7 @@ class DurableExecution(unittest.TestCase):
         script = """
 import os, sys
 from pathlib import Path
-from ovh_task_engine import TaskJournal
+from trinity_agent.task_engine import TaskJournal
 journal = TaskJournal(sys.argv[1])
 journal.start('write_file', {'path':sys.argv[2], 'content':'new'}, mutation=True)
 Path(sys.argv[2]).write_text('new')

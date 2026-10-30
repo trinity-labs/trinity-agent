@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import unicodedata
 
-from ovh_cache import read_text_cached
+from trinity_agent.cache import read_text_cached
 
 DOMAINS = {'code','web','system_security','network_security','linux','windows','macos','android','ios','vision','general'}
 

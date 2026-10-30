@@ -21,7 +21,7 @@ from pydantic_ai.usage import UsageLimits
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 with patch.dict(os.environ, {'OVH_AGENT_PROVIDER':'deepseek'}), patch.object(sys, 'argv', ['test', '--billing-status']):
-    spec = importlib.util.spec_from_file_location('deepseek_backend', ROOT/'ovh-agent.py')
+    spec = importlib.util.spec_from_file_location('deepseek_backend', ROOT/'trinity_agent/agent.py')
     a = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = a
     spec.loader.exec_module(a)

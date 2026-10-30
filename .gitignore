@@ -10,13 +10,13 @@
 !/docker-compose.yml
 !/docker-entrypoint.sh
 !/ovh-agent.py
+!/trinity_agent/
+!/trinity_agent/*.py
 !/.ovh-agent-checks.json
-!/ovh_verification.py
 !/scripts/test-verification.py
 !/scripts/test-export-public.py
 !/ovh-agent.sh
 !/ovh-branding.cjs
-!/ovh_memory.py
 !/ovh-agent-extension/extension/archive-store.js
 !/ovh-agent-extension/extension/window-lock.js
 !/ovh-agent-extension/extension/extension.js
@@ -96,13 +96,7 @@
 !/INFERENCE.rst
 !/scripts/evaluate-cyber-models.py
 
-!/ovh_context.py
-!/ovh_cache.py
-!/ovh_resources.py
 !/scripts/test-resources.py
-!/ovh_request.py
-!/ovh_budget.py
-!/ovh_budget_model.py
 !/scripts/test-budget.py
 !/scripts/test-budget-model.py
 !/scripts/test-cache.py
@@ -111,14 +105,11 @@
 !/scripts/test-session.py
 !/scripts/test-billing.py
 
-!/ovh_workspace.py
 !/scripts/test-workspace.py
 !/ovh-agent-extension/extension/project-store.js
 
-!/ovh_project_memory.py
 !/scripts/test-project-memory.py
 
-!/ovh_evaluation.py
 !/scripts/evaluate-catalog.py
 !/scripts/test-evaluation.py
 !/scripts/summarize-evaluation.py
@@ -140,17 +131,10 @@
 !/ovh-agent-extension/extension/scripts/build-frontend.cjs
 !/ovh-agent-extension/extension/webview-html.js
 
-!/ovh_vision.py
 !/scripts/test-vision.py
 
 # Public semantic policy; private task rules remain excluded.
-!/ovh_instructions.py
 
-!/ovh_task_engine.py
-!/ovh_acceptance.py
-!/ovh_repository.py
-!/ovh_execution.py
-!/ovh_operations.py
 !/scripts/test-task-engine.py
 !/scripts/test-acceptance.py
 !/scripts/test-repository.py
@@ -161,8 +145,6 @@
 !/scripts/test-deepseek.py
 !/scripts/evaluate-autonomy.py
 
-!/ovh_tools.py
-!/ovh_process.py
 !/scripts/test-tools.py
 !/scripts/test-tool-fallback.py
 !/scripts/test-tool-recovery.py
@@ -171,7 +153,6 @@
 !/scripts/test-agent-evaluation.py
 !/scripts/test-coherence.py
 
-!/ovh_limits.py
 !/scripts/test-limits.py
 
 # Explicit research experiments and their independent contract checks.

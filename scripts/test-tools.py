@@ -9,12 +9,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from ovh_tools import ToolSelection, CORE
+from trinity_agent.tools import ToolSelection, CORE
 from pydantic_ai import Agent, Tool
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.tools import ToolDefinition
-from ovh_execution import WorkflowController
+from trinity_agent.execution import WorkflowController
 
 
 class Discovery(unittest.TestCase):
@@ -135,7 +135,7 @@ class RecoveryDiscovery(unittest.TestCase):
     def setUpClass(cls):
         root = Path(__file__).resolve().parents[1]
         with patch.object(sys, 'argv', ['test-tools', '--billing-status']):
-            spec = importlib.util.spec_from_file_location('recovery_discovery_backend', root/'ovh-agent.py')
+            spec = importlib.util.spec_from_file_location('recovery_discovery_backend', root/'trinity_agent/agent.py')
             cls.backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(cls.backend)
 
@@ -262,7 +262,7 @@ class VerificationIntent(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch.object(sys,'argv',['test-tools','--billing-status']):
-            spec=importlib.util.spec_from_file_location('verification_intent_backend',Path(__file__).resolve().parents[1]/'ovh-agent.py')
+            spec=importlib.util.spec_from_file_location('verification_intent_backend',Path(__file__).resolve().parents[1]/'trinity_agent/agent.py')
             cls.backend=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.backend)
 
     def setUp(self):
@@ -483,11 +483,11 @@ class ProgressContract(unittest.TestCase):
         self.engine.commentary_enabled = True
         self.a.update_plan(['Lire'], explanation='Je vérifie le fichier.')
         self.assertFalse(self.engine.commentary_due())
-        with patch('ovh_execution.time.monotonic', return_value=self.engine.commentary_at+46):
+        with patch('trinity_agent.execution.time.monotonic', return_value=self.engine.commentary_at+46):
             self.assertTrue(self.engine.commentary_due())
         self.engine.focus('Vérifie plutôt le second fichier.')
         self.assertTrue(self.engine.commentary_due())
-        from ovh_request import commentary_silenced
+        from trinity_agent.request import commentary_silenced
         for prompt in ('Termine uniquement avec un objet JSON.', 'Tu restes silencieux, corrige cela.',
                        'Le modèle travaille sans commentaires. Corrige ce défaut.',
                        'Le code contient `sans commentaires`. Explique le défaut.'):

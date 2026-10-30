@@ -11,8 +11,8 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from ovh_budget import BudgetLedger
-from ovh_memory import atomic_write
+from trinity_agent.budget import BudgetLedger
+from trinity_agent.memory import atomic_write
 
 
 def plan(config, now):

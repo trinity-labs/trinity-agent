@@ -10,8 +10,8 @@ import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from ovh_workspace import WorkspaceContext,inventory,install_plan
-from ovh_memory import ConversationMemory
+from trinity_agent.workspace import WorkspaceContext,inventory,install_plan
+from trinity_agent.memory import ConversationMemory
 
 class WorkspaceTests(unittest.TestCase):
     def setUp(self):
@@ -117,9 +117,9 @@ class WorkspaceTests(unittest.TestCase):
     def test_environment_cache_refresh_and_no_environment_secrets(self):
         with patch.dict('os.environ',{'OVH_AI_API_KEY':'never-include-this','OVH_AGENT_INVENTORY_TTL_SECONDS':'300'}):
             first=inventory(self.work,self.data)
-            with patch('ovh_workspace.shutil.which',side_effect=AssertionError('cache should be used')):
+            with patch('trinity_agent.workspace.shutil.which',side_effect=AssertionError('cache should be used')):
                 self.assertEqual(first,inventory(self.work,self.data))
-            with patch('ovh_workspace.shutil.which',return_value='/mock/tool'):
+            with patch('trinity_agent.workspace.shutil.which',return_value='/mock/tool'):
                 refreshed=inventory(self.work,self.data,True)
             self.assertEqual(refreshed['tools']['rg'],'/mock/tool')
             self.assertNotIn('never-include-this',json.dumps(first))
@@ -128,7 +128,7 @@ class WorkspaceTests(unittest.TestCase):
         commands=install_plan(self.work,'python',['pytest==8.3.5'])
         self.assertIn('venv',commands[0]);self.assertIn(str(self.work/'.agent-tools/venv'),commands[0])
         self.assertEqual(commands[-1][-2:],['--','pytest==8.3.5'])
-        with patch('ovh_workspace.shutil.which',return_value='/usr/bin/npm'):
+        with patch('trinity_agent.workspace.shutil.which',return_value='/usr/bin/npm'):
             cmd=install_plan(self.work,'npm',['typescript'])[0]
             self.assertIn('--ignore-scripts',cmd);self.assertIn(str(self.work/'.agent-tools/npm'),cmd)
         for package in ['--help','a;reboot','https://evil.test/pkg','../pkg','$(echo bad)']:
@@ -137,14 +137,14 @@ class WorkspaceTests(unittest.TestCase):
         (self.work/'.agent-tools').symlink_to(self.root)
         with self.assertRaises(ValueError):install_plan(self.work,'python',['pytest'])
     def test_project_tools_are_available_to_verification_commands(self):
-        from ovh_verification import run_check
+        from trinity_agent.verification import run_check
         binary=self.work/'.agent-tools/npm/node_modules/.bin/project-check'
         binary.parent.mkdir(parents=True)
         binary.write_text('#!/bin/sh\nprintf "project tool reached\\n"\n');binary.chmod(0o700)
         result=run_check(['project-check'],self.work)
         self.assertTrue(result['passed']);self.assertIn('project tool reached',result['output'])
     def test_dependency_changes_require_new_verification(self):
-        from ovh_verification import ChangeGuard
+        from trinity_agent.verification import ChangeGuard
         import shlex
         (self.work/'check.py').write_text('print("passed")\n')
         (self.work/'.ovh-agent-checks.json').write_text(json.dumps({'version':1,'checks':[{'name':'check','argv':['{python}','check.py'],'paths':['*.py'],'protect':['check.py']}]}))
@@ -163,14 +163,14 @@ class WorkspaceTests(unittest.TestCase):
             start=time.monotonic();self.assertIn('incomplète',self.ctx.search('architecture'))
             self.assertLess(time.monotonic()-start,.2)
             wait.set()
-        import ovh_workspace
-        ovh_workspace._reader.join(1)
+        from trinity_agent import workspace
+        workspace._reader.join(1)
 
 class BackendTools(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch.object(sys,'argv',['test','--billing-status']):
-            spec=importlib.util.spec_from_file_location('workspace_agent',ROOT/'ovh-agent.py')
+            spec=importlib.util.spec_from_file_location('workspace_agent',ROOT/'trinity_agent/agent.py')
             cls.a=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.a)
     def test_auto_project_policy_uses_real_receipts_and_refreshes_inventory(self):
         a=self.a

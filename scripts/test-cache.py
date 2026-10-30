@@ -7,8 +7,8 @@ import tempfile
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ovh_cache import CACHE, MemoryCache, read_text_cached
-from ovh_memory import ConversationMemory, atomic_write
+from trinity_agent.cache import CACHE, MemoryCache, read_text_cached
+from trinity_agent.memory import ConversationMemory, atomic_write
 
 cache = MemoryCache(20, max_entries=2)
 cache.put('a', 1, 'one', 10)
@@ -49,10 +49,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert reference in first
     snapshot = memory.root / 'cache' / 'search-v1.json'
     assert snapshot.exists() and snapshot.stat().st_mode & 0o777 == 0o600
-    with patch('ovh_memory.read_text_cached', side_effect=AssertionError('warm index reread')):
+    with patch('trinity_agent.memory.read_text_cached', side_effect=AssertionError('warm index reread')):
         assert memory.search('calyx') == first
     CACHE.clear()
-    with patch('ovh_memory.read_text_cached', side_effect=AssertionError('disk index should survive restart')):
+    with patch('trinity_agent.memory.read_text_cached', side_effect=AssertionError('disk index should survive restart')):
         assert memory.search('calyx') == first
     # Disposable legacy fragments cannot override the authoritative document.
     legacy = memory.index / f'{reference}-legacy.json'
@@ -93,8 +93,8 @@ with tempfile.TemporaryDirectory() as directory:
     for number in range(10):
         bounded.put(f'calyx {number} ' + 'long archive ' * 200)
     bounded.bootstrap()
-    with patch('ovh_memory.memory_index_limits', return_value=(0, 4096, 100)), \
-         patch('ovh_memory.read_text_cached', wraps=read_text_cached) as reads:
+    with patch('trinity_agent.memory.memory_index_limits', return_value=(0, 4096, 100)), \
+         patch('trinity_agent.memory.read_text_cached', wraps=read_text_cached) as reads:
         entries, _, partial = bounded.search_index()
         assert partial and entries and max(len(entry['text']) for entry in entries) <= 100
         assert len(json.dumps(entries).encode()) <= 4096
@@ -102,14 +102,14 @@ with tempfile.TemporaryDirectory() as directory:
         assert 'Recherche mémoire partielle' in bounded.search('absent')
     # Resource changes invalidate a warm index. A zero budget must not read
     # documents, and a partial lookup must not claim the archive was empty.
-    with patch('ovh_memory.memory_index_limits', return_value=(0, 0, 0)), \
-         patch('ovh_memory.read_text_cached', side_effect=AssertionError('zero budget read')):
+    with patch('trinity_agent.memory.memory_index_limits', return_value=(0, 0, 0)), \
+         patch('trinity_agent.memory.read_text_cached', side_effect=AssertionError('zero budget read')):
         assert bounded.search_index() == ([], {}, True)
         assert 'Recherche mémoire partielle' in bounded.search('calyx')
         assert len(bounded.search('calyx', budget=30)) <= 30
         assert bounded.search('calyx', budget=0) == ''
     assert 'long archive' in bounded.read(entries[0]['reference'])
-    with patch('ovh_memory.memory_index_limits', return_value=(0, 8192, 1000)):
+    with patch('trinity_agent.memory.memory_index_limits', return_value=(0, 8192, 1000)):
         grown, _, _ = bounded.search_index()
         assert max(len(entry['text']) for entry in grown) > 100
     # A truncated document cannot acquire the authority of a complete receipt.
@@ -119,7 +119,7 @@ with tempfile.TemporaryDirectory() as directory:
     tail = ConversationMemory(root / 'truncated-receipt')
     tail.put(receipt_text + ' untrusted suffix')
     (tail.folder / 'events.jsonl').write_text(receipt_text + '\n')
-    with patch('ovh_memory.memory_index_limits', return_value=(0, 4096, len(receipt_text))):
+    with patch('trinity_agent.memory.memory_index_limits', return_value=(0, 4096, len(receipt_text))):
         assert all(not entry['execution_evidence'] for entry in tail.search_index()[0])
     # Bootstrap old event-only archives without losing executed receipts or
     # turning the accompanying assistant conclusion into automatic evidence.

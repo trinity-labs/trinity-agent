@@ -31,13 +31,13 @@ from pydantic_ai.messages import InstructionPart, RetryPromptPart, ToolReturnPar
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage
-    from ovh_verification import ChangeGuard
-    from ovh_tools import ToolSelection
+    from trinity_agent.verification import ChangeGuard
+    from trinity_agent.tools import ToolSelection
 
-from ovh_memory import atomic_write
-from ovh_task_engine import TaskJournal, FailureTracker, classify_failure
-from ovh_acceptance import AcceptanceSuite
-from ovh_request import read_only_policy, commentary_silenced
+from trinity_agent.memory import atomic_write
+from trinity_agent.task_engine import TaskJournal, FailureTracker, classify_failure
+from trinity_agent.acceptance import AcceptanceSuite
+from trinity_agent.request import read_only_policy, commentary_silenced
 
 
 @dataclass
@@ -264,7 +264,7 @@ class WorkflowController:
         self.journal = TaskJournal(self.directory / 'actions', verifier=self._verify_action)
         # Backend session ownership excludes a previous worker before construction.
         self.journal.recover()
-        from ovh_operations import OperationSuite
+        from trinity_agent.operations import OperationSuite
         self.transactions = TaskJournal(self.directory / 'transactions')
         self.operations = OperationSuite(self.workspace, runner=operation_runner, journal=self.transactions)
         # Journals persist for recovery across requests. Fallback safety must

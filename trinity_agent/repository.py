@@ -18,7 +18,7 @@ import posixpath
 import re
 import stat
 
-from ovh_cache import CACHE
+from trinity_agent.cache import CACHE
 
 
 SOURCE_EXTENSIONS = {'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'}

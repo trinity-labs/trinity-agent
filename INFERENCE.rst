@@ -73,7 +73,7 @@ le résultat obtenu dans l'environnement. Sources : `évaluation OpenAI`_ et
 Application concrète dans cet agent
 -----------------------------------
 
-* ``ovh_request.py`` analyse localement la demande sans appel de modèle. Il
+* ``trinity_agent/request.py`` analyse localement la demande sans appel de modèle. Il
   conserve le sujet des relances, identifie les chemins pertinents et prépare
   des extraits. BM25 réduit l'effet des répétitions et tient compte de la rareté
   des termes et de la longueur des passages, avec k1=1,2 et b=0,75 ; la diversité
@@ -108,7 +108,7 @@ Profil local et ressources
 --------------------------
 
 Le profil est désormais automatique, y compris dans ce déploiement. La détection
-dans ``ovh_resources.py`` combine nombre de CPU, affinité, quotas CPU et cpusets,
+dans ``trinity_agent/resources.py`` combine nombre de CPU, affinité, quotas CPU et cpusets,
 mémoire totale et disponible, limites et consommation des cgroups v1/v2.
 Les limites des parents visibles sont aussi prises en compte. Le seuil
 ``memory.high`` est traité comme une limite de dimensionnement pour éviter le
@@ -144,7 +144,7 @@ allocation diminue davantage. Les objets déjà conservés sont comptés pour é
 qu'un remplissage normal ne provoque à lui seul une réduction. Le nombre de
 lecteurs est limité par CPU et mémoire, avec un maximum de seize. Le scan et la
 taille des fichiers suivent ce budget, dans les bornes de l'algorithme. Ces
-heuristiques restent vérifiables avec ``python ovh_resources.py`` ; elles
+heuristiques restent vérifiables avec ``python -m trinity_agent.resources`` ; elles
 constituent des plafonds estimés, pas une réservation ni une limite de RSS.
 
 Sur la machine observée, le calcul automatique donne actuellement six lecteurs,
@@ -198,7 +198,7 @@ preuves manquées. Ce résultat mesure la couverture d'une recherche ciblée et
 la réutilisation du cache ; il ne mesure ni la qualité générale des réponses,
 ni la vitesse de génération du fournisseur.
 
-Sur le dépôt de l'agent lui-même, une demande ciblant ``ovh_request.py`` a lu
+Sur le dépôt de l'agent lui-même, une demande ciblant ``trinity_agent/request.py`` a lu
 480 fichiers en 1443 ms à froid puis 672 ms à chaud, avec 16 401 caractères
 sélectionnés et environ 46 Mio estimés en cache. Le résultat est signalé partiel :
 la limite de 480 fichiers ne couvre pas les 1722 candidats de cet inventaire.

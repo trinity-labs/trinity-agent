@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import ovh_process as runner
+from trinity_agent import process as runner
 
 
 class ProcessTests(unittest.TestCase):

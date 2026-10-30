@@ -11,10 +11,10 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_verification import ChangeGuard, VerificationError, check_syntax, run_check, test_count
+from trinity_agent.verification import ChangeGuard, VerificationError, check_syntax, run_check, test_count
 
 with patch.object(sys, 'argv', ['test-verification', '--billing-status']):
-    spec = importlib.util.spec_from_file_location('verification_agent', ROOT / 'ovh-agent.py')
+    spec = importlib.util.spec_from_file_location('verification_agent', ROOT / 'trinity_agent/agent.py')
     backend = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(backend)
 
@@ -128,7 +128,7 @@ class Verification(unittest.TestCase):
             self.guard.validate_summary('Le changement a été effectué et la règle CSS a été appliquée.')
 
     def test_build_turn_does_not_require_source_mutation_or_direct_a_fake_write(self):
-        from ovh_request import analyze_request
+        from trinity_agent.request import analyze_request
         self.guard.task_intent = analyze_request(
             'Installe et publie le paquet déjà construit. Crée le tag annoté v1.2.3 sur le commit public.').intent
         text = 'Compilation exécutée sur les sources existantes.'
@@ -527,7 +527,7 @@ class Verification(unittest.TestCase):
         self.assertEqual(self.guard.state['report']['status'], 'failed')
 
     def test_javascript_reference_comment_is_preserved_but_executable_suffix_is_not(self):
-        from ovh_verification import same_check_definition
+        from trinity_agent.verification import same_check_definition
         path = Path('check.test.cjs')
         original = "require('node:assert/strict').equal(1, 1);"
         self.assertTrue(same_check_definition(path, original, original + '\n// documented check\n'))
@@ -538,7 +538,7 @@ class Verification(unittest.TestCase):
         original = self.check.read_text()
         self.guard.write(self.check, original, original + '\n# documentation\n')
         journal = json.loads((self.guard.directory / 'journal.json').read_text())
-        from ovh_verification import digest
+        from trinity_agent.verification import digest
         checks = journal['verification_context']['checks'].values()
         self.assertTrue(any(check['protected'].get(str(self.check)) == digest(self.check.read_bytes()) for check in checks))
 
@@ -741,7 +741,7 @@ class Verification(unittest.TestCase):
             self.assertEqual(backend.validate_task_output(summary), summary)
 
     def test_edit_rejection_is_structured_and_points_to_a_bounded_reread(self):
-        from ovh_execution import WorkflowController
+        from trinity_agent.execution import WorkflowController
         original = 'Introduction\nHeading\n  keep indentation\nvalue\n' + ('untouched\n' * 200)
         target = self.workspace / 'notes.txt'
         target.write_text(original)

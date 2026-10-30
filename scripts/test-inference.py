@@ -16,7 +16,7 @@ from pydantic_ai.messages import PartStartEvent, PartDeltaEvent, TextPart, TextP
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 sys.argv.append('--billing-status')  # Import without creating a user conversation.
-spec = importlib.util.spec_from_file_location('agent', root / 'ovh-agent.py')
+spec = importlib.util.spec_from_file_location('agent', root / 'trinity_agent/agent.py')
 a = importlib.util.module_from_spec(spec)
 # This suite asserts published defaults, not the operator's local token caps.
 # Isolate import-time settings; never alter the running installation policy.
@@ -364,7 +364,7 @@ print('PASS: read-only tool schemas and steering restoration')
 
 # A read-only task is an execution permission, including in full filesystem access.
 # Neutral steering, tool discovery and a stale advertised schema cannot grant it.
-from ovh_execution import WorkflowController, read_only_policy
+from trinity_agent.execution import WorkflowController, read_only_policy
 from pydantic_ai.messages import ToolReturnPart
 for readonly_prompt in ('Lecture seule : audite ce dépôt.', 'Read only: inspect the repository.', 'Inspecte le projet sans le modifier.'):
     async def check_unscoped_readonly():

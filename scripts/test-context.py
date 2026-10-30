@@ -13,9 +13,9 @@ from pydantic_ai.messages import (ModelRequest, ModelResponse, SystemPromptPart,
 from pydantic_ai.models.function import FunctionModel
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
-from ovh_context import (compact_context, estimate_tokens, SUMMARY_PREFIX, bound_tool_outputs,
+from trinity_agent.context import (compact_context, estimate_tokens, SUMMARY_PREFIX, bound_tool_outputs,
                          text_only_history, context_limits, transcript, text_tokens)
-from ovh_memory import ConversationMemory
+from trinity_agent.memory import ConversationMemory
 
 
 def validate_protocol(messages):
@@ -160,7 +160,7 @@ print('PASS: summary omits only removed reasoning; exact archives, active reason
       f'{stats["summary_source_tokens"]} estimated summary-input tokens)')
 
 sys.argv.append('--billing-status')
-spec = importlib.util.spec_from_file_location('agent_context_test', root/'ovh-agent.py')
+spec = importlib.util.spec_from_file_location('agent_context_test', root/'trinity_agent/agent.py')
 a = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = a
 spec.loader.exec_module(a)
@@ -204,7 +204,7 @@ print('PASS: real multi-tool Pydantic loop compacts mid-run, summary accounting,
 
 # A backend-created archive reference must expose its read tools immediately,
 # including when the original user request did not mention memory at all.
-from ovh_tools import ToolSelection
+from trinity_agent.tools import ToolSelection
 with tempfile.TemporaryDirectory() as folder:
     selection = ToolSelection('Affiche le résultat.')
     assert selection.visible('read_memory') and selection.visible('search_memory')
@@ -317,7 +317,7 @@ with tempfile.TemporaryDirectory() as folder:
 print('PASS: SDK context provenance, instruction deduplication, refresh, explicit recall and skipped-file fallback')
 
 # Reproduce poisoned summaries and assistant prose carried from Qwen to GPT-OSS.
-from ovh_context import valid_summary, SUMMARY_VERSION
+from trinity_agent.context import valid_summary, SUMMARY_VERSION
 assert not valid_summary('Je dois ajouter du code. </think> chatcmpl-tool-edit_file')
 assert not valid_summary('```python\nprint("invented")\n```')
 with tempfile.TemporaryDirectory() as folder:
@@ -344,7 +344,7 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'conserver le thème' in str(clean), 'Explicit user preferences survive edit history isolation'
     # Production resets tool selection after preparing memory, before the SDK call.
     from types import SimpleNamespace
-    from ovh_tools import ToolSelection
+    from trinity_agent.tools import ToolSelection
     selection = ToolSelection('Modernise la vue')
     with patch.object(a.run_dependencies(), 'tools', selection), patch.object(a.run_dependencies(), 'engine', None):
         ctx = SimpleNamespace(deps=a.run_dependencies(), prompt='Modernise la vue', messages=clean)
@@ -362,7 +362,7 @@ print('PASS: contaminated cross-model history removed, exact protocol archived, 
 
 
 # Economical working history preserves corrections and exact archived evidence.
-from ovh_context import mask_old_observations
+from trinity_agent.context import mask_old_observations
 with tempfile.TemporaryDirectory() as folder:
     memory = ConversationMemory(Path(folder))
     history = [ModelRequest(parts=[UserPromptPart('Edit the project form and deletion handler')])]

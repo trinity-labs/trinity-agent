@@ -12,9 +12,9 @@ import time
 import threading
 import queue
 from pathlib import Path
-from ovh_memory import ConversationMemory, atomic_write, terms
-from ovh_cache import read_text_cached
-from ovh_project_memory import ProjectMemory, notes as markdown_notes, markdown_note, safe_path, conversation_eligible
+from trinity_agent.memory import ConversationMemory, atomic_write, terms
+from trinity_agent.cache import read_text_cached
+from trinity_agent.project_memory import ProjectMemory, notes as markdown_notes, markdown_note, safe_path, conversation_eligible
 
 TOOLS = ('sh','bash','git','rg','python3','node','npm','bun','go','cargo','rustc','docker','ssh','apk','apt-get','dnf','pacman','make','gcc','curl','xl','lbu')
 _reader = None

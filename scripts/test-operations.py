@@ -7,8 +7,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_operations import OperationSuite
-from ovh_task_engine import TaskJournal
+from trinity_agent.operations import OperationSuite
+from trinity_agent.task_engine import TaskJournal
 
 
 class SimulatedTarget:

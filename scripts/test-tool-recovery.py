@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ovh_execution import RunDependencies, WorkflowController
-from ovh_tools import ToolSelection
+from trinity_agent.execution import RunDependencies, WorkflowController
+from trinity_agent.tools import ToolSelection
 from pydantic_ai.tools import ToolDefinition
 
 
@@ -20,7 +20,7 @@ class ToolRecoveryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch.object(sys, 'argv', ['test-tool-recovery', '--billing-status']):
-            spec = importlib.util.spec_from_file_location('recovery_backend', ROOT/'ovh-agent.py')
+            spec = importlib.util.spec_from_file_location('recovery_backend', ROOT/'trinity_agent/agent.py')
             cls.backend = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(cls.backend)
 

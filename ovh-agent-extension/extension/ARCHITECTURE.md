@@ -45,7 +45,7 @@ Les événements d’outils, d’approbation et d’erreur conservent leur ordre
 | `media/chat.js` | État d’interface, événements utilisateur, rendu, activités, pièces jointes et sauvegardes d’affichage. |
 | `media/safe-html.js` | Frontière DOMPurify pour tout HTML reçu ou restauré. |
 | `media/i18n.js` | Traduction des libellés applicatifs, sans réécriture du code ou des messages utilisateur. |
-| `../../ovh-agent.py` | Inférence, outils, persistance des événements et contrôles d’exécution. |
+| `../../trinity_agent/agent.py` | Inférence, outils, persistance des événements et contrôles d’exécution. |
 
 `chat.js` reste le contrôleur partagé de l’interface : éviter de déplacer ses variables globales dans plusieurs scripts interdépendants sans interface explicite et tests de cycle de vie. Les modules de transport et de rendu sont isolés parce qu’ils ont des entrées/sorties testables.
 
@@ -114,7 +114,7 @@ Le garde de sortie refuse une annonce de tests réussis sans reçu d’exécutio
 
 ### Visual reader and text executor
 
-When the selected executor cannot read images, `ovh_vision.py` performs one
+When the selected executor cannot read images, `trinity_agent/vision.py` performs one
 tool-free, budgeted visual extraction (60 seconds maximum, 4096 output tokens).
 The default reader is Qwen3.6-27B; `OVH_AGENT_VISION_READER` is an explicit operator
 override. It must advertise vision and native JSON schema in the effective provider
@@ -172,7 +172,7 @@ duplicate submissions return `already_started` without executing again.
 
 ### Model policy and executable controls
 
-The companion backend defines shared semantic guidance in `ovh_instructions.py`.
+The companion backend defines shared semantic guidance in `trinity_agent/instructions.py`.
 Tool descriptions explain inputs and outputs; controllers enforce permissions,
 budgets, tracked-edit verification and receipt freshness. Deployment-specific
 policy stays outside the public extension. Do not duplicate a controller's
@@ -213,11 +213,11 @@ n’est exporté avec eux.
 
 | Module backend | Responsabilité et limite |
 | --- | --- |
-| `ovh_execution.py` | Enveloppe des outils, corrections utilisateur persistantes, erreurs, état final et liaison des contrôleurs. Un contenu lu est opaque : le mot « erreur » dans un fichier n’est pas un échec de lecture. |
-| `ovh_task_engine.py` | Journal SQLite transactionnel avec synchronisation durable ; intention avant exécution, résultat inconnu après interruption, réconciliation par callback de confiance. Arguments et sorties sont hachés dans ce journal. |
-| `ovh_acceptance.py` | Contrat déclaratif figé au début du tour, postconditions relues, reçus des contrôles vérifiés et détection des preuves périmées. |
-| `ovh_operations.py` | Plans nommés pour fichiers, services, bases de données et opérations distantes : application, sondes, retour arrière et contrôle de restauration. Chaque déploiement doit fournir ses propres commandes et sondes. |
-| `ovh_repository.py` | Carte bornée : AST Python, analyse lexicale JS/TS, dépendances et empreintes du contenu. Cache de parsing réutilisé uniquement pour les mêmes octets. |
+| `trinity_agent/execution.py` | Enveloppe des outils, corrections utilisateur persistantes, erreurs, état final et liaison des contrôleurs. Un contenu lu est opaque : le mot « erreur » dans un fichier n’est pas un échec de lecture. |
+| `trinity_agent/task_engine.py` | Journal SQLite transactionnel avec synchronisation durable ; intention avant exécution, résultat inconnu après interruption, réconciliation par callback de confiance. Arguments et sorties sont hachés dans ce journal. |
+| `trinity_agent/acceptance.py` | Contrat déclaratif figé au début du tour, postconditions relues, reçus des contrôles vérifiés et détection des preuves périmées. |
+| `trinity_agent/operations.py` | Plans nommés pour fichiers, services, bases de données et opérations distantes : application, sondes, retour arrière et contrôle de restauration. Chaque déploiement doit fournir ses propres commandes et sondes. |
+| `trinity_agent/repository.py` | Carte bornée : AST Python, analyse lexicale JS/TS, dépendances et empreintes du contenu. Cache de parsing réutilisé uniquement pour les mêmes octets. |
 | `scripts/evaluate-autonomy.py` | Évaluation reproductible avec postconditions indépendantes, tâches générées, interruptions, concurrence et faux succès. L’exécuteur par défaut est déterministe : il ne mesure pas un modèle. |
 
 Les outils `inspect_repository`, `workflow_status`, `verify_task_acceptance`,
@@ -305,16 +305,16 @@ mise à jour doivent néanmoins inclure tous les nouveaux modules publics.
 
 ### Outils différés, contexte et exécution bornée (1.15)
 
-`ovh_tools.py` conserve un noyau de fichiers, commandes et contrôles. Les familles
+`trinity_agent/tools.py` conserve un noyau de fichiers, commandes et contrôles. Les familles
 spécialisées sont activées par le besoin explicite ou par `discover_tools` lors
 suivant ; la sélection est propre au tour, sans modifier les autorisations.
-`ovh_repository.py` classe les candidats par chemins, symboles et dépendances
+`trinity_agent/repository.py` classe les candidats par chemins, symboles et dépendances
 avant la limite finale. Les empreintes invalident le cache de parsing. Le contexte
 du contrôleur est borné à 4 800 caractères : portée, corrections, critères et
 opérations inconnues. Une observation issue d'un ancien processus n'est jamais
 présentée comme une validation actuelle.
 
-`ovh_process.py` supervise les commandes et contrôles configurés : sortie conservée
+`trinity_agent/process.py` supervise les commandes et contrôles configurés : sortie conservée
 sur 16 Ko, arrêt au-delà de 16 Mio émis, expiration et arrêt du groupe de processus.
 Les secrets hérités de l'environnement sont filtrés. Le profil par défaut
 `approved` conserve la politique d'autorisation et **n'est pas un confinement OS** ;
