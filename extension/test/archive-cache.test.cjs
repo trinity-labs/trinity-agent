@@ -18,6 +18,11 @@ test('mount usage measures filesystem blocks, handles a new archive and preserve
   assert.equal(store.usedFilesystemBytes(),80*4096,'Reserved free blocks are not occupied space');
   assert.equal(seen[0],store.root);assert.equal(seen.at(-1),root);
   assert.equal(fs.existsSync(store.dataRoot),false,'Measuring must not create storage');
+  assert.equal(store.storedBytes(),0,'A missing data root has no stored bytes');
+  fs.mkdirSync(store.dataRoot,{recursive:true});
+  fs.writeFileSync(path.join(store.dataRoot,'data.bin'),'12345');
+  fs.symlinkSync(root,path.join(store.dataRoot,'external'));
+  assert.equal(store.storedBytes(),5,'Stored size counts files without following links');
   stat.mock.mockImplementation(()=>{throw Object.assign(new Error('Denied'),{code:'EACCES'});});
   assert.equal(store.usedFilesystemBytes(),null);
   stat.mock.mockImplementation(()=>({blocks:100,bfree:100,bsize:4096}));

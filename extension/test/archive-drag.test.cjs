@@ -171,19 +171,19 @@ test('archive heading centers its icon beside the title and mount subtitle',t=>{
 test('mount usage follows its path, survives late ready and hides unavailable values',t=>{
   const {doc,emit}=setup(t);
   const used=doc.getElementById('archive-used'),separator=doc.getElementById('archive-mount-separator');
-  const update=(root,bytes)=>emit({type:'archives',items:[],projects:[],archive_root:root,archive_used_bytes:bytes});
+  const update=(root,bytes,stored=512_000_000)=>emit({type:'archives',items:[],projects:[],archive_root:root,archive_stored_bytes:stored,archive_used_bytes:bytes});
   assert(used.hidden && separator.hidden);
   update('/archives/first',12_400_000_000);
-  assert.match(used.textContent,/12,4\s+GB/);
+  assert.match(used.textContent,/512\s+MB\s+\/\s+12,4\s+GB/);
   assert.equal(used.hidden,false);assert.equal(separator.textContent,'|');assert.equal(separator.hidden,false);
   assert.equal(doc.getElementById('archive-path').nextElementSibling,separator);
   emit({type:'ready',archive_root:'/archives/first',model:'Qwen3.8-27B'});
   assert.equal(used.hidden,false,'Late ready for the same volume preserves measured usage');
   emit({type:'ready',archive_root:'/archives/second',model:'Qwen3.8-27B'});
   assert(used.hidden && separator.hidden,'A new path must never keep the old volume usage');
-  update('/archives/second',0);assert.match(used.textContent,/^0\s+B$/);assert.equal(used.hidden,false);
+  update('/archives/second',0,0);assert.match(used.textContent,/^0\s+B\s+\/\s+0\s+B$/);assert.equal(used.hidden,false);
   for(const invalid of [null,-1,NaN,Infinity,'42']) {
-    update('/archives/second',invalid);assert(used.hidden && separator.hidden);assert.equal(used.textContent,'');
+    update('/archives/second',invalid,invalid);assert(used.hidden && separator.hidden);assert.equal(used.textContent,'');
   }
 });
 

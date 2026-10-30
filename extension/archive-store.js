@@ -52,6 +52,27 @@ class ArchiveStore {
       }
     }
   }
+  storedBytes() {
+    // Measure TRINITY data itself without following links outside the data root.
+    let total=0;
+    const pending=[this.dataRoot];
+    while(pending.length) {
+      const directory=pending.pop();
+      let entries;
+      try {entries=fs.readdirSync(directory,{withFileTypes:true});} catch {continue;}
+      for(const entry of entries) {
+        const file=path.join(directory,entry.name);
+        if(entry.isDirectory())pending.push(file);
+        else if(entry.isFile()) {
+          try {
+            const size=fs.statSync(file).size;
+            if(Number.isSafeInteger(size)&&size>=0&&Number.isSafeInteger(total+size))total+=size;
+          } catch {}
+        }
+      }
+    }
+    return total;
+  }
   refreshCacheBudget() {
     if(Date.now()<this.nextCacheRefresh)return;
     this.cacheLimit=archiveCacheBudget({retainedBytes:this.cacheBytes});
@@ -351,7 +372,7 @@ if(!isMainThread && workerData?.archiveCatalog) {
         } catch(failure) {error=String(failure.message);}
         parentPort.postMessage({id,result:{project:project.id,deleted,...(error?{error}:{})}});return;
       }
-      parentPort.postMessage({id,result:{type:'archives',items,projects,archive_root:store.root,archive_used_bytes:store.usedFilesystemBytes()}});
+      parentPort.postMessage({id,result:{type:'archives',items,projects,archive_root:store.root,archive_stored_bytes:store.storedBytes(),archive_used_bytes:store.usedFilesystemBytes()}});
     } catch(error) {parentPort.postMessage({id,error:String(error.message)});}
   });
 }

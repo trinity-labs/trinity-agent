@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.4
+
+- Show TRINITY data size beside total used filesystem space, for example `515 MB / 52.1 GB`.
+
 ## 4.0.3
 
 - Display filesystem usage with international byte symbols such as `GB` instead of locale-specific `Go`.

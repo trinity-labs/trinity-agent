@@ -2653,18 +2653,24 @@ function updateArchiveMount(data) {
   const separator=document.getElementById('archive-mount-separator');
   if(!used || !separator)return;
   if(!changed && !Object.hasOwn(data,'archive_used_bytes'))return;
-  const bytes=data.archive_used_bytes;
-  const valid=Number.isSafeInteger(bytes) && bytes>=0;
-  used.hidden=separator.hidden=!valid;
+  const volumeBytes=data.archive_used_bytes;
+  const storedBytes=data.archive_stored_bytes;
+  const validVolume=Number.isSafeInteger(volumeBytes) && volumeBytes>=0;
+  const validStored=Number.isSafeInteger(storedBytes) && storedBytes>=0;
+  used.hidden=separator.hidden=!(validVolume||validStored);
   used.textContent='';
   used.title='';
-  if(valid) {
+  if(validVolume||validStored) {
     const units=['byte','kilobyte','megabyte','gigabyte','terabyte','petabyte'];
     const symbols=['B','KB','MB','GB','TB','PB'];
-    const index=bytes===0?0:Math.min(units.length-1,Math.floor(Math.log10(bytes)/3));
-    const amount=new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:1}).format(bytes/1000**index);
-    used.textContent=`${amount} ${symbols[index]}`;
-    used.title=t('Espace utilisé sur le volume : {0}',new Intl.NumberFormat(uiLanguage,{style:'unit',unit:'byte',unitDisplay:'long'}).format(bytes));
+    const format=bytes=>{
+      const index=bytes===0?0:Math.min(units.length-1,Math.floor(Math.log10(bytes)/3));
+      return `${new Intl.NumberFormat(uiLanguage,{maximumFractionDigits:1}).format(bytes/1000**index)} ${symbols[index]}`;
+    };
+    used.textContent=[validStored&&format(storedBytes),validVolume&&format(volumeBytes)].filter(Boolean).join(' / ');
+    used.title=validStored&&validVolume
+      ?t('Données TRINITY : {0} · espace utilisé sur le volume : {1}',format(storedBytes),format(volumeBytes))
+      :validStored?t('Données TRINITY : {0}',format(storedBytes)):t('Espace utilisé sur le volume : {0}',format(volumeBytes));
   }
 }
 
