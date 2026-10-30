@@ -11,6 +11,16 @@ const {configuredDarkTheme} = require(path.resolve(__dirname, '../../branding/tr
 const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.HistoryDemo';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
+function verifyInstallLayout(output, local) {
+  const entries = execFileSync('unzip', ['-Z1', output], {encoding:'utf8'}).split(/\r?\n/).filter(Boolean);
+  const invalid = entries.filter(name => name !== '[Content_Types].xml' && name !== 'extension.vsixmanifest' && !name.startsWith('extension/'));
+  if (invalid.length) throw Error(`VSIX files outside the extension install directory: ${invalid.join(', ')}`);
+  const forbidden = entries.filter(name => /^extension\/(?:trinity_agent|config)\//.test(name)
+    || /^extension\/scripts\/trinity-agent(?:\.local)?\.sh$/.test(name));
+  if (forbidden.length) throw Error(`Backend files must not be installed by the VSIX: ${forbidden.join(', ')}`);
+  const metadata = entries.includes('extension/local-update.json');
+  if (metadata !== local) throw Error('Local compatibility metadata does not match the package identity');
+}
 try {
   // Explicit allowlist: never copy local backups, credentials, archives or custom branding.
   const files = ['extension.js','project-store.js','archive-store.js','window-lock.js','security.js','markdown-renderer.js','backend-protocol.js','billing-channel.js','webview-html.js','ARCHITECTURE.md','package.json','package-lock.json','README.md','CHANGELOG.md',
@@ -74,5 +84,6 @@ try {
       execFileSync('zip', ['-qr', output, '.'], {cwd:unpacked});
     } finally { fs.rmSync(unpacked,{recursive:true,force:true}); }
   }
+  verifyInstallLayout(output, publisher === 'trinity');
   console.log(`Packaged ${publisher}.${manifest.name} ${manifest.version}: ${output}`);
 } finally { fs.rmSync(stage,{recursive:true,force:true}); }

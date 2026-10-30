@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.0.1
+
+- Enforce the VSIX installation boundary during packaging: extension files must remain under the VS Code extension directory, while backend modules, launchers and verification configuration are rejected from both Marketplace and local packages.
+- Publish a Marketplace upgrade after the repository layout cleanup so existing installations receive the corrected package lineage.
+
 ## 4.0.0
 
 - Remove all remaining `trinity-*` entries from the repository root: the Python entry point now lives in `trinity_agent`, launchers live in `scripts`, and the VS Code source lives in `extension`.
