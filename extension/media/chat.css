@@ -869,7 +869,7 @@ body.vscode-dark .access.full, body.vscode-high-contrast .access.full { color: #
 #archive-used { display: inline-flex; align-items: baseline; flex-wrap: nowrap; }
 .archive-head .archive-storage-unit { display: inline; margin: 0 3px 0 1px; opacity: .33; }
 body.vscode-light .archive-head .archive-storage-value,
-body.vscode-high-contrast-light .archive-head .archive-storage-value { color: var(--vscode-foreground); opacity: 1; }
+body.vscode-high-contrast-light .archive-head .archive-storage-value { color: var(--vscode-foreground); opacity: .66; }
 .archive-mount > [hidden] { display: none; }
 #archive-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
 .archive-head > button { flex-shrink: 0; }

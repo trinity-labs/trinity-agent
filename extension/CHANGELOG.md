@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.4
+
+- Set light-theme storage-number opacity to 0.66 while keeping units at 0.33 and dark themes unchanged.
+
 ## 5.4.3
 
 - Render storage numbers at full opacity in light themes while preserving dimmed units and the existing dark-theme appearance.
