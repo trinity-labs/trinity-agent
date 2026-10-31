@@ -15,6 +15,8 @@ test('existing browsers get a new stylesheet URL even when the branding CSS is a
     const initialCss = fs.readFileSync(css, 'utf8');
     assert.match(initialCss, /\.monaco-workbench\.vs \[data-extension-id="trinity\.trinity-agent"\][\s\S]*?content: url\("data:image\/png;base64,/);
     assert.match(initialCss, /\.monaco-workbench\.vs-dark \[data-extension-id="trinity\.trinity-agent"\][\s\S]*?content: url\("data:image\/png;base64,/);
+    const filledDarkLogo = fs.readFileSync(path.resolve(__dirname, '../media/trinity-activity.png')).toString('base64');
+    assert.match(initialCss, new RegExp(`\\.monaco-workbench\\.vs-dark[\\s\\S]*?${filledDarkLogo.slice(0, 80)}`));
     assert.doesNotMatch(initialCss, /brightness\(0\)|grayscale\(1\)/);
     const template = '<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css?existing=keep">';
     fs.writeFileSync(html, template);

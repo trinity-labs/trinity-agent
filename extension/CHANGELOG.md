@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.6
+
+- Use the filled white hexagon logo with its dark glyph in the dark extension list, matching Editor Theme.
+
 ## 5.4.5
 
 - Use the dedicated primary and white logo artwork in the extension list for light and dark themes, without color filters that can erase the glyph.

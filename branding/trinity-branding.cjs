@@ -154,7 +154,7 @@ function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server
     return `data:image/png;base64,${fs.readFileSync(asset).toString('base64')}`;
   };
   const lightLogo = imageUrl('trinity-header-primary.png');
-  const darkLogo = imageUrl('trinity-header-white.png');
+  const darkLogo = imageUrl('trinity-activity.png');
   const start = '/* TRINITY extension list logos */';
   const end = '/* End TRINITY extension list logos */';
   const current = fs.readFileSync(file, 'utf8');
