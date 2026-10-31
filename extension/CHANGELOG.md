@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.3.9
+
+- Keep the TRINITY extension-list logo purple in light themes and switch it to white from the live VS Code dark-theme class.
+
 ## 5.3.8
 
 - Add subtle horizontal spacing around mount-point storage units, with slightly more room after each unit.

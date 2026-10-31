@@ -13,6 +13,8 @@ test('existing browsers get a new stylesheet URL even when the branding CSS is a
     fs.writeFileSync(css, '.existing { color: red; }\n');
     applyExtensionListStyle(css);
     const initialCss = fs.readFileSync(css, 'utf8');
+    assert.match(initialCss, /\.monaco-workbench\.vs \[data-extension-id="trinity\.trinity-agent"\]/);
+    assert.match(initialCss, /\.monaco-workbench\.vs-dark \[data-extension-id="trinity\.trinity-agent"\][\s\S]*?brightness\(0\) invert\(1\)/);
     const template = '<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css?existing=keep">';
     fs.writeFileSync(html, template);
     assert.equal(applyExtensionListStyle(css), true);
@@ -31,7 +33,7 @@ test('existing browsers get a new stylesheet URL even when the branding CSS is a
     fs.rmSync(root, {recursive:true, force:true});
   }
 });
-test('packaged local icon matches the theme before installation; Marketplace stays purple', () => {
+test('packaged icon stays purple so the live workbench theme can switch it', () => {
   const filename = path.resolve(__dirname, '../scripts/package-vsix.cjs');
   const originalRequire = require('node:module').createRequire(filename);
   const code = fs.readFileSync(filename, 'utf8');
@@ -39,7 +41,7 @@ test('packaged local icon matches the theme before installation; Marketplace sta
   const stopped = new Error('Stage inspected before npm installation');
   try {
     for (const [publisher, theme, expected] of [
-      ['trinity', 'dark', 'media/trinity-activity.png'],
+      ['trinity', 'dark', 'media/trinity-icon.png'],
       ['trinity', 'light', 'media/trinity-icon.png'],
       ['stopyz', 'dark', 'media/trinity-icon.png'],
     ]) {
@@ -97,7 +99,7 @@ test('custom icons, safe SVG, cache refresh and default reset', () => {
     applyManifest(manifest, 'Test');
     let pkg = JSON.parse(fs.readFileSync(manifest));
     const first = pkg.icon;
-    assert.match(first, /^media\/theme-app-dark-/);
+    assert.match(first, /^media\/theme-app-light-/);
     assert.match(pkg.contributes.viewsContainers.activitybar[0].icon, /^media\/custom-menu-/);
     assert.match(pkg.trinityAgentBranding.lightThemeIcon, /^media\/custom-app-/);
     assert.match(pkg.trinityAgentBranding.darkThemeIcon, /^media\/custom-theme-dark-/);
@@ -114,7 +116,7 @@ test('custom icons, safe SVG, cache refresh and default reset', () => {
     process.env.TRINITY_AGENT_DARK_THEME_ICON = '';
     applyManifest(manifest, 'Test');
     pkg = JSON.parse(fs.readFileSync(manifest));
-    assert.match(pkg.icon, /^media\/theme-app-dark-/);
+    assert.match(pkg.icon, /^media\/theme-app-light-/);
     assert.match(pkg.trinityAgentBranding.lightThemeIcon, /^media\/trinity-agent-brand-/);
     assert.match(pkg.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-dark-/);
     assert.equal(pkg.trinityAgentBranding.darkThemeIcon, 'media/trinity-activity-legacy.svg');
@@ -151,7 +153,7 @@ test('missing overrides restore bundled branding and preserve localization keys'
     applyManifest(file, 'Customer Agent');
     const result = JSON.parse(fs.readFileSync(file));
     assert.equal(result.displayName, 'Customer Agent');
-    assert.match(result.icon, /^media\/theme-app-dark-/);
+    assert.match(result.icon, /^media\/theme-app-light-/);
     assert.equal(result.trinityAgentBranding.lightThemeIcon, 'media/trinity-icon.png');
     assert.equal(result.__metadata.publisherDisplayName, 'TRINITY');
     assert.match(result.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-dark-/);

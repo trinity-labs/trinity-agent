@@ -118,10 +118,11 @@ function applyManifest(file, name, language = process.env.TRINITY_AGENT_LANG || 
   const darkOverride = customIcon('TRINITY_AGENT_DARK_THEME_ICON', media);
   const darkThemeIcon = darkOverride ||
     (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : menuIcon);
-  // The published VSIX keeps its purple Marketplace icon. This local branding
-  // pass runs only after installation and gives the installed app its dark set.
+  // Keep a stable purple source icon. The workbench stylesheet below derives
+  // the white variant from VS Code's live `.vs-dark` class, so the icon follows
+  // theme changes without rebuilding or rewriting the installed extension.
   const darkTheme = configuredDarkTheme();
-  manifest.icon = staticThemeIcon(darkTheme ? darkThemeIcon : lightThemeIcon, media, 'app', darkTheme);
+  manifest.icon = staticThemeIcon(lightThemeIcon, media, 'app', false);
   const branding = manifest.trinityAgentBranding && typeof manifest.trinityAgentBranding === 'object' && !Array.isArray(manifest.trinityAgentBranding)
     ? manifest.trinityAgentBranding : {};
   manifest.trinityAgentBranding = { ...branding, lightThemeIcon, darkThemeIcon };
@@ -181,6 +182,13 @@ function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server
   object-fit: contain;
   object-position: center;
   opacity: 1 !important;
+}
+.monaco-workbench.vs [data-extension-id="trinity.trinity-agent"] .extension-icon .icon {
+  filter: none !important;
+}
+.monaco-workbench.vs-dark [data-extension-id="trinity.trinity-agent"] .extension-icon .icon,
+.monaco-workbench.hc-black [data-extension-id="trinity.trinity-agent"] .extension-icon .icon {
+  filter: brightness(0) invert(1) !important;
 }
 ${end}`;
   const updated = original + '\n' + css + '\n';

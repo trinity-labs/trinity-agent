@@ -8,7 +8,6 @@ const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json')));
 const publisher = process.env.MARKETPLACE_PUBLISHER || 'stopyz';
 const packageName = publisher === 'trinity' ? 'trinity-agent' : 'ovh-agent';
-const {configuredDarkTheme} = require(path.resolve(__dirname, '../../branding/trinity-branding.cjs'));
 const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.HistoryDemo';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
@@ -65,9 +64,9 @@ try {
   // installations receive upgrades. The private package keeps its refactored ID.
   manifest.name = packageName;
   manifest.displayName = 'TRINITY Agent';
-  // Choose the local icon before code-server caches the installed manifest.
-  const darkLocalIcon = publisher === 'trinity' && configuredDarkTheme();
-  manifest.icon = darkLocalIcon ? 'media/trinity-activity.png' : 'media/trinity-icon.png';
+  // Keep the source icon purple. The code-server workbench switches this
+  // specific extension icon to white from its actual VS Code theme class.
+  manifest.icon = 'media/trinity-icon.png';
   manifest.contributes.viewsContainers.activitybar[0].icon = 'media/trinity-menu.svg';
   delete manifest.scripts;
   delete manifest.devDependencies;
