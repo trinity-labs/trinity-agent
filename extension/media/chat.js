@@ -466,7 +466,14 @@ function priceLabel(model) {
   if (input || output) {
     const inputText = input ? formatModelCost(input, currency, model) : "-";
     const outputText = output ? formatModelCost(output, currency, model) : "-";
-    return t("{0} entrée · {1} sortie / 1M tokens", inputText, outputText);
+    const base = t("{0} entrée · {1} sortie / 1M tokens", inputText, outputText);
+    const threshold = Number(model.long_context_threshold || 0);
+    const longInput = Number(model.long_input_multiplier || 1);
+    const longOutput = Number(model.long_output_multiplier || 1);
+    if (threshold > 0 && (longInput > 1 || longOutput > 1)) {
+      return `${base} · >${Math.round(threshold / 1000)}k : ${formatModelCost(input * longInput, currency, model)} / ${formatModelCost(output * longOutput, currency, model)}`;
+    }
+    return base;
   }
   return t("Tarif non communiqué par l’API");
 }

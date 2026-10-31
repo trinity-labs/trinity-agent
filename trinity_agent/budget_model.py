@@ -219,9 +219,13 @@ class BudgetedModel(WrapperModel):
             currency = str(card['currency']).upper()
             incoming = Decimal(str(card['input_per_million'])) / 1000000
             outgoing = Decimal(str(card['output_per_million'])) / 1000000
+            threshold = int(card.get('long_context_threshold') or 0)
+            long_in = Decimal(str(card.get('long_input_multiplier', 1)))
+            long_out = Decimal(str(card.get('long_output_multiplier', 1)))
             window = int(card['context_length'])
             output = int((settings or {}).get('max_tokens') or card['max_completion_tokens'])
-            if currency not in {'EUR', 'USD'} or window <= 0 or not 0 < output <= window:
+            if (currency not in {'EUR', 'USD'} or window <= 0 or not 0 < output <= window
+                    or threshold < 0 or not all(value.is_finite() and value >= 1 for value in (long_in, long_out))):
                 raise ValueError('Paramètres de coût inconnus')
             if not all(p.is_finite() and p >= 0 for p in (incoming, outgoing)):
                 raise ValueError('Tarifs invalides')
@@ -231,7 +235,9 @@ class BudgetedModel(WrapperModel):
             raise ValueError('Budget : tarif ou limite du modèle inconnu ; appel bloqué.') from error
         # Upper bound for any accepted request within the advertised model window.
         # It does not rely on the approximate context tokenizer or image estimator.
-        maximum = window * incoming + output * max(Decimal(0), outgoing - incoming)
+        reserve_incoming = incoming * (long_in if threshold and window > threshold else Decimal(1))
+        reserve_outgoing = outgoing * (long_out if threshold and window > threshold else Decimal(1))
+        maximum = window * reserve_incoming + output * max(Decimal(0), reserve_outgoing - reserve_incoming)
         ledger = self.ledger_factory()
         if getattr(ledger, 'currency', currency) != currency:
             raise ValueError('Budget : devise du solde incompatible avec le tarif du modèle.')
@@ -251,16 +257,19 @@ class BudgetedModel(WrapperModel):
             # callback must not leave a permanent charge/reservation behind.
             ledger.settle(reservation, Decimal(0))
             raise
-        return ledger, reservation, incoming, outgoing, maximum
+        return ledger, reservation, incoming, outgoing, maximum, threshold, long_in, long_out
 
     def finish(self, reservation, response=None, *, completed=True):
-        ledger, identifier, incoming, outgoing, maximum = reservation
+        ledger, identifier, incoming, outgoing, maximum, threshold, long_in, long_out = reservation
         amount = None
         if response is not None and completed:
             usage = response.usage
             # Missing usage is not evidence that a paid request was free.
             if maximum == 0 or usage.input_tokens > 0 or usage.output_tokens > 0:
-                amount = Decimal(usage.input_tokens) * incoming + Decimal(usage.output_tokens) * outgoing
+                long_context = threshold and usage.input_tokens > threshold
+                actual_incoming = incoming * (long_in if long_context else Decimal(1))
+                actual_outgoing = outgoing * (long_out if long_context else Decimal(1))
+                amount = Decimal(usage.input_tokens) * actual_incoming + Decimal(usage.output_tokens) * actual_outgoing
         try:
             status = ledger.settle(identifier, amount)
         finally:

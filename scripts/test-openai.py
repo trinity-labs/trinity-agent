@@ -56,6 +56,8 @@ class OpenAIProviderTests(unittest.TestCase):
                 self.assertEqual(card['context_length'], 1_050_000)
                 self.assertEqual(card['max_completion_tokens'], 128_000)
                 self.assertEqual((card['input_per_million'], card['output_per_million']), prices)
+                self.assertEqual(card['long_context_threshold'], 272_000)
+                self.assertEqual((card['long_input_multiplier'], card['long_output_multiplier']), (2.0, 1.5))
                 self.assertTrue(card['selectable'])
         snapshot = agent.normalise_model({'id':'gpt-6.1-terra-2026-06-01'}, 'openai')
         self.assertEqual(snapshot['input_per_million'], 1.0)

@@ -119,7 +119,7 @@ AI_API_BASE_URL = configured_ai_base_url()
 MODEL_API_URL = AI_API_BASE_URL + "/models"
 DISCOVERY_API_URL = "https://catalog.endpoints.ai.ovh.net/rest/v1/models_v2"
 DISCOVERY_MODELS: dict[str, dict] = {}
-CATALOG_SCHEMA_VERSION = 4
+CATALOG_SCHEMA_VERSION = 5
 
 
 class ConfiguredOVHProvider(OVHcloudProvider):
@@ -201,22 +201,28 @@ MODEL_CAPABILITIES: dict[tuple[str, str], dict] = {}
 OPENAI_MODEL_SPECS = {
     'gpt-6-astra': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
                     'input_per_million': 10.0, 'output_per_million': 50.0,
-                    'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max']},
+                    'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max'],
+                    'long_context_threshold': 272_000, 'long_input_multiplier': 2.0, 'long_output_multiplier': 1.5},
     'gpt-6.1-sol': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
                     'input_per_million': 2.0, 'output_per_million': 10.0,
-                    'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max']},
+                    'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max'],
+                    'long_context_threshold': 272_000, 'long_input_multiplier': 2.0, 'long_output_multiplier': 1.5},
     'gpt-6.1-terra': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
                       'input_per_million': 1.0, 'output_per_million': 5.0,
-                      'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+                      'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+                      'long_context_threshold': 272_000, 'long_input_multiplier': 2.0, 'long_output_multiplier': 1.5},
     'gpt-6-sol': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
                   'input_per_million': 2.0, 'output_per_million': 10.0,
-                  'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+                  'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+                  'long_context_threshold': 272_000, 'long_input_multiplier': 2.0, 'long_output_multiplier': 1.5},
     'gpt-6-luna': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
                    'input_per_million': 0.1, 'output_per_million': 0.5,
-                   'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+                   'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+                   'long_context_threshold': 272_000, 'long_input_multiplier': 2.0, 'long_output_multiplier': 1.5},
     'gpt-5.6-sol': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
                     'input_per_million': 4.0, 'output_per_million': 20.0,
-                    'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+                    'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+                    'long_context_threshold': 272_000, 'long_input_multiplier': 2.0, 'long_output_multiplier': 1.5},
     'gpt-5.3-codex': {'context_length': 400_000, 'max_completion_tokens': 128_000,
                       'input_per_million': 1.75, 'output_per_million': 14.0,
                       'reasoning_efforts': ['low', 'medium', 'high', 'xhigh']},

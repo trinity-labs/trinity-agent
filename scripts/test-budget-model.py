@@ -128,6 +128,19 @@ with tempfile.TemporaryDirectory() as directory:
         raise AssertionError('USD price accepted as EUR')
     except ValueError:
         pass
+
+    # Long-context tariffs apply to the entire request after the provider's
+    # threshold and the reservation uses the conservative long-context ceiling.
+    tiered_card = {**card, 'long_context_threshold': 100,
+                   'long_input_multiplier': 2, 'long_output_multiplier': 1.5}
+    tiered_ledger = BudgetLedger(root/'tiered.json', {'daily': 1})
+    tiered = BudgetedModel(FunctionModel(model), lambda:tiered_ledger,
+                           lambda _:tiered_card, lambda _:None)
+    reservation = tiered.begin(settings)
+    assert reservation[4] == Decimal('.00205')
+    tiered.finish(reservation, ModelResponse(parts=[TextPart('Done')],
+                  usage=RequestUsage(input_tokens=101, output_tokens=20)))
+    assert tiered_ledger.status()['periods']['daily']['spent'] == .000262
 print('PASS: per-request limits, summaries, streams, uncertain charges, native EUR prices and USD rejection')
 
 # Provider observations remain separate from durable local request accounting.

@@ -135,6 +135,10 @@ test('catalogue and model costs use the selected display currency', () => {
       exchange_rates:{date:'2026-10-30',rates:{EUR:1,USD:2}}}), /1,00\s*€/);
     assert.match(w.formatModelCost(2, 'USD', {display_currency:'GBP',
       exchange_rates:{date:'2026-10-30',rates:{EUR:1,USD:2,GBP:.8}}}), /0,80\s*£GB/);
+    assert.match(w.priceLabel({id:'gpt-6-astra',currency:'USD',input_per_million:10,output_per_million:50,
+      long_context_threshold:272000,long_input_multiplier:2,long_output_multiplier:1.5,
+      display_currency:'EUR',exchange_rates:{date:'2026-10-30',rates:{EUR:1,USD:1.1172}}}),
+      /8,95\s*€ entrée.*44,75\s*€ sortie.*>272k.*17,90\s*€.*67,13\s*€/);
   } finally {dom.window.close();}
 });
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.4.1
+
+- Display OpenAI long-context prices beside the base Standard prices for prompts above 272K input tokens.
+- Reserve and record the 2x input and 1.5x output long-context surcharge so budget protection cannot underestimate a large request.
+
 ## 5.4.0
 
 - Expand the OpenAI Responses catalogue with the current GPT-6, GPT-6.1 and GPT-5.6 model families and their dated snapshots, using reviewed limits, reasoning levels and prices.
