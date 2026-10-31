@@ -543,6 +543,10 @@ function renderModels() {
       row.addEventListener("click", () => {
         selectedModel = model.id;
         hasModelPreference = true;
+        if (["ovhcloud", "deepseek", "openai"].includes(model.provider) && document.body.dataset.provider !== model.provider) {
+          document.body.dataset.provider = model.provider;
+          applyBillingStatus({provider: model.provider, pending: true}, false);
+        }
         if (selectedModel !== "auto-balanced") lastRoutedModel = "";
         updateModelButton();
         renderModels();
@@ -2842,7 +2846,7 @@ window.addEventListener("message", ({ data }) => {
     setBusy(true, data.text);
   }
   if (data.type === "provider_switched") {
-    if (["ovhcloud", "deepseek"].includes(data.provider)) {
+    if (["ovhcloud", "deepseek", "openai"].includes(data.provider)) {
       document.body.dataset.provider = data.provider;
       applyBillingStatus({provider: data.provider, pending: true}, false);
     }

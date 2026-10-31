@@ -1088,17 +1088,18 @@ class TrinityAgentViewProvider {
   async providerChanged() {
     if (this.restoringProvider) return;
     const provider = inferenceProvider();
+    // Switch the account display immediately. Cached billing is posted
+    // synchronously by refreshBilling, while the live refresh continues in
+    // parallel with the old backend shutdown.
+    this.post({ type: "provider_switched", provider, pending: Boolean(this.busy || this.clearingConversation) });
+    void this.refreshBilling(false);
     if (this.busy || this.clearingConversation) {
       this.providerRestartPending = true;
-      this.post({ type: "provider_switched", provider, pending: true });
-      void this.refreshBilling(false);
       return;
     }
     this.providerRestartPending = false;
     await this.stopAgent(false);
     // The next message starts the backend with the newly selected provider.
-    this.post({ type: "provider_switched", provider });
-    void this.refreshBilling(false);
   }
 
   async selectProvider() {

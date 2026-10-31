@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.5.0
+
+- Display the selected provider balance immediately after a model change, including OpenAI, using its cached account value while the live refresh runs.
+
 ## 5.4.6
 
 - Use the filled white hexagon logo with its dark glyph in the dark extension list, matching Editor Theme.

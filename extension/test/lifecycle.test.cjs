@@ -27,10 +27,10 @@ async function setup(t) {
   const scope={require:name=>name==='vscode'?vscode:name==='./project-store'?projectStore:name==='./archive-store'?archiveStore:native(name),
     module:{exports:{}},process:{env:{TRINITY_AGENT_LANG:'fr'}},console,setTimeout,clearTimeout};
   vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',scope);
-  const provider=new scope.module.exports.Provider(root,{},state);
+  const provider=new scope.module.exports.Provider(root,{},state),billingRefreshes=[];
   const sent=[],commands=[],pending=[];
   provider.showArchives=()=>{};
-  provider.refreshBilling=async()=>{};
+  provider.refreshBilling=async configure=>{billingRefreshes.push({provider:settings.provider,configure});};
   provider.openWindow=async view=>{provider.windowLock={};view.webview.html=provider.getHtml(view.webview);};
   provider.startAgent=async()=>{
     const agent=new EventEmitter();
@@ -62,8 +62,20 @@ async function setup(t) {
   const submit=text=>{prompt.value=text;send.click();};
   t.after(()=>{dom.window.close();clearTimeout(provider.archiveRefreshTimer);clearTimeout(provider.deltaTimer);fs.rmSync(temporary,{recursive:true,force:true});});
   return {provider,window,document,prompt,send,sent,commands,flush,emit,submit,temporary,values,
-    settings,projects:new projectStore.ProjectStore(dataRoot)};
+    settings,billingRefreshes,projects:new projectStore.ProjectStore(dataRoot)};
 }
+
+test('changing a model provider displays and refreshes its balance immediately',async t=>{
+  const h=await setup(t);
+  await h.provider.startAgent();
+  const stopping=h.provider.agent;
+  await h.provider.selectModel('gpt-6-astra','openai');
+  assert.equal(h.settings.provider,'openai');
+  assert.equal(h.document.body.dataset.provider,'openai');
+  assert.match(h.document.getElementById('live-balance').textContent,/OpenAI Codex/);
+  assert.deepEqual(h.billingRefreshes.at(-1),{provider:'openai',configure:false});
+  assert(stopping.killed);
+});
 
 test('opening a conversation restores its provider before loading the model and context',async t=>{
   const h=await setup(t),folder=path.join(h.provider.store.root,'deep');
