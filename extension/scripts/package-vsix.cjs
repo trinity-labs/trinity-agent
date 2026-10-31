@@ -8,7 +8,6 @@ const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json')));
 const publisher = process.env.MARKETPLACE_PUBLISHER || 'stopyz';
 const packageName = publisher === 'trinity' ? 'trinity-agent' : 'ovh-agent';
-const previewAssetType = 'Microsoft.VisualStudio.Services.Content.Images.HistoryDemo';
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(publisher)) throw Error('Invalid Marketplace publisher ID');
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}`) throw Error('Release tag must match package.json version');
 function verifyInstallLayout(output, local) {
@@ -44,7 +43,10 @@ try {
     const readme = fs.readFileSync(readmePath, 'utf8');
     const previewLink = '](media/trinity_agent_screenshot.png)';
     if (!readme.includes(previewLink)) throw Error('README must reference the bundled preview screenshot');
-    const previewUrl = `https://${publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/${publisher}/extension/${packageName}/${manifest.version}/assetbyname/${previewAssetType}`;
+    // Marketplace rendering of custom gallery assets is unreliable even when
+    // the asset endpoint itself returns 200. Pin the preview to the matching
+    // public release tag so the README always receives a normal image URL.
+    const previewUrl = `https://raw.githubusercontent.com/trinity-labs/trinity-agent/v${manifest.version}/extension/media/trinity_agent_screenshot.png`;
     fs.writeFileSync(readmePath, readme.replace(previewLink, `](${previewUrl})`));
   }
   // Generate from readable sources in the isolated stage: never trust stale build output.
@@ -78,18 +80,6 @@ try {
   execFileSync(process.execPath, [require.resolve('@vscode/vsce/vsce'),'package','--out',output,
     '--baseContentUrl','https://github.com/trinity-labs/trinity-agent/blob/main/extension',
     '--baseImagesUrl','https://raw.githubusercontent.com/trinity-labs/trinity-agent/main/extension'], {cwd:stage,stdio:'inherit'});
-  if (publisher !== 'trinity') {
-    const unpacked = fs.mkdtempSync(path.join(os.tmpdir(), 'trinity-vsix-finalize-'));
-    try {
-      execFileSync('unzip', ['-q', output, '-d', unpacked]);
-      const vsixManifest = path.join(unpacked, 'extension.vsixmanifest');
-      const xml = fs.readFileSync(vsixManifest, 'utf8');
-      const asset = `    <Asset Type="${previewAssetType}" Path="extension/media/trinity_agent_screenshot.png" Addressable="true" />\n`;
-      if (!xml.includes(previewAssetType)) fs.writeFileSync(vsixManifest, xml.replace(/([\t ]*)<\/Assets>/, `${asset}$&`));
-      fs.rmSync(output);
-      execFileSync('zip', ['-qr', output, '.'], {cwd:unpacked});
-    } finally { fs.rmSync(unpacked,{recursive:true,force:true}); }
-  }
   verifyInstallLayout(output, publisher === 'trinity');
   console.log(`Packaged ${publisher}.${manifest.name} ${manifest.version}: ${output}`);
 } finally { fs.rmSync(stage,{recursive:true,force:true}); }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.2
+
+- Restore the Marketplace preview screenshot through an immutable release URL instead of the unreliable custom gallery asset renderer.
+
 ## 5.4.1
 
 - Display OpenAI long-context prices beside the base Standard prices for prompts above 272K input tokens.

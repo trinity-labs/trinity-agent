@@ -63,6 +63,13 @@ test('packaged icon stays purple so the live workbench theme can switch it', () 
           assert.deepEqual(manifest.contributes.menus['editor/title'], [
             {command:'trinityAgent.start', group:'navigation'},
           ]);
+          const readme = fs.readFileSync(path.join(stage, 'README.md'), 'utf8');
+          if (publisher === 'stopyz') {
+            assert.match(readme, new RegExp(`https://raw\\.githubusercontent\\.com/trinity-labs/trinity-agent/v${manifest.version}/extension/media/trinity_agent_screenshot\\.png`));
+            assert.doesNotMatch(readme, /gallery\.vsassets\.io|HistoryDemo/);
+          } else {
+            assert.match(readme, /\]\(media\/trinity_agent_screenshot\.png\)/);
+          }
           inspected = true;
           throw stopped;
         },
