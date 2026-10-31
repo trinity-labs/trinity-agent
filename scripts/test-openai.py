@@ -41,6 +41,28 @@ class OpenAIProviderTests(unittest.TestCase):
         self.assertEqual(card['output_per_million'], 14.0)
         self.assertTrue(agent.model_capabilities('gpt-5.3-codex')['tools'])
 
+    def test_current_openai_models_and_dated_snapshots_are_reviewed(self):
+        expected = {
+            'gpt-6-astra': (10.0, 50.0),
+            'gpt-6.1-sol': (2.0, 10.0),
+            'gpt-6.1-terra': (1.0, 5.0),
+            'gpt-6-sol': (2.0, 10.0),
+            'gpt-6-luna': (0.1, 0.5),
+            'gpt-5.6-sol': (4.0, 20.0),
+        }
+        for model_id, prices in expected.items():
+            with self.subTest(model=model_id):
+                card = agent.normalise_model({'id':model_id}, 'openai')
+                self.assertEqual(card['context_length'], 1_050_000)
+                self.assertEqual(card['max_completion_tokens'], 128_000)
+                self.assertEqual((card['input_per_million'], card['output_per_million']), prices)
+                self.assertTrue(card['selectable'])
+        snapshot = agent.normalise_model({'id':'gpt-6.1-terra-2026-06-01'}, 'openai')
+        self.assertEqual(snapshot['input_per_million'], 1.0)
+        self.assertIn('none', agent.model_capabilities('gpt-6.1-terra')['reasoning_efforts'])
+        with self.assertRaisesRegex(ValueError, 'not yet reviewed'):
+            agent.normalise_model({'id':'unreviewed-openai-model'}, 'openai')
+
     def test_display_currency_keeps_native_accounting_and_accepts_ecb_currencies(self):
         rates = agent.validated_euro_rates({'source': agent.ECB_RATES_URL,
             'date': datetime.now(timezone.utc).date().isoformat(),

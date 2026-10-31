@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.4.0
+
+- Expand the OpenAI Responses catalogue with the current GPT-6, GPT-6.1 and GPT-5.6 model families and their dated snapshots, using reviewed limits, reasoning levels and prices.
+- Invalidate older OpenAI catalogue caches so newly supported models appear immediately after the agent restarts.
+
 ## 5.3.9
 
 - Keep the TRINITY extension-list logo purple in light themes and switch it to white from the live VS Code dark-theme class.

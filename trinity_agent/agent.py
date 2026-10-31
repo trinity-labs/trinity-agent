@@ -119,7 +119,7 @@ AI_API_BASE_URL = configured_ai_base_url()
 MODEL_API_URL = AI_API_BASE_URL + "/models"
 DISCOVERY_API_URL = "https://catalog.endpoints.ai.ovh.net/rest/v1/models_v2"
 DISCOVERY_MODELS: dict[str, dict] = {}
-CATALOG_SCHEMA_VERSION = 3
+CATALOG_SCHEMA_VERSION = 4
 
 
 class ConfiguredOVHProvider(OVHcloudProvider):
@@ -195,15 +195,54 @@ DOCUMENTED_MODEL_CAPABILITIES = {'Meta-Llama-3_3-70B-Instruct': {'reasoning': Fa
  'gpt-oss-20b': {'reasoning': True, 'stream': True, 'tools': True}}
 MODEL_CAPABILITIES: dict[tuple[str, str], dict] = {}
 
+# OpenAI's /models endpoint supplies availability but not context ceilings or
+# token prices. Keep those safety-critical fields tied to the official model
+# documentation while still accepting dated snapshots returned by the API.
+OPENAI_MODEL_SPECS = {
+    'gpt-6-astra': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
+                    'input_per_million': 10.0, 'output_per_million': 50.0,
+                    'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max']},
+    'gpt-6.1-sol': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
+                    'input_per_million': 2.0, 'output_per_million': 10.0,
+                    'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max']},
+    'gpt-6.1-terra': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
+                      'input_per_million': 1.0, 'output_per_million': 5.0,
+                      'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+    'gpt-6-sol': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
+                  'input_per_million': 2.0, 'output_per_million': 10.0,
+                  'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+    'gpt-6-luna': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
+                   'input_per_million': 0.1, 'output_per_million': 0.5,
+                   'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+    'gpt-5.6-sol': {'context_length': 1_050_000, 'max_completion_tokens': 128_000,
+                    'input_per_million': 4.0, 'output_per_million': 20.0,
+                    'reasoning_efforts': ['none', 'low', 'medium', 'high', 'xhigh', 'max']},
+    'gpt-5.3-codex': {'context_length': 400_000, 'max_completion_tokens': 128_000,
+                      'input_per_million': 1.75, 'output_per_million': 14.0,
+                      'reasoning_efforts': ['low', 'medium', 'high', 'xhigh']},
+}
+
+
+def openai_model_spec(model_id: str) -> dict | None:
+    direct = OPENAI_MODEL_SPECS.get(model_id)
+    if direct:
+        return direct
+    for alias, spec in OPENAI_MODEL_SPECS.items():
+        suffix = model_id.removeprefix(alias + '-')
+        if suffix != model_id and re.fullmatch(r'\d{4}-\d{2}-\d{2}', suffix):
+            return spec
+    return None
+
 
 def model_capabilities(model_id: str) -> dict:
     if AI_PROVIDER == 'deepseek':
         return {'tools': True, 'reasoning': True, 'stream': True,
                 'response_formats': ['json_object'], 'reasoning_efforts': ['low', 'high', 'max']}
     if AI_PROVIDER == 'openai':
+        spec = openai_model_spec(model_id) or {}
         return {'tools': True, 'reasoning': True, 'stream': True,
                 'response_formats': ['json_schema', 'json_object'],
-                'reasoning_efforts': ['low', 'medium', 'high', 'xhigh']}
+                'reasoning_efforts': spec.get('reasoning_efforts', ['low', 'medium', 'high', 'xhigh'])}
     key = (AI_API_BASE_URL, model_id)
     if key in MODEL_CAPABILITIES:
         return MODEL_CAPABILITIES[key]
@@ -1472,16 +1511,14 @@ def normalise_model(raw: dict[str, object], provider: str | None = None) -> dict
                 'hourly': None, 'free': False, 'pricing_estimate': True,
                 'pricing_source': 'https://api-docs.deepseek.com/quick_start/pricing/'}
     if provider == 'openai':
-        reviewed = {'gpt-5.3-codex': {'context_length': 400000, 'max_completion_tokens': 128000,
-                                     'input_per_million': 1.75, 'output_per_million': 14.0}}
-        if model_id not in reviewed:
+        spec = openai_model_spec(model_id)
+        if not spec:
             raise ValueError('OpenAI model limits and pricing not yet reviewed')
-        return {**reviewed[model_id], 'id': model_id, 'owner': 'OpenAI', 'provider': 'openai',
+        return {**spec, 'id': model_id, 'owner': 'OpenAI', 'provider': 'openai',
                 'kind': 'chat', 'selectable': True, 'vision': True, 'supports_tools': True,
                 'supports_reasoning': True, 'supports_streaming': True,
                 'response_formats': ['json_schema', 'json_object'],
-                'reasoning_efforts': ['low', 'medium', 'high', 'xhigh'], 'currency': 'USD',
-                'hourly': None, 'free': False,
+                'currency': 'USD', 'hourly': None, 'free': False,
                 'pricing_source': 'https://developers.openai.com/api/docs/pricing'}
     pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else {}
     prices = [pricing.get(key, 0) for key in ('prompt', 'completion')]
