@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.5
+
+- Use the dedicated primary and white logo artwork in the extension list for light and dark themes, without color filters that can erase the glyph.
+
 ## 5.4.4
 
 - Set light-theme storage-number opacity to 0.66 while keeping units at 0.33 and dark themes unchanged.

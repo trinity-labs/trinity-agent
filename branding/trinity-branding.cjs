@@ -118,9 +118,8 @@ function applyManifest(file, name, language = process.env.TRINITY_AGENT_LANG || 
   const darkOverride = customIcon('TRINITY_AGENT_DARK_THEME_ICON', media);
   const darkThemeIcon = darkOverride ||
     (fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : menuIcon);
-  // Keep a stable purple source icon. The workbench stylesheet below derives
-  // the white variant from VS Code's live `.vs-dark` class, so the icon follows
-  // theme changes without rebuilding or rewriting the installed extension.
+  // Keep a stable source icon. The workbench stylesheet uses the dedicated
+  // bundled light and dark artwork according to VS Code's live theme class.
   const darkTheme = configuredDarkTheme();
   manifest.icon = staticThemeIcon(lightThemeIcon, media, 'app', false);
   const branding = manifest.trinityAgentBranding && typeof manifest.trinityAgentBranding === 'object' && !Array.isArray(manifest.trinityAgentBranding)
@@ -149,6 +148,13 @@ function applyManifest(file, name, language = process.env.TRINITY_AGENT_LANG || 
 }
 function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server/lib/vscode/out/vs/code/browser/workbench/workbench.css') {
   if (!fs.existsSync(file)) return false;
+  const imageUrl = name => {
+    const asset = path.resolve(__dirname, '../extension/media', name);
+    if (!fs.existsSync(asset)) throw new Error(`Missing bundled extension-list logo: ${name}`);
+    return `data:image/png;base64,${fs.readFileSync(asset).toString('base64')}`;
+  };
+  const lightLogo = imageUrl('trinity-header-primary.png');
+  const darkLogo = imageUrl('trinity-header-white.png');
   const start = '/* TRINITY extension list logos */';
   const end = '/* End TRINITY extension list logos */';
   const current = fs.readFileSync(file, 'utf8');
@@ -184,11 +190,13 @@ function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server
   opacity: 1 !important;
 }
 .monaco-workbench.vs [data-extension-id="trinity.trinity-agent"] .extension-icon .icon {
+  content: url("${lightLogo}") !important;
   filter: none !important;
 }
 .monaco-workbench.vs-dark [data-extension-id="trinity.trinity-agent"] .extension-icon .icon,
 .monaco-workbench.hc-black [data-extension-id="trinity.trinity-agent"] .extension-icon .icon {
-  filter: brightness(0) invert(1) !important;
+  content: url("${darkLogo}") !important;
+  filter: none !important;
 }
 ${end}`;
   const updated = original + '\n' + css + '\n';

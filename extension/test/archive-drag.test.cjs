@@ -177,6 +177,7 @@ test('mount usage follows its path, survives late ready and hides unavailable va
   assert.match(used.textContent,/512MB\s+\/\s+12,4GB/);
   assert.equal(used.querySelectorAll('.archive-storage-unit').length,2);
   assert.deepEqual([...used.querySelectorAll('.archive-storage-unit')].map(node=>node.textContent),['MB','GB']);
+  assert.deepEqual([...used.querySelectorAll('.archive-storage-value')].map(node=>node.textContent),['512','12,4']);
   assert.equal(used.hidden,false);assert.equal(separator.textContent,'|');assert.equal(separator.hidden,false);
   assert.equal(doc.getElementById('archive-path').nextElementSibling,separator);
   emit({type:'ready',archive_root:'/archives/first',model:'Qwen3.8-27B'});

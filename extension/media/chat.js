@@ -2705,7 +2705,10 @@ function updateArchiveMount(data) {
     };
     const appendSize=bytes=>{
       const {value,unit}=formatParts(bytes);
-      used.append(document.createTextNode(value));
+      const valueNode=document.createElement('span');
+      valueNode.className='archive-storage-value';
+      valueNode.textContent=value;
+      used.append(valueNode);
       const unitNode=document.createElement('span');
       unitNode.className='archive-storage-unit';
       unitNode.textContent=unit;

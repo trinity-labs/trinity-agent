@@ -13,8 +13,9 @@ test('existing browsers get a new stylesheet URL even when the branding CSS is a
     fs.writeFileSync(css, '.existing { color: red; }\n');
     applyExtensionListStyle(css);
     const initialCss = fs.readFileSync(css, 'utf8');
-    assert.match(initialCss, /\.monaco-workbench\.vs \[data-extension-id="trinity\.trinity-agent"\]/);
-    assert.match(initialCss, /\.monaco-workbench\.vs-dark \[data-extension-id="trinity\.trinity-agent"\][\s\S]*?brightness\(0\) invert\(1\)/);
+    assert.match(initialCss, /\.monaco-workbench\.vs \[data-extension-id="trinity\.trinity-agent"\][\s\S]*?content: url\("data:image\/png;base64,/);
+    assert.match(initialCss, /\.monaco-workbench\.vs-dark \[data-extension-id="trinity\.trinity-agent"\][\s\S]*?content: url\("data:image\/png;base64,/);
+    assert.doesNotMatch(initialCss, /brightness\(0\)|grayscale\(1\)/);
     const template = '<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css?existing=keep">';
     fs.writeFileSync(html, template);
     assert.equal(applyExtensionListStyle(css), true);
