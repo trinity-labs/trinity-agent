@@ -217,6 +217,9 @@ test('mount point setting controls both the archive path and its storage usage',
   assert.doesNotMatch(hidden, /id="archive-path"/);
   assert.doesNotMatch(hidden, /id="archive-mount-separator"/);
   assert.doesNotMatch(hidden, /id="archive-used"/);
+  const css = fs.readFileSync(path.resolve(__dirname, '../media/chat.css'), 'utf8');
+  assert.match(css, /body\.vscode-light \.archive-head \.archive-storage-value,[\s\S]*?opacity:\s*1;/);
+  assert.doesNotMatch(css, /body\.vscode-dark[^}]*archive-storage-value/);
 });
 
 test('popup icons use the subdued shared opacity', () => {

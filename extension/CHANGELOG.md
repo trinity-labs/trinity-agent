@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.3
+
+- Render storage numbers at full opacity in light themes while preserving dimmed units and the existing dark-theme appearance.
+
 ## 5.4.2
 
 - Restore the Marketplace preview screenshot through an immutable release URL instead of the unreliable custom gallery asset renderer.
