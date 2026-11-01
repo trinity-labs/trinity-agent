@@ -153,7 +153,7 @@ function applyExtensionListStyle(file = '/usr/local/lib/node_modules/code-server
     if (!fs.existsSync(asset)) throw new Error(`Missing bundled extension-list logo: ${name}`);
     return `data:image/png;base64,${fs.readFileSync(asset).toString('base64')}`;
   };
-  const lightLogo = imageUrl('trinity-header-primary.png');
+  const lightLogo = imageUrl('trinity-icon.png');
   const darkLogo = imageUrl('trinity-activity.png');
   const start = '/* TRINITY extension list logos */';
   const end = '/* End TRINITY extension list logos */';
