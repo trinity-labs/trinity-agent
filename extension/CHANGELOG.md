@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.6.0
+
+- Detect expired or revoked OVHcloud billing credentials, stop presenting the stale amount as refreshable, and offer immediate reconfiguration from the balance control.
+
 ## 5.5.1
 
 - Use the filled purple hexagon logo in the light extension list, matching Editor Theme.

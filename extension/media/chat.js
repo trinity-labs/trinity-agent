@@ -2249,7 +2249,8 @@ function applyBillingStatus(data, announce = true) {
     billing.classList.toggle("failed", !available);
     return;
   }
-  if (!data.configured) liveBalance.textContent = t("Solde : à configurer");
+  if (!data.configured) liveBalance.textContent = data.authorization_expired
+    ? t("Solde : accès expiré") : t("Solde : à configurer");
   else if (!data.available) liveBalance.textContent = t("Solde : indisponible");
   else {
     const value = Number(data.balance_estimated ? data.credit_remaining ?? data.credit_remaining_display : data.credit_available || 0);
@@ -2265,8 +2266,12 @@ function applyBillingStatus(data, announce = true) {
   billing.classList.toggle("connected", Boolean(data.available && !data.stale));
   billing.classList.toggle("failed", Boolean(!data.available || data.stale));
   if (!data.configured) {
-    billing.title = t("Configurer le suivi du solde OVHcloud");
-    if (announce) setStatus(t("Solde OVHcloud non configuré"));
+    billing.title = data.authorization_expired
+      ? t("Accès facturation OVHcloud expiré · cliquer pour reconfigurer")
+      : t("Configurer le suivi du solde OVHcloud");
+    if (announce) setStatus(data.authorization_expired
+      ? t("Accès facturation OVHcloud expiré · reconfiguration requise")
+      : t("Solde OVHcloud non configuré"), Boolean(data.authorization_expired));
     return;
   }
   if (!data.available) {

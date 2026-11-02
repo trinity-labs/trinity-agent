@@ -2146,13 +2146,19 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
         billing_file().chmod(0o600)
         return billing_balance(status)
     except (KeyError, OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as error:
+        authorization_expired = isinstance(error, urllib.error.HTTPError) and error.code in (401, 403)
+        message = ('Accès facturation OVHcloud expiré ou révoqué : reconfigurez les identifiants en lecture seule.'
+                   if authorization_expired else str(error))
         if project_cache:
-            return billing_balance({**project_cache, "stale": True, "error": str(error)})
+            return billing_balance({**project_cache, "configured": not authorization_expired,
+                                    "authorization_expired": authorization_expired,
+                                    "stale": True, "error": message})
         return billing_balance({
-            "configured": True,
+            "configured": not authorization_expired,
             "available": False,
             "project": project,
-            "error": str(error),
+            "authorization_expired": authorization_expired,
+            "error": message,
         })
 
 

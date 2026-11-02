@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import urllib.error
 from unittest.mock import patch
 
 root = Path(__file__).resolve().parents[1]
@@ -77,6 +78,10 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(a, 'ARCHIVE_ROOT', Path(
     next_month = a.fetch_billing_status(force=True)
     assert next_month['credit_remaining'] == 89.75
     assert next_month['usage_period'] == snapshot['period']
+    remote.side_effect = urllib.error.HTTPError('https://eu.api.ovh.com', 403, 'Forbidden', {}, None)
+    expired = a.fetch_billing_status(force=True)
+    assert expired['authorization_expired'] and not expired['configured'] and expired['stale']
+    assert 'reconfigurez' in expired['error'] and expired['credit_remaining'] == next_month['credit_remaining']
     remote.side_effect = OSError('offline')
     stale = a.fetch_billing_status(force=True)
     assert stale['stale'] and stale['credit_remaining'] == next_month['credit_remaining']

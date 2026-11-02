@@ -219,6 +219,17 @@ test('pending refresh preserves the displayed balance and a provider switch reje
   }
 });
 
+test('expired OVH billing authorization is explicit and offers reconfiguration', () => {
+  const dom = billingView(), w = dom.window;
+  try {
+    w.document.body.dataset.provider = 'ovhcloud';
+    w.applyBillingStatus({provider:'ovhcloud', configured:false, available:false,
+      authorization_expired:true, error:'expired'}, false);
+    assert.match(w.liveBalance.textContent,/accès expiré/i);
+    assert.match(w.billing.title,/reconfigurer/i);
+  } finally { dom.window.close(); }
+});
+
 
 test('a running OVH task cannot supply the selected DeepSeek balance', async t => {
   const h = setupBillingProvider(t, 'deepseek');
