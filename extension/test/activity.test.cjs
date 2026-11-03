@@ -376,7 +376,9 @@ test('history nests conversations in project folders and routes cross-project op
   assert.equal(groups[1].querySelectorAll('.archive-delete').length,1);
   groups[0].querySelector('.project-caret').click();assert.equal(groups[0].open,true);
   assert.equal(groups[0].querySelector('.project-caret').getAttribute('aria-expanded'),'true');
+  assert(groups[0].querySelector('.project-folder-icon .icon-folderOpen'));
   emit({type:'archives',items:[],projects:[a,b]});groups=document.querySelectorAll('.archive-project');assert.equal(groups[0].open,true);
+  assert(groups[0].querySelector('.project-folder-icon .icon-folderOpen'));
   groups[1].querySelector('.archive-open').click();assert.equal(sent.at(-1).type,'openProject');assert.equal(sent.at(-1).project,b.id);assert.equal(sent.at(-1).conversation,'same-id');
   assert.equal(document.querySelector('.project-folder-open'),null);
   const sentBefore=sent.length;groups[1].querySelector('.project-caret').click();assert.equal(groups[1].open,true);assert.equal(sent.length,sentBefore+1);

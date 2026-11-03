@@ -7,7 +7,7 @@ const names = {
   key:'key', plus:'plus-lg', close:'x-lg', reload:'arrow-repeat', image:'image',
   shield:'shield-check', stop:'stop', stopFilled:'stop-fill', send:'arrow-up', play:'play', trash:'trash2-fill',
   terminal:'terminal', list:'list-ul', read:'file-earmark-text', search:'search',
-  edit:'pencil', context:'layers', project:'folder-plus', folder:'folder-fill', cost:'currency-dollar', model:'cpu',
+  edit:'pencil', context:'layers', project:'folder-plus', folder:'folder-fill', folderOpen:'folder2-open', cost:'currency-dollar', model:'cpu',
   copy:'copy', check:'check-lg', warning:'exclamation-triangle', error:'exclamation-diamond', robot:'robot', wallet:'wallet2', grip:'grip-vertical',
   chat:'chat',
 };

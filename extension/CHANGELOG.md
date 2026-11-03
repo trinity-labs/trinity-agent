@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.6.1
+
+- Switch conversation project icons from the filled closed folder to the open-folder icon while the folder is expanded, including after history refreshes.
+
 ## 5.6.0
 
 - Detect expired or revoked OVHcloud billing credentials, stop presenting the stale amount as refreshable, and offer immediate reconfiguration from the balance control.

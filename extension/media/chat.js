@@ -1295,11 +1295,11 @@ function renderArchives(items, projects) {
       if(!event.target.closest('.project-drag-handle')) {event.preventDefault();return;}
       beginArchiveDrag(event,{kind:'project',source:group.dataset.projectId},group);
     });
+    const icon=document.createElement('span');icon.className='project-folder-icon';
     const caret=document.createElement('button');caret.type='button';caret.className='icon project-caret';caret.innerHTML=uiIcon('chevron');
-    const updateCaret=()=>{caret.setAttribute('aria-expanded',String(group.open));caret.title=t(group.open?'Replier le projet':'Déplier le projet');caret.setAttribute('aria-label',caret.title+' : '+project.name);};
+    const updateCaret=()=>{caret.setAttribute('aria-expanded',String(group.open));caret.title=t(group.open?'Replier le projet':'Déplier le projet');caret.setAttribute('aria-label',caret.title+' : '+project.name);icon.innerHTML=uiIcon(group.open?'folderOpen':'folder');};
     caret.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();group.open=!group.open;updateCaret();if(group.open)vscode.postMessage({type:'openProject',project:project.id});});
     group.addEventListener('toggle',updateCaret);updateCaret();
-    const icon=document.createElement('span');icon.className='project-folder-icon';icon.innerHTML=uiIcon('folder');
     const name=document.createElement('span');name.className='project-folder-name';name.textContent=project.name;name.title=project.root;
     const total=project.items?.length || 0;
     const count=document.createElement('span');count.className='project-folder-count';count.innerHTML=String(total)+uiIcon('chat');count.setAttribute('aria-label',total===1?t('1 conversation'):t('{0} conversations',total));
