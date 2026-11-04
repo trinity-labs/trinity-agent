@@ -148,6 +148,14 @@ def command_preflight(command, cwd, workspace=None):
             return 'Validation de syntaxe shell interrompue ; aucune commande exécutée. Simplifie la commande.'
         if checked.returncode:
             return 'Syntaxe shell invalide ; aucune commande exécutée. ' + checked.stderr.decode(errors='replace')[-1500:]
+        # Output is already bounded by run_process. A trailing head/tail pipeline
+        # hides the tested program's exit status under the pager's success, a
+        # pattern produced repeatedly by tool-using models. Refuse it before any
+        # side effect so the model can retry the original command directly.
+        if re.search(r'\|\s*(?:head|tail)(?:\s|$)', command):
+            return ('Pipeline de troncature refusé avant exécution : elle masque le code de sortie '
+                    'du programme testé. Relance la commande sans | head ni | tail ; la sortie est '
+                    'déjà limitée par le moteur.')
         # A single here-document is a common hallucinated CLI tool invocation.
         # Do not reject fallback chains, functions or subsequent shell commands.
         match = re.fullmatch(r'([A-Za-z0-9_./-]+)[ \t]+<<-?[ \t]*([\'"]?)([A-Za-z_][\w-]*)\2[ \t]*\n(.*?)\n\t*\3[ \t]*\n?', command, re.S)

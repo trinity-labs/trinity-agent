@@ -33,6 +33,13 @@ class ProcessTests(unittest.TestCase):
         self.assertFalse((self.root/'effect').exists())
         self.assertFalse((self.root/'redirected').exists())
 
+    def test_preflight_rejects_exit_masking_output_truncation(self):
+        for command in ('npm test 2>&1 | head -100', 'bun run check | tail -20'):
+            with self.subTest(command=command):
+                error = runner.command_preflight(command, self.root)
+                self.assertIn('masque le code de sortie', error)
+        self.assertIsNone(runner.command_preflight('head -100 report.txt', self.root))
+
     def test_preflight_missing_heredoc_cli_keeps_payload_literal(self):
         command = "missing_fixture_apply_patch <<'PATCH'\n$(touch effect)\nPATCH\n"
         self.assertIn('Exécutable absent', runner.command_preflight(command, self.root))

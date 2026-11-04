@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.0
+
+- Refuse output-truncation pipelines that can hide the real exit status of model-generated test commands.
+
 ## 5.7.0
 
 - Preserve verified changes when configured checks reproduce the same pre-existing failures, while keeping new failures and runner crashes blocking.
