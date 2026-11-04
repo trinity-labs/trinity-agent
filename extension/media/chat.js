@@ -257,6 +257,8 @@ let historyDraft = "";
 let busy = false;
 let stopping = false;
 let activeArchiveId = "";
+let activeArchiveSource = "";
+let previousArchiveSource = "";
 let archiveSelectionVisible = true;
 let loadingArchive = null;
 let archivePreviewKey = '';
@@ -1415,6 +1417,16 @@ function renderArchiveRows(items, container, project) {
     button.append(title, meta);
     const openArchive = () => {
       if (loadingArchive) { setStatus(t("Chargement déjà en cours."), "warning"); return; }
+      // The history panel only covers the current conversation. Returning to
+      // that same conversation must never wait for its running request or ask
+      // the backend to deserialize an archive it already owns.
+      if (item.current && active && item.id === activeArchiveId && (source || '') === activeArchiveSource) {
+        deferredArchiveOpen = null;
+        archiveSelectionVisible = true;
+        setArchiveVisible(false);
+        prompt.focus();
+        return;
+      }
       if (busy) {
         // The backend handles one request at a time: remember the click and
         // open the chosen conversation as soon as the running task ends.
@@ -1423,6 +1435,8 @@ function renderArchiveRows(items, container, project) {
         return;
       }
       loadingArchive = item.id;
+      previousArchiveSource = activeArchiveSource;
+      activeArchiveSource = source || '';
       archiveSelectionVisible = true;
       archiveModelRevision = modelChoiceRevision;
       beginArchiveLoading(item, source, displayTitle, button.closest(".archive-project")?.style.getPropertyValue("--project-color"));
@@ -2738,6 +2752,8 @@ window.addEventListener("message", ({ data }) => {
   if (data.exchange_rates) refreshDeepSeekCosts();
   // Only accept revision tokens after conversation-ID filtering below.
   if (data.type === "archive_open_failed" && (!data.id || !loadingArchive || data.id === loadingArchive)) {
+    activeArchiveSource = previousArchiveSource;
+    previousArchiveSource = '';
     loadingArchive = null;
     archiveModelRevision = null;
     endArchiveLoading();
@@ -3014,7 +3030,7 @@ window.addEventListener("message", ({ data }) => {
       requestArchiveOpen(target.id, target.source);
     }
   }
-  if (data.type === "cleared") { lastRoutedModel = ""; updateModelButton(); activeArchiveId = data.conversation || ""; setBusy(false, t("Nouvelle conversation")); }
+  if (data.type === "cleared") { lastRoutedModel = ""; updateModelButton(); activeArchiveId = data.conversation || ""; activeArchiveSource = ''; previousArchiveSource = ''; setBusy(false, t("Nouvelle conversation")); }
   if (data.type === "configured") setBusy(false, t("Clé API enregistrée de façon sécurisée"));
   if (data.type === 'performance_status') {
     showPerformance(data.mode, data);
@@ -3096,10 +3112,11 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === 'project_updated' || data.type === 'project_update_failed') projectUpdateResult(data);
   if (data.type === "archives") {
     resumableArchives.clear();
-    for (const item of [...(data.items || []), ...(data.projects || []).flatMap(project=>(project.items || []).map(item=>({...item,archive_active:item.archive_active ?? project.active})))]) {
+    for (const item of [...(data.items || []), ...(data.projects || []).flatMap(project=>(project.items || []).map(item=>({...item,archive_project:item.archive_project || project.id,archive_active:item.archive_active ?? project.active})))]) {
       if(item.archive_active===false)continue;
       if (item.resumable) resumableArchives.add(item.id);
       if (!activeArchiveId && item.current) activeArchiveId = item.id;
+      if (!activeArchiveSource && item.current && item.id === activeArchiveId) activeArchiveSource = item.archive_project || '';
     }
     updateSendButton();
     renderArchives(data.items, data.projects);
@@ -3138,6 +3155,7 @@ window.addEventListener("message", ({ data }) => {
     if (!data.automatic || submission) setArchiveVisible(false);
     modelPanel.hidden = !modelPanelActive;
     activeArchiveId = data.id || activeArchiveId;
+    previousArchiveSource = '';
     followups = [];
     followupCommand("list");
     restoreArchiveModel(data);
@@ -3153,6 +3171,7 @@ window.addEventListener("message", ({ data }) => {
     if (!data.automatic || submission) setArchiveVisible(false);
     modelPanel.hidden = !modelPanelActive;
     activeArchiveId = data.id || activeArchiveId;
+    previousArchiveSource = '';
     if (data.resumable) resumableArchives.add(activeArchiveId);
     followups = [];
     followupCommand("list");

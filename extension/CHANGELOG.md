@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.1
+
+- Reopen the already loaded conversation immediately when returning from history, including while its task is still running.
+
 ## 5.8.0
 
 - Refuse output-truncation pipelines that can hide the real exit status of model-generated test commands.

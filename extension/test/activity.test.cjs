@@ -754,6 +754,22 @@ test('execution evidence stays internal and does not block opening another conve
  } finally {dom.window.close();}
 });
 
+test('current conversation reopens immediately from history while its task is running',()=>{
+ const {dom,document,emit,sent}=browser();
+ try {
+  emit({type:'ready',conversation:'current',model:'Qwen3.5-397B-A17B'});
+  emit({type:'archives',items:[{id:'current',title:'Conversation active',current:true,archive_active:true}]});
+  emit({type:'status',conversation:'current',text:'Working'});
+  document.getElementById('history').click();
+  assert.equal(document.getElementById('archive-panel').hidden,false);
+  const count=sent.length;
+  document.querySelector('.archive-open').click();
+  assert.equal(document.getElementById('archive-panel').hidden,true);
+  assert.equal(sent.length,count,'the already loaded conversation does not need a backend reload');
+  assert.match(document.getElementById('status').textContent,/Working/);
+ } finally {dom.window.close();}
+});
+
 test('action blocks collapse inside, outside and with the bottom control, preserving controls and selection', () => {
   const {dom,document,emit} = browser();
   try {
