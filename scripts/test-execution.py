@@ -350,6 +350,23 @@ engine.invoke(write_file, 'app.txt', 'after')
         restarted.focus("Explain this project without editing.")
         self.assertFalse(restarted.final_status()["incomplete"])
 
+    def test_new_goal_does_not_inherit_unresolved_or_file_attempts_from_prior_goal(self):
+        target = self.workspace / 'app.css'
+        target.write_text('before')
+        old = self.engine.journal.start('run_command', {'command': 'unknown'}, mutation=True)
+        self.engine.journal.finish(old, status='unknown', evidence={'category': 'interrupted'})
+        def write_file(path: str, content: str) -> str:
+            raise ModelRetry('Inspect before modifying.')
+        with self.assertRaises(ModelRetry):
+            self.engine.invoke(write_file, 'app.css', 'after')
+        self.assertTrue(self.engine.final_status()['incomplete'])
+        self.engine.focus('Apply a separate verified change.')
+        status = self.engine.final_status()
+        self.assertFalse(status['incomplete'], status)
+        self.assertEqual(status['unresolved'], [])
+        self.assertEqual(status['historical_unresolved'], [old])
+        self.assertEqual(status['failed_files'], [])
+
     def test_rejected_obsolete_path_does_not_override_verified_postconditions(self):
         target=self.workspace/'current.txt';target.write_text('before')
         policy={'version':1,'checks':[], 'acceptance':{'version':1,'criteria':[

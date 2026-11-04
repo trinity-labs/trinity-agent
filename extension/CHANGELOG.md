@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.7.0
+
+- Preserve verified changes when configured checks reproduce the same pre-existing failures, while keeping new failures and runner crashes blocking.
+- Isolate execution recovery state between user tasks so uncertain historical operations remain visible without making every later task incomplete.
+
 ## 5.6.1
 
 - Switch conversation project icons from the filled closed folder to the open-folder icon while the folder is expanded, including after history refreshes.

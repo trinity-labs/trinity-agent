@@ -434,6 +434,35 @@ class Verification(unittest.TestCase):
         journal = json.loads((self.root/'receipts/journal.json').read_text())
         self.assertEqual(journal['report']['fingerprints'][str(self.file)], self.guard.state['changes'][str(self.file)]['written'])
 
+    def test_unchanged_baseline_failure_is_warning_not_a_regression(self):
+        attempts = 0
+        def failing_runner(*args):
+            nonlocal attempts
+            attempts += 1
+            return {'passed': False, 'exit_code': 1, 'termination_signal': None,
+                    'error': None, 'output': f'(fail) existing test [{attempts}.03ms]\n1 fail\n',
+                    'duration_ms': attempts}
+        self.guard.runner = failing_runner
+        self.edit(2)
+        report = self.guard.require_verified()
+        self.assertEqual(report['status'], 'passed')
+        self.assertEqual(report['unchanged_baseline_failures'], ['Behavior'])
+        self.assertFalse(report['checks'][0]['passed'])
+
+    def test_changed_baseline_failure_remains_a_regression(self):
+        attempts = 0
+        def changing_runner(*args):
+            nonlocal attempts
+            attempts += 1
+            failure = 'existing test' if attempts == 1 else 'new regression'
+            return {'passed': False, 'exit_code': 1, 'termination_signal': None,
+                    'error': None, 'output': f'(fail) {failure} [1.00ms]\n1 fail\n',
+                    'duration_ms': 1}
+        self.guard.runner = changing_runner
+        self.edit(2)
+        with self.assertRaisesRegex(VerificationError, 'Tâche non validée'):
+            self.guard.require_verified()
+
     def test_semantic_regression_fails_and_rollback_preserves_original_dirty_content(self):
         before = self.file.read_bytes()
         self.edit(3)
@@ -856,7 +885,7 @@ class Verification(unittest.TestCase):
         usage_index=next(i for i,event in enumerate(events) if event['type']=='usage')
         error_index=next(i for i,event in enumerate(events) if event['type']=='error')
         self.assertLess(usage_index,error_index)
-        self.assertEqual(events[usage_index]['cost_eur'], .001)
+        self.assertEqual(events[usage_index][backend.USAGE_COST_FIELD], .001)
 
 
 class TestEvidence(unittest.TestCase):

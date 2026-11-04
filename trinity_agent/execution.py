@@ -312,9 +312,18 @@ class WorkflowController:
         self.current_file_attempts = {}
         self._validation_retries = 0
         self.read_only = previous_read_only
+        self.focus_started = False
 
     def focus(self, prompt):
         with self.lock:
+            # A conversation keeps its recovery journal across turns, but a new
+            # user goal must not inherit the previous goal's failed attempts as
+            # current postconditions.
+            self.initial_action_ids = {row['id'] for row in self.journal.snapshot()['operations']}
+            self.initial_transaction_ids = {row['id'] for row in self.transactions.snapshot()['operations']}
+            self.current_file_attempts.clear()
+            self.command_results.clear()
+            self.focus_started = True
             self.read_only = read_only_policy(prompt, self.read_only)
             self.commentary_silent = commentary_silenced(prompt, self.commentary_silent)
             self.commentary_at = None
@@ -742,7 +751,11 @@ class WorkflowController:
     def final_status(self):
         report = self.evaluate()
         actions = self.journal.snapshot()
-        unresolved = actions['unresolved_mutations'] + self.transactions.snapshot()['unresolved_mutations']
+        all_unresolved = actions['unresolved_mutations'] + self.transactions.snapshot()['unresolved_mutations']
+        historical_unresolved = ([identifier for identifier in all_unresolved
+            if identifier in self.initial_action_ids | self.initial_transaction_ids]
+            if self.focus_started else [])
+        unresolved = [identifier for identifier in all_unresolved if identifier not in historical_unresolved]
         running = [row['id'] for row in actions['operations']
                    if row['status'] in {'running', 'prepared'}]
         latest_files = {}
@@ -771,8 +784,7 @@ class WorkflowController:
         failed_checks = [item['check'] for item in report['checks'] if item.get('status') == 'failed']
         self.incomplete = bool(unresolved or running or failed_files or failed_checks or report['criteria_status'] not in {'passed', 'not_configured'})
         result = {'incomplete': self.incomplete, 'unresolved': unresolved, 'running': running, 'failed_checks': failed_checks,
-                  'historical_unresolved': [identifier for identifier in unresolved
-                      if identifier in self.initial_action_ids | self.initial_transaction_ids],
+                  'historical_unresolved': historical_unresolved,
                   'failed_files': failed_files, 'command_status': report['command_status'], 'test_status': report['test_status'],
                   'criteria_status': report['criteria_status'], 'contract_satisfied': report['contract_satisfied'],
                   'natural_language_goal_verified': False, 'satisfaction_scope': 'configured_contract_only'}

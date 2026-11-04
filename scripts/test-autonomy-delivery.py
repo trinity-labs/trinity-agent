@@ -123,10 +123,12 @@ class DeliveryRecovery(unittest.TestCase):
         self.assertIn(answer, result)
         self.assertIn('historique', result.lower())
         self.assertEqual(self.a.run_dependencies().engine.journal.snapshot()['unresolved_mutations'], pending)
-        self.assertTrue(self.a.run_dependencies().engine.final_status()['incomplete'])
+        self.assertFalse(self.a.run_dependencies().engine.final_status()['incomplete'])
         self.assertEqual(self.a.validate_task_output(result), result)
         self.a.begin_verification('Installe et publie le projet.')
-        self.assertTrue(self.a.validate_task_output('Terminé.').startswith('Tâche incomplète.'))
+        resumed = self.a.validate_task_output('Terminé.')
+        self.assertIn('Terminé.', resumed)
+        self.assertIn('Historique', resumed)
 
 
 if __name__ == '__main__':

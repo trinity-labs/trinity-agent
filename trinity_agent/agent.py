@@ -998,12 +998,11 @@ def validate_task_output(output: str) -> str:
             raise ModelRetry(str(error)) from error
     if run_dependencies().engine is not None:
         status = run_dependencies().engine.final_status()
-        historical_diagnostic = (run_dependencies().engine.read_only and bool(status['unresolved'])
-            and set(status['unresolved']) <= set(status.get('historical_unresolved', []))
+        historical_diagnostic = (bool(status.get('historical_unresolved')) and not status['unresolved']
             and not any(status.get(key) for key in ('running', 'failed_files', 'failed_checks'))
             and status['criteria_status'] in {'passed', 'not_configured'})
         if historical_diagnostic:
-            historical_notice = (f"Historique : {len(status['unresolved'])} opération(s) antérieure(s) "
+            historical_notice = (f"Historique : {len(status['historical_unresolved'])} opération(s) antérieure(s) "
                 "conservent des effets non vérifiés ; ce diagnostic ne les valide pas et ne les rejoue pas.")
         if status['incomplete'] and not historical_diagnostic:
             detail = json.dumps(status, ensure_ascii=False)

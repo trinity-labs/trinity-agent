@@ -41,6 +41,22 @@ def digest(content: bytes | None) -> str | None:
     return hashlib.sha256(content).hexdigest() if content is not None else None
 
 
+def failure_signature(receipt: dict) -> tuple:
+    """Compare reproducible failures while ignoring runner timing noise."""
+    output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(receipt.get("output", "")))
+    output = re.sub(r"\[(?:\d+(?:\.\d+)?\s*)?(?:ms|s)\]", "[duration]", output, flags=re.I)
+    output = re.sub(r"\b\d+(?:\.\d+)?\s*(?:ms|milliseconds?|seconds?|secs?)\b", "duration", output, flags=re.I)
+    output = re.sub(r"[ \t]+", " ", output).strip()
+    # Bun exposes stable failing test names even when a long assertion makes
+    # the retained output tail start at a different byte on every run.
+    bun_failures = re.findall(r"(?m)^\(fail\)\s+(.+?)(?:\s+\[duration\])?$", output)
+    if bun_failures:
+        counts = re.findall(r"(?m)^\s*\d+\s+(?:tests? failed|pass|fail)\s*$", output, re.I)
+        output = "\n".join([*(f"(fail) {name}" for name in bun_failures), *counts])
+    return (receipt.get("exit_code"), receipt.get("termination_signal"),
+            receipt.get("error"), output)
+
+
 def same_check_definition(path: Path, before: str | None, after: str) -> bool:
     """Recognize metadata/comment-only changes without trusting a rewritten test."""
     if before is None:
@@ -351,6 +367,15 @@ class ChangeGuard:
                 | {'output': receipt.get('output', '')[-1500:]}
                 for key, receipt in self.state['baseline'].items()
                 if (keys is None or key in keys) and not receipt.get('passed')]
+
+    def _unchanged_baseline_failure(self, key: str, receipt: dict) -> bool:
+        baseline = self.state['baseline'].get(key)
+        return bool(baseline and not baseline.get('passed') and not receipt.get('passed')
+                    and isinstance(baseline.get('exit_code'), int) and baseline['exit_code'] > 0
+                    and isinstance(receipt.get('exit_code'), int) and receipt['exit_code'] > 0
+                    and not baseline.get('termination_signal') and not receipt.get('termination_signal')
+                    and not baseline.get('error') and not receipt.get('error')
+                    and failure_signature(baseline) == failure_signature(receipt))
 
     def _requires_functional_coverage(self, path):
         if any(path.is_relative_to(root) for root in self.explicit_policies):
@@ -817,7 +842,11 @@ class ChangeGuard:
                         item.update(available=True, status="passed", validator=check.name,
                                     receipt_id=receipt["id"])
                         break
-            passed = bool(receipts or basic) and all(item["passed"] for item in receipts) and not problems
+            unchanged_baseline = [item for item in receipts
+                                  if self._unchanged_baseline_failure(item["key"], item)]
+            regressions = [item for item in receipts
+                           if not item["passed"] and item not in unchanged_baseline]
+            passed = bool(receipts or basic) and not regressions and not problems
             # An audit can legitimately conclude with reproduced failures. A code
             # modification, however, cannot be accepted with failing controls.
             observed_failure = (not changes and receipts and not problems
@@ -827,6 +856,7 @@ class ChangeGuard:
             report = {"status": status, "files": list(changes),
                       "checks": receipts, "problems": problems, "fingerprints": actual,
                       "baseline_failures": self.baseline_failures(),
+                      "unchanged_baseline_failures": [item["check"] for item in unchanged_baseline],
                       "syntax_checks": syntax_checks,
                       "syntax_unavailable": [item["path"] for item in syntax_checks if not item["available"]],
                       "inspected_directories": sorted(str(path) for path in self.inspected_directories),
