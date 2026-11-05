@@ -542,19 +542,20 @@ test('archive loading uses folder color and clears it for ungrouped conversation
   } finally {dom.window.close();}
 });
 
-test('restoring a long action history saves and scrolls once without losing actions',()=>{
+test('restoring a long action history saves once and settles at the final rendered bottom',async()=>{
   const {dom,w,states}=browser();
   try {
     states.length=0;let layouts=0;
     const messages=w.document.getElementById('messages');
-    Object.defineProperty(messages,'scrollHeight',{get(){layouts++;return 1000;}});
+    Object.defineProperty(messages,'scrollHeight',{get(){layouts++;return layouts === 1 ? 1000 : 1600;}});
     const items=[{type:'user',text:'Keep all actions'}];
     for(let i=0;i<100;i++)items.push(
       {type:'tool_start',id:'restored-'+i,tool:'read_file',title:'Read '+i},
       {type:'tool_end',id:'restored-'+i,success:true,detail:'Result '+i});
     items.push({type:'response',text:'Completed',html:'<p>Completed</p>'});
     w.renderArchiveMessages(items);
-    assert.equal(states.length,1);assert.equal(layouts,1);
+    await new Promise(resolve=>w.setTimeout(resolve,30));
+    assert.equal(states.length,1);assert.equal(layouts,2);assert.equal(messages.scrollTop,1600);
     assert.equal(messages.querySelectorAll('.activity-row').length,100);
     assert.match(states[0].html,/Result 0/);assert.match(states[0].html,/Result 99/);
     assert.match(states[0].html,/Completed/);

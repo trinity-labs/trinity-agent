@@ -263,10 +263,12 @@ let archiveSelectionVisible = true;
 let loadingArchive = null;
 let archivePreviewKey = '';
 let archiveRevision = '';
+let archiveScrollGeneration = 0;
 const archivePreviews = new Map();
 // Two bounded previews accelerate repeat opens. The archive timestamp is part
 // of the key, and the backend always reloads authoritative context/permissions.
 function beginArchiveLoading(item, source, title, color) {
+  archiveScrollGeneration++;
   // Resolve the clicked folder now: a previous conversation must not tint this loader.
   if (/^#[a-f0-9]{6}$/i.test(color || "")) messages.style.setProperty("--archive-loading-color", color);
   else messages.style.removeProperty("--archive-loading-color");
@@ -585,6 +587,19 @@ function updateAccessButton() {
 function scrollToBottom() {
   if (restoringArchive) return;
   messages.scrollTop = messages.scrollHeight;
+}
+
+function settleArchiveScroll() {
+  const generation = ++archiveScrollGeneration;
+  const nextFrame = window.requestAnimationFrame?.bind(window) || (callback => window.setTimeout(callback, 0));
+  messages.scrollTop = messages.scrollHeight;
+  // Markdown enhancement, collapsed activities and web fonts can change the
+  // layout after the archive has been inserted. Wait for two browser layouts
+  // before resolving the real bottom; a newer navigation cancels this one.
+  nextFrame(() => nextFrame(() => {
+    if (generation !== archiveScrollGeneration) return;
+    messages.scrollTop = messages.scrollHeight;
+  }));
 }
 
 function removeWelcome() {
@@ -1001,7 +1016,7 @@ function renderArchiveMessages(items) {
     }
   } finally { restoringArchive = false; }
   persist();
-  scrollToBottom();
+  settleArchiveScroll();
 }
 
 function applySnapshot(data) {
@@ -1040,7 +1055,7 @@ function applySnapshot(data) {
     updateAccessButton();
   } finally { restoringArchive = false; }
   persist();
-  scrollToBottom();
+  settleArchiveScroll();
 }
 
 function restorePendingSubmission(submission, restoredText) {
