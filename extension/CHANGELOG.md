@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.3
+
+- Tint the selected conversation folder with its own primary color, matching conversation hover within that folder.
+
 ## 5.8.2
 
 - Settle long restored conversations at their final rendered bottom after Markdown and activity layout completes.

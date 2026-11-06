@@ -232,3 +232,11 @@ test('popup icons use the subdued shared opacity', () => {
   assert.match(css, /dialog\s+\.agent-icon\s*\{\s*opacity:\s*\.33;\s*\}/);
   assert.doesNotMatch(css, /\.delete-title-icon\s*\{[^}]*opacity\s*:/);
 });
+
+test('selected project uses the same project-colored pastel as its conversation hover', () => {
+  const css = fs.readFileSync(path.resolve(__dirname, '../media/chat.css'), 'utf8');
+  assert.match(css, /--project-primary-pastel:\s*color-mix\(in srgb, var\(--project-color\) 7%, var\(--vscode-sideBar-background\)\)/);
+  assert.match(css, /\.project-conversations\s*\{[^}]*--trinity-primary-pastel:\s*var\(--project-primary-pastel\)/s);
+  assert.match(css, /\.archive-project\.selected\s*>\s*summary\s*\{\s*background:\s*var\(--project-primary-pastel\)/);
+  assert.doesNotMatch(css, /\.archive-project\.selected\s*>\s*summary\s*\{[^}]*var\(--trinity-primary-selected\)/s);
+});

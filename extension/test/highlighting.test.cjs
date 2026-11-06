@@ -545,7 +545,8 @@ test('archive loading uses folder color and clears it for ungrouped conversation
 test('restoring a long action history saves once and settles at the final rendered bottom',async()=>{
   const {dom,w,states}=browser();
   try {
-    states.length=0;let layouts=0;
+    states.length=0;let layouts=0;const frames=[];
+    w.requestAnimationFrame=callback=>{frames.push(callback);return frames.length;};
     const messages=w.document.getElementById('messages');
     Object.defineProperty(messages,'scrollHeight',{get(){layouts++;return layouts === 1 ? 1000 : 1600;}});
     const items=[{type:'user',text:'Keep all actions'}];
@@ -554,7 +555,8 @@ test('restoring a long action history saves once and settles at the final render
       {type:'tool_end',id:'restored-'+i,success:true,detail:'Result '+i});
     items.push({type:'response',text:'Completed',html:'<p>Completed</p>'});
     w.renderArchiveMessages(items);
-    await new Promise(resolve=>w.setTimeout(resolve,30));
+    assert.equal(frames.length,1);frames.shift()();
+    assert.equal(frames.length,1);frames.shift()();
     assert.equal(states.length,1);assert.equal(layouts,2);assert.equal(messages.scrollTop,1600);
     assert.equal(messages.querySelectorAll('.activity-row').length,100);
     assert.match(states[0].html,/Result 0/);assert.match(states[0].html,/Result 99/);

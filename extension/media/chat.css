@@ -1078,7 +1078,11 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .diff-scroller .hljs :is(.hljs-comment, .hljs-meta, .hljs-quote, .hljs-deletion) { color: var(--diff-comment); }
 
 /* Only explicitly selected conversations appear in project folders. */
-.archive-project { margin-bottom: 4px; --project-color: var(--trinity-primary); }
+.archive-project {
+  margin-bottom: 4px;
+  --project-color: var(--trinity-primary);
+  --project-primary-pastel: color-mix(in srgb, var(--project-color) 7%, var(--vscode-sideBar-background));
+}
 .archive-item .icon, .archive-item .icon:hover:not(:disabled), .archive-item .icon:focus-visible {
   color: var(--project-color, var(--trinity-primary));
   outline-color: var(--project-color, var(--trinity-primary));
@@ -1091,7 +1095,7 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .archive-project + .archive-ungrouped:not(.archive-ungrouped-empty) { margin-top: 16px; }
 .archive-project > summary { display: flex; align-items: center; gap: 8px; padding: 10px; cursor: pointer; list-style: none; border-radius: 6px; }
 .archive-project > summary::-webkit-details-marker { display: none; }
-.archive-project > summary:hover { background: var(--trinity-primary-pastel); }
+.archive-project > summary:hover { background: var(--project-primary-pastel); }
 .project-folder-icon { display: inline-flex; color: var(--project-color); }
 .project-folder-icon .agent-icon { width: 18px; height: 18px; }
 .project-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -1104,7 +1108,7 @@ body.vscode-light .diff-scroller, body.vscode-high-contrast-light .diff-scroller
 .project-caret:hover:not(:disabled) svg.agent-icon, .project-edit:hover:not(:disabled) svg.agent-icon, .project-add:hover:not(:disabled) svg.agent-icon,
 .project-caret:focus-visible svg.agent-icon, .project-edit:focus-visible svg.agent-icon, .project-add:focus-visible svg.agent-icon { opacity: .65; }
 .project-conversations {
-  --trinity-primary-pastel: color-mix(in srgb, var(--project-color) 7%, var(--vscode-sideBar-background));
+  --trinity-primary-pastel: var(--project-primary-pastel);
   margin-left: 18px; padding-left: 6px;
   border-left: 1px solid color-mix(in srgb, var(--project-color) 25%, transparent);
 }
@@ -1319,7 +1323,7 @@ body:is(.vscode-dark, .vscode-high-contrast) .markdown.streaming::after {
 }
 
 /* Explicit destination for the next new conversation. */
-.archive-project.selected > summary { background: var(--trinity-primary-selected); }
+.archive-project.selected > summary { background: var(--project-primary-pastel); }
 
 /* Resume continuations are system-made prompts: a divider, not a user bubble. */
 .resume-divider { margin: 6px 0; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; border-top: 1px dashed var(--vscode-panel-border); padding-top: 6px; }
