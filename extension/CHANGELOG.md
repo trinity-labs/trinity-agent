@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.4
+
+- Replace the light, dark, and neutral tab artwork with the new bold TRINITY icons.
+
 ## 5.8.3
 
 - Tint the selected conversation folder with its own primary color, matching conversation hover within that folder.
