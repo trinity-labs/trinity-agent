@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.7
+
+- Use the bold black tab icon in light themes and the bold white tab icon in dark themes without changing the purple light header logo.
+
 ## 5.8.6
 
 - Mount GitHub's fixed hosted Python runtime read-only so sandboxed CI checks can resolve virtual-environment launchers.
