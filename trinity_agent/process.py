@@ -22,7 +22,8 @@ import time
 
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 READ_BYTES = 65536
-RUNTIME_DIRECTORIES = ('/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt/trinity-agent')
+RUNTIME_DIRECTORIES = ('/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt/trinity-agent',
+                       '/opt/hostedtoolcache/Python')
 _SENSITIVE_NAME = re.compile(r'(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_KEY|ACCESS_KEY|PRIVATE_KEY|AUTHORIZATION|COOKIE|(?:^|_)PAT(?:_|$))')
 _PROVIDER_PREFIXES = ('OVH_', 'OVHCLOUD_', 'OPENAI_', 'ANTHROPIC_', 'GEMINI_', 'DEEPSEEK_',
                       'MISTRAL_', 'TOGETHER_', 'GITHUB_', 'GH_', 'VSCE_', 'GIT_CONFIG_',

@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.6
+
+- Mount GitHub's fixed hosted Python runtime read-only so sandboxed CI checks can resolve virtual-environment launchers.
+
 ## 5.8.5
 
 - Keep workspace sandbox executables reachable when CI launches them through an external virtual-environment symlink.
