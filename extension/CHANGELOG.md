@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.8
+
+- Use the actual black TRINITY artwork for light editor tabs; retain the bold white artwork for dark tabs.
+
 ## 5.8.7
 
 - Use the bold black tab icon in light themes and the bold white tab icon in dark themes without changing the purple light header logo.
