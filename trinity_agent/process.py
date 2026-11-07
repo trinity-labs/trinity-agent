@@ -252,6 +252,15 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
             if not binary:
                 result['error'] = 'sandbox_unavailable'
                 return finish()
+            # Virtual-environment launchers can be symlinks stored outside the
+            # sandbox (GitHub places them under its temporary work directory).
+            # Use their canonical executable only when it is already covered by
+            # one of the fixed read-only runtime mounts.
+            if resolved:
+                canonical = Path(resolved).resolve()
+                runtime_roots = [path.resolve() for path in map(Path, RUNTIME_DIRECTORIES) if path.exists()]
+                if any(canonical == root or canonical.is_relative_to(root) for root in runtime_roots):
+                    command[0] = str(canonical)
             command = sandbox_argv(command, cwd, workspace, binary)
             environment.update(HOME='/tmp/trinity-home', TMPDIR='/tmp', XDG_CACHE_HOME='/tmp/trinity-home/.cache',
                                XDG_CONFIG_HOME='/tmp/trinity-home/.config', XDG_RUNTIME_DIR='/run')

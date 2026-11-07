@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.5
+
+- Keep workspace sandbox executables reachable when CI launches them through an external virtual-environment symlink.
+
 ## 5.8.4
 
 - Replace the light, dark, and neutral tab artwork with the new bold TRINITY icons.
