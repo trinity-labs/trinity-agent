@@ -39,5 +39,14 @@ node /home/coder/TRINITY-DOCKER/var/docker/docker_ide/branding/trinity-branding.
 # One updater per container; installs on disk without interrupting the editor.
 python3 /home/coder/TRINITY-DOCKER/var/docker/docker_ide/scripts/auto-update.py --watch &
 
+# Watch the reported Codex backend regression without changing installed versions.
+python3 /home/coder/TRINITY-DOCKER/var/docker/watchers/codex-github-issue/watch-github-issue.py &
+
+# UnyCloud owns its dependency schedule and verified deployment transaction.
+UNYCLOUD_WATCH=/home/coder/TRINITY-DOCKER/var/docker/watchers/unycloud/watch-unycloud.sh
+if [ -x "$UNYCLOUD_WATCH" ]; then
+  "$UNYCLOUD_WATCH" start || echo "UnyCloud watcher failed to start" >&2
+fi
+
 
 exec "$@"
