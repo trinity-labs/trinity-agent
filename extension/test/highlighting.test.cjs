@@ -657,6 +657,25 @@ test('the latest explicit choice survives provider restart, stale acknowledgemen
   } finally {first.dom.window.close();reloaded?.dom.window.close();}
 });
 
+test('reload restores the balance provider from the saved model catalogue entry',()=>{
+  const {dom,w,emit,posted}=browser(undefined,{model:'Qwen3.5-397B-A17B',hasModelPreference:true});
+  try {
+    w.document.body.dataset.provider='deepseek';
+    emit({type:'billing_status',provider:'deepseek',configured:true,available:true,currency:'EUR',credit_available:12});
+    assert.match(w.document.getElementById('live-balance').textContent,/DeepSeek/);
+    emit({type:'models',items:[
+      {id:'deepseek-flash',kind:'chat',selectable:true,provider:'deepseek'},
+      {id:'Qwen3.5-397B-A17B',kind:'chat',selectable:true,provider:'ovhcloud'}
+    ]});
+    assert.equal(w.document.body.dataset.provider,'ovhcloud');
+    assert.match(w.document.getElementById('live-balance').textContent,/vérification|checking/i);
+    assert.deepEqual(posted.filter(message=>message.type==='selectModel').map(message=>[message.model,message.provider]),
+      [['Qwen3.5-397B-A17B','ovhcloud']]);
+    emit({type:'models',items:[{id:'Qwen3.5-397B-A17B',kind:'chat',selectable:true,provider:'ovhcloud'}]});
+    assert.equal(posted.filter(message=>message.type==='selectModel').length,1);
+  } finally {dom.window.close();}
+});
+
 test('a model selected while an archive loads is persisted before the archive reply',()=>{
   const saved={html:'<p>Saved conversation</p>',model:'old-model'};
   const {dom,w,emit,states,posted}=browser(undefined,saved);

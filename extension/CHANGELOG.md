@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.9
+
+- Restore the billing provider from the saved model after a webview reload, so OVHcloud Qwen sessions cannot keep a stale DeepSeek balance.
+
 ## 5.8.8
 
 - Use the actual black TRINITY artwork for light editor tabs; retain the bold white artwork for dark tabs.

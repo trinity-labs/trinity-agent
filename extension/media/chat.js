@@ -359,6 +359,7 @@ let lastRoutedModel = saved?.lastRoutedModel || "";
 let modelCatalog = [];
 let modelCatalogueNote = "";
 let modelPanelActive = false;
+let restoredModelProvider = "";
 let hasModelPreference = saved?.hasModelPreference ?? Boolean(saved?.model);
 let backendReady = false;
 let creatingConversation = false;
@@ -2224,6 +2225,7 @@ function applyBillingStatus(data, announce = true) {
   const provider = ["deepseek","openai","ovhcloud"].includes(data.provider) ? data.provider : "ovhcloud";
   const providerLabel = provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI Codex" : "OVHcloud";
   if (document.body.dataset.provider && document.body.dataset.provider !== provider) return;
+  if (!document.body.dataset.provider) document.body.dataset.provider = provider;
   billing.setAttribute("aria-label", provider === "ovhcloud" ? t("Solde OVHcloud") : providerLabel);
   if (data.pending) {
     if (liveBalance.dataset.provider === provider && liveBalance.dataset.available === "true") return;
@@ -3147,6 +3149,16 @@ window.addEventListener("message", ({ data }) => {
     if (panelTitle) panelTitle.textContent = t("Modèles {0}", providerLabel);
     const panelSource = document.getElementById("model-panel-source");
     if (panelSource) panelSource.textContent = t("Catalogue et tarifs des fournisseurs configurés");
+    const restored = selectedModel === "auto-balanced" ? null : modelCatalog.find(item => item.id === selectedModel);
+    const restoredKey = restored?.provider ? `${selectedModel}:${restored.provider}` : "";
+    if (restoredKey && restoredKey !== restoredModelProvider &&
+        ["ovhcloud", "deepseek", "openai"].includes(restored.provider) &&
+        document.body.dataset.provider !== restored.provider) {
+      restoredModelProvider = restoredKey;
+      document.body.dataset.provider = restored.provider;
+      applyBillingStatus({provider: restored.provider, pending: true}, false);
+      vscode.postMessage({type: "selectModel", model: selectedModel, provider: restored.provider});
+    }
     // Listing or refreshing available models is never a selection action.
     updateModelButton();
     renderModels();

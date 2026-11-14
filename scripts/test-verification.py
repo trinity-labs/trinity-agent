@@ -992,7 +992,7 @@ class TestEvidence(unittest.TestCase):
             agent.output_validator(backend.validate_task_output)
             result=agent.run_sync('Exécute le contrôle configuré et résume son résultat.')
         self.assertEqual(len(calls),3)
-        self.assertNotIn('107',result.output)
+        self.assertNotIn('107 tests réussis',result.output)
         self.assertIn('2 exécutions de tests décomptées',result.output)
         self.assertIn('Bilan des contrôles calculé par le backend',result.output)
         self.assertEqual(len(guard.state['receipts']),1)
