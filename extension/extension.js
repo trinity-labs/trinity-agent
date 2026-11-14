@@ -147,7 +147,12 @@ class TrinityAgentViewProvider {
         model: String(message.model || "auto-balanced"),
         archive_revision: message.archive_revision,
       });
-      if (message.type === "webviewReady") { i18n.setLanguage(i18n.resolveLanguage(process.env.TRINITY_AGENT_LANG, [message.language, vscode.env.language])); this.showArchives(); void this.refreshBilling(false); }
+      if (message.type === "webviewReady") {
+        i18n.setLanguage(i18n.resolveLanguage(process.env.TRINITY_AGENT_LANG, [message.language, vscode.env.language]));
+        await this.restoreWebviewModel(message.model, message.provider);
+        this.showArchives();
+        void this.refreshBilling(false);
+      }
     });
     webviewView.onDidDispose(() => {
       if (this.view !== webviewView) return;
@@ -1131,6 +1136,20 @@ class TrinityAgentViewProvider {
       this.providerRestartPending = true;
       this.post({ type: "provider_switched", provider: target, pending: true });
     }
+  }
+
+  async restoreWebviewModel(model, provider) {
+    const name = String(model || "").trim();
+    const target = Object.hasOwn(INFERENCE_PROVIDERS, provider) ? provider : "";
+    if (!name || name === "auto-balanced" || !target) return;
+    this.pendingModel = { model: name, provider: target };
+    await this.state?.update?.("trinityAgent.pendingModel", this.pendingModel);
+    if (target === inferenceProvider()) return;
+    this.restoringProvider = true;
+    try {
+      await vscode.workspace.getConfiguration("trinityAgent").update("provider", target, vscode.ConfigurationTarget.Global);
+    } finally { this.restoringProvider = false; }
+    await this.providerChanged();
   }
 
   stopAgent(notify = true) {

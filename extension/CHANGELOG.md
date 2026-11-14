@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.8.10
+
+- Restore the saved model provider before the first balance refresh and carry it into new conversations, so a Qwen session cannot reload with DeepSeek billing.
+
 ## 5.8.9
 
 - Restore the billing provider from the saved model after a webview reload, so OVHcloud Qwen sessions cannot keep a stale DeepSeek balance.

@@ -47,7 +47,9 @@ function validMessage(message) {
     case "openLink": return text(message.href, 8192);
     case "selectModel": return typeof message.model === "string" && model(message.model);
     case "setPerformance": return ['auto', 'max'].includes(message.mode);
-    case "webviewReady": return message.language === undefined || text(message.language, 32);
+    case "webviewReady": return (message.language === undefined || text(message.language, 32))
+      && model(message.model)
+      && (message.provider === undefined || message.provider === "" || ["ovhcloud", "deepseek", "openai"].includes(message.provider));
     case "listModels": return boolean(message.refresh);
     case "selectProject": case "clearProjectSelection": case "clear": case "cancel": case "configureKey": case "billing":
     case "billingRefresh": case "listArchives": case "retryWindow": return true;

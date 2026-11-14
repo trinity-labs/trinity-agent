@@ -352,7 +352,14 @@ let fullAccess = saved?.fullAccess !== false;
 let activeFullAccess = null;
 let pendingSubmission = null;
 const normalizeModelSelection = value => value === "auto" ? "auto-balanced" : (value || "auto-balanced");
+const savedProviderForModel = (model, provider = "") => {
+  if (["ovhcloud", "deepseek", "openai"].includes(provider)) return provider;
+  if (String(model || "").startsWith("deepseek-")) return "deepseek";
+  if (/^(?:gpt-6(?:\.1)?-(?:astra|sol|terra|luna)|gpt-5\.3-codex)$/.test(String(model || ""))) return "openai";
+  return model && model !== "auto-balanced" ? "ovhcloud" : "";
+};
 let selectedModel = normalizeModelSelection(saved?.model);
+let selectedProvider = savedProviderForModel(selectedModel, saved?.provider);
 let modelChoiceRevision = 0;
 let archiveModelRevision = null;
 let lastRoutedModel = saved?.lastRoutedModel || "";
@@ -382,7 +389,7 @@ function persist(streaming = false) {
   // Full history serialization is expensive. Coalesce streamed updates only;
   // approvals, navigation and terminal events cancel the delay and save now.
   window.clearTimeout(viewStateTimer);
-  const saveView = () => vscode.setState({ html: loadingArchive ? (vscode.getState()?.html || "") : messages.innerHTML, fullAccess, model: selectedModel, hasModelPreference, lastRoutedModel, promptHistory });
+  const saveView = () => vscode.setState({ html: loadingArchive ? (vscode.getState()?.html || "") : messages.innerHTML, fullAccess, model: selectedModel, provider: selectedProvider, hasModelPreference, lastRoutedModel, promptHistory });
   if (streaming === true) viewStateTimer = window.setTimeout(saveView, 150);
   else saveView();
   if (loadingArchive || !backendReady || creatingConversation || !activeArchiveId) return;
@@ -547,6 +554,7 @@ function renderModels() {
     if (model.selectable) {
       row.addEventListener("click", () => {
         selectedModel = model.id;
+        selectedProvider = savedProviderForModel(selectedModel, model.provider);
         hasModelPreference = true;
         if (["ovhcloud", "deepseek", "openai"].includes(model.provider) && document.body.dataset.provider !== model.provider) {
           document.body.dataset.provider = model.provider;
@@ -3150,6 +3158,7 @@ window.addEventListener("message", ({ data }) => {
     const panelSource = document.getElementById("model-panel-source");
     if (panelSource) panelSource.textContent = t("Catalogue et tarifs des fournisseurs configurés");
     const restored = selectedModel === "auto-balanced" ? null : modelCatalog.find(item => item.id === selectedModel);
+    if (restored?.provider) selectedProvider = restored.provider;
     const restoredKey = restored?.provider ? `${selectedModel}:${restored.provider}` : "";
     if (restoredKey && restoredKey !== restoredModelProvider &&
         ["ovhcloud", "deepseek", "openai"].includes(restored.provider) &&
@@ -3214,7 +3223,7 @@ updateModelButton();
 stop.hidden = false;
 updateStopIcon();
 prompt.focus();
-vscode.postMessage({ type: "webviewReady", language: uiLanguage });
+vscode.postMessage({ type: "webviewReady", language: uiLanguage, model: selectedModel, provider: selectedProvider });
 
 
 // A single contextual action, outside persisted conversation HTML.

@@ -7,7 +7,7 @@ const {JSDOM}=require('jsdom');
 const {validMessage}=require('../security');
 const root=path.resolve(__dirname,'..');
 
-async function setup(t) {
+async function setup(t,{saved,provider:initialProvider='ovhcloud'}={}) {
   const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'trinity-lifecycle-'));
   const native=createRequire(path.join(root,'extension.js')),dataRoot=path.join(temporary,'data');
   const stores=native('./project-store'),archives=native('./archive-store');
@@ -18,7 +18,7 @@ async function setup(t) {
     constructor(workspace,data=dataRoot) {super(workspace,data);}
   }};
   const values={},state={get:key=>values[key],update:async(key,value)=>{values[key]=value;}};
-  const settings={provider:'ovhcloud'};
+  const settings={provider:initialProvider};
   const vscode={workspace:{workspaceFolders:[{uri:{fsPath:temporary}}],getConfiguration:()=>({
     get:(key,fallback)=>settings[key]??fallback,
     update:async(key,value)=>{settings[key]=value;if(key==='provider')await provider.providerChanged();}
@@ -38,6 +38,10 @@ async function setup(t) {
       stdin:{writable:true,write:line=>commands.push(JSON.parse(line))},
       kill:()=>{agent.killed=true;queueMicrotask(()=>{agent.exitCode=0;agent.emit('close');});}});
     provider.agent=agent;
+    if(provider.pendingModel?.provider===settings.provider&&provider.pendingModel.model){
+      const pendingModel=provider.pendingModel;provider.pendingModel=undefined;
+      agent.stdin.write(JSON.stringify({type:'set_model',model:pendingModel.model})+'\n');
+    }
     return true;
   };
   let receive,window;
@@ -47,7 +51,7 @@ async function setup(t) {
   await provider.resolveWebviewView(view);
   const dom=new JSDOM(view.webview.html,{runScripts:'outside-only',url:'https://test.invalid'});
   window=dom.window;
-  window.acquireVsCodeApi=()=>({getState:()=>undefined,setState:()=>{},postMessage:message=>{
+  window.acquireVsCodeApi=()=>({getState:()=>saved,setState:value=>{saved=value;},postMessage:message=>{
     const copy=JSON.parse(JSON.stringify(message));sent.push(copy);pending.push(receive(copy));
   }});
   window.HTMLElement.prototype.scrollIntoView=function(){};
@@ -75,6 +79,24 @@ test('changing a model provider displays and refreshes its balance immediately',
   assert.match(h.document.getElementById('live-balance').textContent,/OpenAI Codex/);
   assert.deepEqual(h.billingRefreshes.at(-1),{provider:'openai',configure:false});
   assert(stopping.killed);
+});
+
+test('reload restores the saved Qwen provider before billing and keeps it for a new conversation',async t=>{
+  const h=await setup(t,{
+    provider:'deepseek',
+    saved:{model:'Qwen3.5-397B-A17B',hasModelPreference:true},
+  });
+  await h.flush();
+  assert.equal(h.settings.provider,'ovhcloud');
+  assert.equal(h.document.body.dataset.provider,'ovhcloud');
+  assert.equal(h.provider.pendingModel.model,'Qwen3.5-397B-A17B');
+  assert.equal(h.provider.pendingModel.provider,'ovhcloud');
+  assert.deepEqual(h.billingRefreshes.at(-1),{provider:'ovhcloud',configure:false});
+  h.document.getElementById('clear').click();
+  await h.flush();
+  assert.equal(h.settings.provider,'ovhcloud');
+  assert.equal(h.provider.agent.provider,'ovhcloud');
+  assert.deepEqual(h.commands.find(command=>command.type==='set_model'),{type:'set_model',model:'Qwen3.5-397B-A17B'});
 });
 
 test('opening a conversation restores its provider before loading the model and context',async t=>{
