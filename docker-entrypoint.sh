@@ -48,5 +48,14 @@ if [ -x "$UNYCLOUD_WATCH" ]; then
   "$UNYCLOUD_WATCH" start || echo "UnyCloud watcher failed to start" >&2
 fi
 
+for UNYPORT_WATCH in \
+  /home/coder/TRINITY-DOCKER/var/docker/watchers/unyport/watch-unyport.sh \
+  /home/coder/TRINITY-DOCKER/var/docker/watchers/demo/watch-demo.sh \
+  /home/coder/TRINITY-DOCKER/var/docker/watchers/unyport-corporate/watch-corporate.sh; do
+  if [ -x "$UNYPORT_WATCH" ]; then
+    "$UNYPORT_WATCH" start || echo "UnyPort watcher failed to start: $UNYPORT_WATCH" >&2
+  fi
+done
+
 
 exec "$@"

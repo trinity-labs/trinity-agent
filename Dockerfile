@@ -30,6 +30,7 @@ RUN apk upgrade --no-cache \
         file \
         gcc \
         git \
+        github-cli \
         grep \
         iproute2 \
         iputils \

@@ -132,6 +132,17 @@ to select the check interval in seconds (minimum 300). Defaults: enabled, six ho
 Run `python3 scripts/auto-update.py` inside the IDE container for an immediate check.
 Messages appear in the container log; checks require public GitHub access, no token.
 
+The same scheduler checks the latest stable Linux Go toolchain from `go.dev` and
+installed extensions published by a verified Open VSX namespace. Go archives are
+size-limited, checked against the upstream SHA-256, extracted with traversal checks,
+and smoke-compiled before an atomic switch; the previous toolchain is retained as
+`/usr/local/go.previous`. Extension updates never downgrade a version, skip local or
+unpublished packages, back up their registry and installed directory, and restore
+both if installation verification fails. Running editor sessions are not restarted.
+Set `TRINITY_GO_AUTO_UPDATE=false` or `TRINITY_EXTENSIONS_AUTO_UPDATE=false` to
+disable either class independently. The dedicated TRINITY Agent validation below
+continues to take precedence for `trinity.trinity-agent`.
+
 Each tagged release includes a separate `trinity-agent-local-VERSION.vsix` for the
 local `trinity.trinity-agent` identity. The Marketplace package remains `stopyz.trinity-agent`.
 The updater checks the GitHub SHA-256 digest, package identity, stable version and
@@ -140,7 +151,7 @@ downgrades, reapplies local branding and leaves running editor sessions untouche
 Reload the editor to activate an installed update. Archives and secrets are not
 part of the package and are never overwritten.
 
-Only the extension client is updated automatically. A release with changed backend
+For TRINITY Agent, only the extension client is updated automatically. A release with changed backend
 sources is deferred until the deployment's `trinity_agent/agent.py`, `trinity_agent/memory.py` and
 `scripts/trinity-agent.sh` match that release. This avoids silently replacing custom backend
 code or installing a client for a different backend. Docker images and Python

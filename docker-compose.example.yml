@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     image: trinity-code-server-alpine:latest
     container_name: vscode
+    init: true
     cpus: "${VSCODE_CPUS:-6}"
     ports:
       - "${IDE_BIND_ADDRESS:-127.0.0.1}:${IDE_PORT:-5734}:8080"
@@ -16,6 +17,11 @@ services:
       # Local extension updates from official GitHub releases (seconds)
       TRINITY_AGENT_AUTO_UPDATE: "${TRINITY_AGENT_AUTO_UPDATE:-true}"
       TRINITY_AGENT_UPDATE_INTERVAL: "${TRINITY_AGENT_UPDATE_INTERVAL:-21600}"
+      # Stable Go updates automatically; Marketplace extensions remain user-controlled.
+      TRINITY_GO_AUTO_UPDATE: "${TRINITY_GO_AUTO_UPDATE:-true}"
+      TRINITY_EXTENSIONS_AUTO_UPDATE: "${TRINITY_EXTENSIONS_AUTO_UPDATE:-false}"
+      # Rebuild Adminer automatically when the upstream base image changes.
+      TRINITY_ADMINER_AUTO_UPDATE: "${TRINITY_ADMINER_AUTO_UPDATE:-true}"
       # Each API keeps its own endpoint, model catalogue, token limits and allowance.
       TRINITY_OVHCLOUD_BASE_URL: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
       TRINITY_DEEPSEEK_BASE_URL: "${TRINITY_DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
