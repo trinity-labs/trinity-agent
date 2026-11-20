@@ -22,6 +22,7 @@ import time
 
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 READ_BYTES = 65536
+MAX_IDLE_SECONDS = 180
 RUNTIME_DIRECTORIES = ('/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt/trinity-agent',
                        '/opt/hostedtoolcache/Python')
 _SENSITIVE_NAME = re.compile(r'(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_KEY|ACCESS_KEY|PRIVATE_KEY|AUTHORIZATION|COOKIE|(?:^|_)PAT(?:_|$))')
@@ -216,15 +217,18 @@ def _kill_group(process):
         pass
 
 
-def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', output_limit=16000, progress=None):
+def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', output_limit=16000,
+                progress=None, idle_timeout=MAX_IDLE_SECONDS):
     """Return the real exit outcome with bounded combined stdout/stderr.
 
     Output is kept in memory as a bounded tail. A 16 MiB stream flood terminates
     the group; stdout truncation alone does not change a command's exit status.
-    Timeout/flood/startup failure cannot be reported as a passed command.
+    Timeout, prolonged output inactivity, flood and startup failure cannot be
+    reported as a passed command. Output activity resets the inactivity guard;
+    periodic UI progress reports do not.
     """
     started = time.monotonic()
-    result = {'exit_code': None, 'passed': False, 'timed_out': False, 'output': '',
+    result = {'exit_code': None, 'passed': False, 'timed_out': False, 'idle_timed_out': False, 'output': '',
               'output_truncated': False, 'duration_ms': 0, 'profile': profile, 'executed': False}
     def finish():
         result['duration_ms'] = round((time.monotonic() - started) * 1000)
@@ -232,6 +236,8 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
     if (not isinstance(argv, (list, tuple)) or not argv or any(not isinstance(item, str) or '\x00' in item for item in argv)
             or profile not in {'approved', 'workspace'} or isinstance(timeout, bool)
             or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 86400
+            or isinstance(idle_timeout, bool) or not isinstance(idle_timeout, (int, float))
+            or not math.isfinite(idle_timeout) or not 0 < idle_timeout <= 86400
             or isinstance(output_limit, bool) or not isinstance(output_limit, int) or not 1 <= output_limit <= 1024 * 1024):
         result['error'] = 'invalid_process_arguments'
         return finish()
@@ -283,6 +289,7 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
     flood = False
     eof = False
     deadline = time.monotonic() + timeout
+    idle_deadline = time.monotonic() + min(timeout, idle_timeout)
     last_progress = started
     exited_at = None
     try:
@@ -298,6 +305,11 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
                 if not exited and now >= deadline:
                     result['timed_out'] = True
                     _kill_group(process)
+                elif not exited and now >= idle_deadline:
+                    result['timed_out'] = True
+                    result['idle_timed_out'] = True
+                    result['error'] = 'process_output_stalled'
+                    _kill_group(process)
                 if exited and (eof or now - exited_at >= .25):
                     if not eof:
                         result['output_truncated'] = True
@@ -310,6 +322,7 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
                         selector.unregister(key.fileobj)
                         continue
                     received += len(chunk)
+                    idle_deadline = time.monotonic() + min(timeout, idle_timeout)
                     tail.extend(chunk)
                     if len(tail) > output_limit:
                         del tail[:-output_limit]

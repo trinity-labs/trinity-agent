@@ -28,7 +28,7 @@ GO_ROOT = Path('/usr/local/go')
 ADMINER_IMAGE = 'adminer:latest'
 ADMINER_PROJECT = Path('/home/coder/TRINITY-DOCKER/var/docker/docker_postgres')
 ADMINER_STATE = Path('/root/.config/trinity/adminer-base-image-id')
-BACKEND_FILES = {'trinity_agent/__main__.py', 'trinity_agent/agent.py', 'trinity_agent/providers.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'scripts/trinity-agent.sh'}
+BACKEND_FILES = {'trinity_agent/__main__.py', 'trinity_agent/agent.py', 'trinity_agent/providers.py', 'trinity_agent/memory.py', 'trinity_agent/workspace.py', 'trinity_agent/project_memory.py', 'trinity_agent/context.py', 'trinity_agent/vision.py', 'trinity_agent/cache.py', 'trinity_agent/resources.py', 'trinity_agent/limits.py', 'trinity_agent/request.py', 'trinity_agent/budget.py', 'trinity_agent/budget_model.py', 'trinity_agent/evaluation.py', 'trinity_agent/verification.py', 'trinity_agent/precision.py', 'trinity_agent/instructions.py', 'trinity_agent/task_engine.py', 'trinity_agent/acceptance.py', 'trinity_agent/repository.py', 'trinity_agent/execution.py', 'trinity_agent/operations.py', 'trinity_agent/tools.py', 'trinity_agent/process.py', 'scripts/trinity-agent.sh'}
 
 
 def version(value):

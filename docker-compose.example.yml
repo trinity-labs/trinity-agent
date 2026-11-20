@@ -28,6 +28,8 @@ services:
       TRINITY_OPENAI_BASE_URL: "${TRINITY_OPENAI_BASE_URL:-https://api.openai.com/v1}"
       TRINITY_OPENAI_MONTHLY_CREDIT_USD: "${TRINITY_OPENAI_MONTHLY_CREDIT_USD:-100}"
       TRINITY_AGENT_PROVIDER: "${TRINITY_AGENT_PROVIDER:-ovhcloud}"
+      # auto choisit un modèle distinct pour la revue des seules tâches à risque.
+      TRINITY_AGENT_REVIEW_MODEL: "${TRINITY_AGENT_REVIEW_MODEL:-auto}"
       # Budgets auto calculés depuis les capacités du modèle ; entier = plafond explicite
       TRINITY_AGENT_CONTEXT_TOKENS: "${TRINITY_AGENT_CONTEXT_TOKENS:-auto}"
       # Marge de sécurité pour l’estimation des tokens ; ce n’est pas une allocation

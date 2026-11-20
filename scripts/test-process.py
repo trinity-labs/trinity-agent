@@ -220,6 +220,22 @@ class ProcessTests(unittest.TestCase):
         self.assertTrue(result['timed_out'])
         self.assertFalse(result['passed'])
 
+    def test_output_inactivity_kills_the_process_group_before_wall_timeout(self):
+        source = ('import subprocess,sys,time; child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"]); '
+                  'print(child.pid,flush=True); time.sleep(60)')
+        result = self.run_python(source, timeout=5, idle_timeout=.1)
+        self.assertTrue(result['timed_out'])
+        self.assertTrue(result['idle_timed_out'])
+        self.assertEqual(result['error'], 'process_output_stalled')
+        self.assertLess(result['duration_ms'], 2000)
+        self.assert_child_stopped(int(result['output'].strip()))
+
+    def test_real_output_resets_the_inactivity_guard(self):
+        source = ('import time\nfor _ in range(5):\n print("progress",flush=True); time.sleep(.06)')
+        result = self.run_python(source, timeout=2, idle_timeout=.1)
+        self.assertTrue(result['passed'], result)
+        self.assertFalse(result['idle_timed_out'])
+
     def test_large_successful_output_retains_a_bounded_tail(self):
         result = self.run_python('import os; os.write(1,b"x"*200000+b"END_OF_OUTPUT")', output_limit=128)
         self.assertTrue(result['passed'], result)
@@ -246,7 +262,8 @@ class ProcessTests(unittest.TestCase):
 
     def test_invalid_parameters_never_launch(self):
         with patch.object(runner.subprocess, 'Popen', side_effect=AssertionError('Invalid command launched')):
-            for kwargs in ({'timeout':0}, {'timeout':float('inf')}, {'profile':'automatic'}, {'output_limit':0}):
+            for kwargs in ({'timeout':0}, {'timeout':float('inf')}, {'profile':'automatic'}, {'output_limit':0},
+                           {'idle_timeout':0}, {'idle_timeout':float('inf')}):
                 with self.subTest(kwargs=kwargs):
                     result = runner.run_process(['/bin/true'], self.root, **kwargs)
                     self.assertFalse(result['executed'])

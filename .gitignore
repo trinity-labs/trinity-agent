@@ -174,3 +174,4 @@
 
 !/scripts/test-pydantic-runtime.py
 !/scripts/test-available-balance.py
+!/scripts/test-precision.py

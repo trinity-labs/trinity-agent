@@ -157,7 +157,7 @@ class ArchiveStore {
         let event;
         try { event = JSON.parse(line); } catch { continue; }
         if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
-        if (!['user', 'response', 'error', 'file_change', 'tool_start', 'tool_end', 'model_changed', 'verification_check'].includes(event.type)) continue;
+        if (!['user', 'response', 'error', 'file_change', 'tool_start', 'tool_end', 'model_changed', 'verification_check', 'precision_review'].includes(event.type)) continue;
         items.push(event);
       }
       return items;
@@ -171,6 +171,8 @@ class ArchiveStore {
         success: event.success === true, passed: event.passed === true,
         resume: event.resume === true,
         from_model: event.from_model, to_model: event.to_model, check: event.check,
+        verdict: event.verdict, confidence: event.confidence, model: event.model,
+        findings: Array.isArray(event.findings) ? event.findings.slice(0, 8) : undefined,
         duration_ms: Number.isFinite(event.duration_ms) ? event.duration_ms : undefined,
       };
       if (event.type === 'user' && Array.isArray(event.images)) {

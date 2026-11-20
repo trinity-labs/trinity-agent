@@ -1,5 +1,16 @@
 # Changelog
 
+## 5.11.0
+
+- Stop commands that produce no output for three minutes, even when their total timeout is longer, and terminate their complete process group.
+- Keep active long-running commands alive when they emit real output, while reporting output stalls distinctly from ordinary wall-time expiration.
+
+## 5.10.0
+
+- Add adaptive independent review for risky tasks, bound every finding to deterministic evidence, keep provider budgets authoritative, and show the structured verdict in live and restored conversations.
+- Ship the precision reviewer with local upgrades and allow an optional `TRINITY_AGENT_REVIEW_MODEL` override while selecting a distinct capable model automatically by default.
+- Prefer DeepSeek V4.1 Flash as the independent reviewer for security work after a bounded OVH comparison, with gpt-oss-120b and Nemotron 3 Nano as fallbacks.
+
 ## 5.9.3
 
 - Restore the original header assets alongside the enlarged editor icons so the TRINITY Agent view can load after installation.

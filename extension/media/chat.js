@@ -1970,6 +1970,7 @@ function restoreActivityTimings(root, timeline=[]) {
     ['Réorientation appliquée','steer_applied'],['Point d’avancement','task_checkpoint'],
     ['Budget de contexte','context_compacted'],['Contexte compacté','context_compacted'],
     ['Utilisation du modèle','usage'],['Coût de la compaction','usage'],['Mémoire locale · aucun appel API','usage'],
+    ['Révision indépendante','precision_review'],
   ].map(([label,type])=>[activityLabel(t(label)),type]));
   // Build lookups once: rescanning a long timeline for every action is quadratic.
   const used=new Set(),starts=new Map(),ends=new Map(),types=new Map(),stamps=new Map(),titles=new Map(),positions=new Map();
@@ -2944,6 +2945,14 @@ window.addEventListener("message", ({ data }) => {
     const detail = verificationCheckText(data);
     addActivity({...data, tool: "command", title: data.check, detail}, false);
     finishActivity({...data, success: data.passed === true, detail, completedOnly:true});
+  }
+  if (data.type === "precision_review") {
+    const findings = Array.isArray(data.findings) ? data.findings : [];
+    const blocking = findings.filter(item => item?.severity === "blocking");
+    const verdict = data.verdict === "pass" ? t("validée") : data.verdict === "revise" ? t("correction demandée") : t("incertaine");
+    const confidence = Number.isFinite(data.confidence) ? ` · ${Math.round(data.confidence * 100)}%` : "";
+    const detail = `${data.model || ""} · ${verdict}${confidence}` + (blocking.length ? `\n${blocking.map(item => `• ${item.claim}`).join("\n")}` : "");
+    addCompletedActivity("verification", t("Révision indépendante"), detail, data);
   }
   if (data.type === "file_change") addFileChange(data);
   if (data.type === "model_changed") {

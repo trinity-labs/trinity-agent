@@ -64,6 +64,8 @@ from pydantic_ai.usage import UsageLimits
 from pydantic_ai.toolsets import FunctionToolset
 from trinity_agent.limits import limit_setting, resolve_limits
 from trinity_agent.providers import PROVIDERS, selected_provider
+from trinity_agent.precision import (PrecisionVerdict, REVIEW_INSTRUCTIONS as PRECISION_REVIEW_INSTRUCTIONS,
+    enforce_verdict, evidence_packet, review_required)
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import (
@@ -3255,7 +3257,7 @@ def get_budgeted_model(model_id):
 def vision_reader_model() -> str:
     """Validated reader per provider; never name a model the provider lacks."""
     override = os.environ.get("TRINITY_AGENT_VISION_READER", "").strip()
-    if override:
+    if override and override != 'auto':
         return override
     if AI_PROVIDER == 'deepseek':
         readers = [item for item in fetch_model_catalog()
@@ -3367,6 +3369,48 @@ def run_model_attempt(model_id, user_content, *, message_history, model_settings
         finally:
             if messages:
                 deps.model_messages = list(messages)
+
+
+def precision_reviewer_model(active_model: str, domain: str = '') -> str:
+    """Prefer an independent capable model without making a second provider mandatory."""
+    override = os.environ.get('TRINITY_AGENT_REVIEW_MODEL', '').strip()
+    if override:
+        if not is_selectable_model(override):
+            raise ValueError(f"Modèle réviseur indisponible : {override}.")
+        return override
+    cards = {str(card['id']): card for card in fetch_model_catalog() if card.get('selectable')}
+    preferred = (('DeepSeek-V4.1-Flash-1017', 'gpt-oss-120b', 'nemotron3-nano-30b')
+                 if domain == 'security' else
+                 ('gpt-oss-120b', 'DeepSeek-V4.1-Flash-1017', 'nemotron3-nano-30b',
+                  'Qwen3.5-397B-A17B', 'Qwen3.6-27B', 'gpt-oss-20b'))
+    return next((model for model in preferred if model != active_model and model in cards), active_model)
+
+
+def run_precision_review(active_model: str, prompt: str, output: str, analysis: dict,
+                         verification: dict) -> PrecisionVerdict | None:
+    execution = run_dependencies().engine.snapshot() if run_dependencies().engine else None
+    if not review_required(analysis, verification, execution):
+        return None
+    reviewer = precision_reviewer_model(active_model, str(analysis.get('domain') or ''))
+    emit({'type': 'status', 'text': f'{reviewer} vérifie indépendamment les preuves et la réponse…'})
+    packet = evidence_packet(prompt, output, analysis, verification, execution)
+    started = time.monotonic()
+    result = Agent(
+        get_budgeted_model(reviewer),
+        instructions=PRECISION_REVIEW_INSTRUCTIONS,
+        output_type=PrecisionVerdict,
+        retries=1,
+    ).run_sync(packet, model_settings=generation_settings(reviewer, 'Révision indépendante complexe'))
+    usage = result.usage
+    cost = record_model_usage(reviewer, usage.input_tokens, usage.output_tokens)
+    emit({'type': 'usage', 'purpose': 'precision_review', 'model': reviewer,
+          'input_tokens': usage.input_tokens, 'output_tokens': usage.output_tokens,
+          'requests': usage.requests, USAGE_COST_FIELD: cost, 'currency': PROVIDER_CURRENCY,
+          'duration_ms': round((time.monotonic() - started) * 1000)})
+    verdict = result.output
+    emit({'type': 'precision_review', 'model': reviewer, **verdict.model_dump()})
+    enforce_verdict(verdict, verification)
+    return verdict
 
 
 def interrupted_model_history(history, detail):
@@ -3803,7 +3847,7 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
                 continue
             if timeline_only:
                 item = {key: event[key] for key in ("type", "timestamp", "id", "title", "model", "selection", "automatic", "purpose", "from_model", "to_model",
-                        "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering") if key in event}
+                        "duration_ms", "preparation_ms", "success", "local_answer", "compacted", "steering", "verdict", "confidence", "findings") if key in event}
                 # Old HTML snapshots kept only tool results. Retain the recorded
                 # command for their upgrade without duplicating every tool output.
                 if event.get('type') == 'tool_start':
@@ -3816,7 +3860,7 @@ def read_archive(conversation_id: str, *, timeline_only: bool = False) -> list[d
                     item.update({key: event[key] for key in ('path', 'diff') if key in event})
                 items.append(item)
                 continue
-            if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "execution_evidence", "model_active", "model_changed", "tool_start", "tool_end", "plan_updated"}:
+            if event.get("type") in {"user", "response", "file_change", "error", "verification_status", "verification_check", "precision_review", "execution_evidence", "model_active", "model_changed", "tool_start", "tool_end", "plan_updated"}:
                 if event.get("type") == "user" and isinstance(event.get("images"), list):
                     restored_images: list[dict[str, str]] = []
                     base_folder = conversation_dir(conversation_id).resolve()
@@ -4533,7 +4577,11 @@ def main_json_lines() -> None:
             output = str(result.output)  # Already validated by the native output callback.
             if result.response.finish_reason == "length":
                 raise RuntimeError("Réponse tronquée par la limite de tokens ; la tâche reste à reprendre.")
-            emit({"type": "response", "text": output, "verification": verification})
+            precision_review = run_precision_review(active_model, prompt, output,
+                preparation.get('analysis') or {}, verification)
+            report_unreported_usage()
+            emit({"type": "response", "text": output, "verification": verification,
+                  "precision_review": precision_review.model_dump() if precision_review else None})
             incomplete = ((run_dependencies().engine is not None and run_dependencies().engine.incomplete)
                           or tool_protocol_failure(output))
             save_task_state(status="interrupted" if incomplete else "completed", verification=verification,
