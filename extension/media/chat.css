@@ -391,6 +391,14 @@ main {
   border-left: 2px solid color-mix(in srgb, var(--trinity-primary) 40%, transparent);
 }
 .activity .activity-row .activity-output:empty { display: none; }
+.activity .activity-row .activity-result-ok {
+  color: var(--vscode-testing-iconPassed, #43a047);
+  font-weight: 700;
+}
+.activity .activity-row .activity-result-fail {
+  color: var(--vscode-errorForeground, #f14c4c);
+  font-weight: 700;
+}
 .file-change {
   margin: 3px 0 12px;
   overflow: hidden;

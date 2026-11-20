@@ -14,7 +14,7 @@ function browser(env={}) {
   vm.runInNewContext(fs.readFileSync(path.join(root,'extension.js'),'utf8')+'\nmodule.exports.Provider=TrinityAgentViewProvider;',scope);
   const provider = new scope.module.exports.Provider(root, {});
   const dom = new JSDOM(provider.getHtml({asWebviewUri:x=>x,cspSource:'local'}), {runScripts:'outside-only',url:'https://test.invalid'});
-  const w = dom.window, intervals = new Map(), sent = [];
+  const w = dom.window, intervals = new Map(), frames = [], sent = [];
   let now = Date.UTC(2026,9,17,15,40), timerId = 0;
   const setInterval=w.setInterval.bind(w), clearInterval=w.clearInterval.bind(w);
   w.Date.now = () => now;
@@ -23,12 +23,14 @@ function browser(env={}) {
     intervals.set(--timerId,fn); return timerId;
   };
   w.clearInterval = id => { if (!intervals.delete(id)) clearInterval(id); };
+  if (env.TRINITY_TEST_FRAMES) w.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
   w.acquireVsCodeApi=()=>({getState:()=>undefined,setState:()=>{},postMessage:message=>sent.push(message)});
   w.HTMLElement.prototype.scrollIntoView=function(){};
   w.TRINITY_TRANSLATIONS=JSON.parse(fs.readFileSync(path.join(root,'media/translations.json')));
   for (const name of ['i18n.js','purify.min.js','safe-html.js','icons.min.js','chat.js']) w.eval(fs.readFileSync(path.join(root,'media',name),'utf8'));
-  return {dom, document:w.document, intervals, sent,
+  return {dom, document:w.document, intervals, frames, sent,
     emit:data=>w.dispatchEvent(new w.MessageEvent('message',{data})),
+    frame:()=>frames.shift()?.(w.Date.now()),
     advance:ms=>{now+=ms;for (const tick of intervals.values()) tick();}};
 }
 
@@ -66,6 +68,23 @@ test('progress explanations are restored from archived plan events', () => {
   } finally {dom.window.close();}
 });
 
+test('large archives render in bounded frames and keep their complete order', () => {
+  const {dom,document,emit,frames,frame} = browser({TRINITY_TEST_FRAMES:'1'});
+  try {
+    const messages=Array.from({length:121},(_,index)=>({type:'user',text:`message-${index}`}));
+    emit({type:'archive_loaded',id:'large',messages});
+    assert.equal(document.querySelectorAll('.message.user').length,60);
+    assert.equal(frames.length,1);
+    frame();
+    assert.equal(document.querySelectorAll('.message.user').length,120);
+    frame();
+    const rendered=[...document.querySelectorAll('.message.user')].map(node=>node.textContent);
+    assert.equal(rendered.length,121);
+    assert.match(rendered[0],/message-0/);
+    assert.match(rendered.at(-1),/message-120/);
+  } finally {dom.window.close();}
+});
+
 test('long command progress stays visible without accumulating notices or surviving completion', () => {
   const {dom,document,emit} = browser();
   try {
@@ -81,6 +100,19 @@ test('long command progress stays visible without accumulating notices or surviv
     assert.equal(document.querySelector('.progress-waiting'),null);
     emit({type:'tool_progress',id:'check',elapsed_seconds:90,commentary:true});
     assert.equal(document.querySelector('.progress-waiting'),null);
+  } finally {dom.window.close();}
+});
+
+test('command results color OK green and FAIL or echec red without coloring the command', () => {
+  const {dom,document,emit} = browser();
+  try {
+    emit({type:'tool_start',id:'install',tool:'command',title:'Installation',detail:"printf 'FAIL puis OK'"});
+    emit({type:'tool_end',id:'install',success:false,detail:'440s OK\nmodule FAIL\nsecond échec\nECHEC final'});
+    const row=document.querySelector('[data-activity-id="install"]');
+    assert.equal(row.querySelector('.activity-command').querySelector('.activity-result-fail'),null);
+    assert.deepEqual([...row.querySelectorAll('.activity-result-ok')].map(node=>node.textContent),['OK']);
+    assert.deepEqual([...row.querySelectorAll('.activity-result-fail')].map(node=>node.textContent),['FAIL','échec','ECHEC']);
+    assert.equal(row.querySelector('.activity-output').textContent,'440s OK\nmodule FAIL\nsecond échec\nECHEC final');
   } finally {dom.window.close();}
 });
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 5.14.0
+
+- Reconcile fresh OVHcloud project usage with locally settled model costs every 60 seconds, preserve the greater accounted spend without double charging, and label a verified result as a reconciled balance.
+- Render long conversation archives in bounded browser frames, display the visible journal before deserializing model context, and defer HTML preview serialization until after first paint.
+- Extend supervision for native builds and package installations to four hours with a 30-minute activity timeout, while retaining process-tree cancellation and disk headroom checks.
+- Color standalone `OK` installation results green and `FAIL` or `ECHEC` results red without altering displayed commands.
+
+## 5.13.0
+
+- Check free bytes and inodes before storage-intensive commands, preserve a configurable disk reserve and headroom, and stop before filesystem saturation.
+- Honor explicitly authorized overflow storage; measure nested remote filesystems on their host instead of trusting misleading SSHFS capacity reports.
+
+- Keep live explanations enabled while replacing stale commentary at each new model/tool round, so an early sentence no longer remains below newer progress.
+- Add `TRINITY_AGENT_VERBOSITY=light|medium|high` with French aliases `leger|moyen|fort`; default to `medium` and scale commentary detail without weakening execution or verification.
+
 ## 5.12.0
 
 - Stop commands whose entire process group has no observable activity for three minutes, even when their total timeout is longer, and terminate every descendant.

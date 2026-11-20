@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,35 @@ class ProcessTests(unittest.TestCase):
 
     def run_python(self, source, **kwargs):
         return runner.run_process([sys.executable, '-c', source], self.root, **kwargs)
+
+    def test_disk_preflight_blocks_large_operations_before_reserve(self):
+        usage = SimpleNamespace(total=20 * runner.GIB, used=12 * runner.GIB, free=8 * runner.GIB)
+        stats = SimpleNamespace(f_files=1000, f_favail=900)
+        with patch.object(runner.shutil, 'disk_usage', return_value=usage), patch.object(runner.os, 'statvfs', return_value=stats):
+            error = runner.disk_preflight('pip install large-suite', self.root)
+            self.assertIn('Espace insuffisant', error)
+            self.assertIsNone(runner.disk_preflight('python -m unittest', self.root))
+
+    def test_disk_preflight_checks_inodes_and_remote_guard(self):
+        usage = SimpleNamespace(total=30 * runner.GIB, used=5 * runner.GIB, free=25 * runner.GIB)
+        stats = SimpleNamespace(f_files=1000, f_favail=50)
+        with patch.object(runner.shutil, 'disk_usage', return_value=usage), patch.object(runner.os, 'statvfs', return_value=stats):
+            self.assertIn('inodes', runner.disk_preflight('go install example.org/tool@latest', self.root))
+        guarded = runner.remote_disk_guard('apk add nmap')
+        self.assertIn('df -Pk .', guarded)
+        self.assertTrue(guarded.endswith('apk add nmap'))
+        self.assertEqual(runner.remote_disk_guard('printf ok'), 'printf ok')
+
+    def test_long_builds_receive_extended_supervision(self):
+        for command in ('go install example.org/tool@latest', 'cargo build --release',
+                        'cmake --build build', 'make -j4', 'docker build .'):
+            with self.subTest(command=command):
+                self.assertTrue(runner.long_running_build(command))
+        for command in ('go version', 'pytest -q', 'rg token .', 'docker ps'):
+            with self.subTest(command=command):
+                self.assertFalse(runner.long_running_build(command))
+        self.assertGreaterEqual(runner.MIN_BUILD_TIMEOUT_SECONDS, 4 * 60 * 60)
+        self.assertGreaterEqual(runner.BUILD_IDLE_SECONDS, 30 * 60)
 
     def test_preflight_invalid_shell_cannot_execute_earlier_commands(self):
         command = "touch effect; echo 'unterminated"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from trinity_agent.instructions import execution_instructions, RESEARCH_INSTRUCTIONS
+from trinity_agent.instructions import execution_instructions, RESEARCH_INSTRUCTIONS, verbosity_instructions
 
 import argparse
 import asyncio
@@ -22,7 +22,9 @@ from trinity_agent.verification import ChangeGuard, VerificationError, run_check
 from trinity_agent.execution import WorkflowController, RunDependencies, ExecutionCapability, READ_ONLY_TOOLS, read_only_policy, command_is_read_only
 from trinity_agent.repository import repository_map
 from trinity_agent.vision import run_reader_sync
-from trinity_agent.process import run_process, command_is_destructive, command_argv, command_preflight
+from trinity_agent.process import (run_process, command_is_destructive, command_argv, command_preflight,
+                                   disk_preflight, remote_disk_guard, long_running_build,
+                                   MIN_BUILD_TIMEOUT_SECONDS, BUILD_IDLE_SECONDS)
 from trinity_agent.tools import ToolSelection
 import base64
 import binascii
@@ -180,6 +182,7 @@ SUMMARY_GENERATION_TOKENS = provider_limit_setting("SUMMARY_GENERATION_TOKENS")
 SUMMARY_TIMEOUT_SECONDS = provider_integer_setting("SUMMARY_TIMEOUT_SECONDS", 15)
 REQUEST_LIMIT = None if AI_PROVIDER == 'deepseek' else (provider_integer_setting("REQUEST_LIMIT", 0, 0) or None)
 EMOJI_MODE = min(3, budget_setting("TRINITY_AGENT_EMOJI_MODE", 1, 0))
+VERBOSITY, VERBOSITY_INSTRUCTION = verbosity_instructions(os.environ.get('TRINITY_AGENT_VERBOSITY', 'medium'))
 TASK_CHECKPOINT_SECONDS = budget_setting("TRINITY_AGENT_TASK_CHECKPOINT_SECONDS", 300, 30)
 MAX_MEMORY_CHARS = provider_limit_setting("MEMORY_CHARS")
 UNAVAILABLE_AGENT_MODELS = {"Mistral-7B-Instruct-v0.3"}
@@ -1190,6 +1193,9 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
         preflight = command_preflight(command, working_dir, WORKSPACE)
         if preflight:
             return command_not_executed("invalid_command_target", preflight)
+        storage = disk_preflight(command, working_dir)
+        if storage:
+            return command_not_executed("insufficient_disk_space", storage)
         if command_is_destructive(command):
             return command_not_executed("policy_denied", "Commande refusée car elle est potentiellement destructive.")
         dynamic_deletion = re.search(r'\bxargs\b[^\n]*\brm\b|\bfind\b[^\n]*\s-delete\b', command)
@@ -1225,9 +1231,11 @@ def run_command(command: str, cwd: str = ".", timeout: Annotated[int, Field(gt=0
         # Process supervision bounds output and terminates ordinary descendants.
         # The optional workspace profile fails closed when namespaces are unavailable.
         execution_entered = True
+        build = long_running_build(command)
         result = run_process(
             diagnostic_argv if diagnostic else command_argv(command),
-            working_dir, timeout=timeout, workspace=WORKSPACE,
+            working_dir, timeout=max(timeout, MIN_BUILD_TIMEOUT_SECONDS) if build else timeout,
+            idle_timeout=BUILD_IDLE_SECONDS if build else 180, workspace=WORKSPACE,
             profile=os.environ.get("TRINITY_AGENT_COMMAND_PROFILE", "approved"),
             progress=lambda seconds, line: activity_progress(activity_id, seconds, line))
         if result['passed']:
@@ -1270,13 +1278,15 @@ def run_host_command(host: str, command: str, cwd: str = "/", timeout: Annotated
         return command_not_executed("approval_denied", "Commande refusée par l’utilisateur.")
     activity_id = activity_start("command", f"Commande SSH sur {host}", detail)
     try:
+        build = long_running_build(command)
         result = run_process(
             ["ssh", "-F", REMOTE_SSH_CONFIG,
              "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
              "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={REMOTE_KNOWN_HOSTS}",
              "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
-             host, "cd " + shlex.quote(cwd) + " && sh -c " + shlex.quote(command)],
-            WORKSPACE, timeout=timeout,
+             host, "cd " + shlex.quote(cwd) + " && sh -c " + shlex.quote(remote_disk_guard(command))],
+            WORKSPACE, timeout=max(timeout, MIN_BUILD_TIMEOUT_SECONDS) if build else timeout,
+            idle_timeout=BUILD_IDLE_SECONDS if build else 180,
             progress=lambda seconds, line: activity_progress(activity_id, seconds, line))
     except OSError as error:
         activity_end(activity_id, str(error), False)
@@ -2651,7 +2661,7 @@ def inspect_environment(host: str = "", refresh: bool = False) -> str:
         details['os_sandbox'] = "requested_fail_closed" if details['command_profile'] == 'workspace' else "not_enabled"
         return json.dumps(details, ensure_ascii=False)
     return run_host_command(host, "uname -sm; id -u; cat /etc/os-release; "
-                            "for t in sh bash git rg python3 node npm bun docker apk apt-get dnf xl lbu; do command -v \"$t\" || true; done; "
+                            "for t in sh bash git rg python3 node npm bun go cargo rustc make gcc docker apk apt-get dnf xl lbu; do command -v \"$t\" || true; done; "
                             "getconf GNU_LIBC_VERSION 2>/dev/null || ls /lib/ld-musl-*.so.1 2>/dev/null", "/")
 
 
@@ -2907,7 +2917,7 @@ def routing_billing_status() -> dict:
 def context_overhead() -> int:
     return text_tokens(load_infrastructure_instructions() + active_plan_context() + active_workflow_context()
                        + access_instructions() + emoji_instructions(EMOJI_MODE)
-                       + execution_instructions(WORKSPACE)) + (run_dependencies().tools.token_overhead() if run_dependencies().tools else 8500)
+                       + VERBOSITY_INSTRUCTION + execution_instructions(WORKSPACE)) + (run_dependencies().tools.token_overhead() if run_dependencies().tools else 8500)
 
 
 def prompt_component_profile(history: list) -> dict:
@@ -2920,7 +2930,7 @@ def prompt_component_profile(history: list) -> dict:
         "execution_instructions_tokens": text_tokens(execution),
         "infrastructure_instructions_tokens": text_tokens(infrastructure),
         "workflow_state_tokens": text_tokens(plan + workflow),
-        "presentation_and_access_tokens": text_tokens(emoji_instructions(EMOJI_MODE) + access_instructions()),
+        "presentation_and_access_tokens": text_tokens(emoji_instructions(EMOJI_MODE) + VERBOSITY_INSTRUCTION + access_instructions()),
         "tool_schema_tokens": run_dependencies().tools.token_overhead() if run_dependencies().tools else 8500,
         "prepared_history_tokens": estimate_tokens(history),
     }
@@ -3020,7 +3030,9 @@ class ResponseStream:
                 if not text:
                     continue
                 if self.has_text and not response_has_text:
-                    self.pending += "\n\n"
+                    self.pending = ""
+                    self.full_text = ""
+                    emit({"type": "delta_reset"})
                 response_has_text = self.has_text = True
                 if self.first_text_ms is None:
                     self.first_text_ms = round((time.monotonic() - self.started) * 1000)
@@ -3087,7 +3099,7 @@ def report_unreported_usage():
 
 
 def publish_budget(status):
-    emit({"type": "budget_status", **status})
+    emit({"type": "budget_status", "provider": AI_PROVIDER, **status})
 
 
 def current_budget_status():
@@ -3324,7 +3336,7 @@ def get_agent(model_id: str, *, output_validator=None) -> Agent[RunDependencies,
     if model_id not in AGENTS:
         AGENTS[model_id] = Agent(
             get_budgeted_model(model_id),
-            instructions=emoji_instructions(EMOJI_MODE) + execution_instructions(WORKSPACE),
+            instructions=emoji_instructions(EMOJI_MODE) + '\n' + VERBOSITY_INSTRUCTION + '\n' + execution_instructions(WORKSPACE),
             deps_type=RunDependencies,
             toolsets=[FunctionToolset(agent_tools()).prepared(prepare_tools_for_request)] if model_capabilities(model_id)["tools"] else [],
             # Keep malformed or unavailable tool calls bounded for every provider.
@@ -4068,8 +4080,15 @@ def refresh_billing_async(request: dict) -> None:
         return
     def refresh() -> None:
         try:
-            emit({"type": "billing_status", "request_id": request.get("request_id"), "silent": bool(request.get("silent", False)),
-                  **fetch_billing_status(bool(request.get("refresh", False)))})
+            status = fetch_billing_status(bool(request.get("refresh", False)))
+            emit({"type": "billing_status", "request_id": request.get("request_id"),
+                  "silent": bool(request.get("silent", False)), **status})
+            # The provider poll and the budget ledger used to advance on
+            # separate schedules. Reconcile every fresh OVH observation with
+            # locally settled request costs so delayed provider reporting can
+            # neither restore spent credit nor debit the same request twice.
+            if AI_PROVIDER == "ovhcloud":
+                publish_budget(current_budget_status())
         finally:
             BILLING_REFRESH_LOCK.release()
     threading.Thread(target=refresh, daemon=True).start()
@@ -4304,16 +4323,22 @@ def main_json_lines() -> None:
                 # history. The request queue still waits for context before inference.
                 history = load_history(candidate)
             else:
-                history = load_history(candidate)
+                # The visible journal is much smaller than the model history in
+                # long conversations. Send it first so opening the archive does
+                # not wait for Pydantic to deserialize messages.json. This loop
+                # remains sequential: a later prompt/resume cannot run until the
+                # history assignment below has completed.
+                archived_messages = read_archive(candidate)
                 emit({
                     "type": "archive_loaded",
                     "id": candidate,
-                    "messages": read_archive(candidate),
-                    "has_context": bool(history),
+                    "messages": archived_messages,
+                    "has_context": (target / "messages.json").is_file(),
                 "resumable": read_task_state().get("status") in {"running", "interrupted"},
                     "automatic": False,
                     "model": selected_model,
                 })
+                history = load_history(candidate)
             emit({"type": "archives", "items": list_archives()})
             continue
         if request_type == "resume_archive":

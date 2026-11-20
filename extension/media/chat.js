@@ -264,11 +264,24 @@ let loadingArchive = null;
 let archivePreviewKey = '';
 let archiveRevision = '';
 let archiveScrollGeneration = 0;
+let archiveRenderGeneration = 0;
+let archivePreviewGeneration = 0;
 const archivePreviews = new Map();
+// Resolve requestAnimationFrame when scheduling each chunk. The workbench can
+// replace its frame scheduler while the webview is alive (theme/window reload),
+// and archive restoration must keep using the active scheduler.
+const nextArchiveFrame = callback => typeof window.requestAnimationFrame === 'function'
+  ? window.requestAnimationFrame(callback) : callback();
+function afterArchivePaint(callback) {
+  if(typeof window.requestAnimationFrame==='function')window.requestAnimationFrame(()=>window.setTimeout(callback,0));
+  else callback();
+}
 // Two bounded previews accelerate repeat opens. The archive timestamp is part
 // of the key, and the backend always reloads authoritative context/permissions.
 function beginArchiveLoading(item, source, title, color) {
   archiveScrollGeneration++;
+  archiveRenderGeneration++;
+  archivePreviewGeneration++;
   // Resolve the clicked folder now: a previous conversation must not tint this loader.
   if (/^#[a-f0-9]{6}$/i.test(color || "")) messages.style.setProperty("--archive-loading-color", color);
   else messages.style.removeProperty("--archive-loading-color");
@@ -302,11 +315,17 @@ function endArchiveLoading(remember = false) {
   messages.style.removeProperty('--archive-loading-color');
   send.disabled = false;
   if (remember && archivePreviewKey) {
-    const html = messages.innerHTML;
-    if (html.length <= 256 * 1024) {
-      archivePreviews.delete(archivePreviewKey); archivePreviews.set(archivePreviewKey, html);
-      while (archivePreviews.size > 2) archivePreviews.delete(archivePreviews.keys().next().value);
-    }
+    const key=archivePreviewKey,first=messages.firstChild,generation=++archivePreviewGeneration;
+    // Serializing a long DOM blocks the first paint. Build the bounded repeat-
+    // open preview only after the restored conversation has been displayed.
+    afterArchivePaint(()=>{
+      if(generation!==archivePreviewGeneration || messages.firstChild!==first)return;
+      const html=messages.innerHTML;
+      if(html.length<=256*1024) {
+        archivePreviews.delete(key);archivePreviews.set(key,html);
+        while(archivePreviews.size>2)archivePreviews.delete(archivePreviews.keys().next().value);
+      }
+    });
   }
   archivePreviewKey = '';
 }
@@ -966,15 +985,17 @@ function addArchivedFileChange(data) {
   messages.appendChild(article);
 }
 
-function renderArchiveMessages(items) {
+function renderArchiveMessages(items, completed=()=>{}) {
+  const generation=++archiveRenderGeneration;
+  const archivedItems=Array.isArray(items)?items:[];
   restoringArchive = true;
-  try {
-    if (currentRun) window.clearInterval(currentRun.timer);
-    currentRun = null;
-    activityRows.clear();
-    approvalCards.clear();
-    messages.innerHTML = "";
-    for (const item of items || []) {
+  if (currentRun) window.clearInterval(currentRun.timer);
+  currentRun = null;
+  activityRows.clear();
+  approvalCards.clear();
+  messages.innerHTML = "";
+  let index=0;
+  const renderItem=item=>{
       if (item.type === "user" && !item.steering && currentRun) finishRun("stopped");
       if (item.type === "model_changed") addModelChange(item);
       if (item.type === "model_active") addActivity({id:`archived-model-${item.timestamp}`,type:"model_active",timestamp:item.timestamp,tool:"model",title:item.model,detail:""}, false);
@@ -1014,18 +1035,30 @@ function renderArchiveMessages(items) {
         article.appendChild(detail);
         messages.appendChild(article);
       }
-    }
+  };
+  const renderChunk=()=>{
+      if(generation!==archiveRenderGeneration){completed(false);return;}
+      const end=Math.min(archivedItems.length,index+60);
+      try {for(;index<end;index++)renderItem(archivedItems[index]);}
+      catch(error){restoringArchive=false;completed(false);throw error;}
+      if(index<archivedItems.length){nextArchiveFrame(renderChunk);return;}
+      try {
     if (currentRun) finishRun("stopped");
     messages.querySelectorAll(".activity-row").forEach(row => { delete row.dataset.durationMs; });
-    restoreActivityTimings(messages, items || []);
+    restoreActivityTimings(messages, archivedItems);
     // Replaying an archive is not a new execution: do not display its render time.
     messages.querySelectorAll(".activity-elapsed").forEach(el => { el.textContent = ""; el.removeAttribute("title"); });
     if (!messages.children.length) {
       messages.innerHTML = TrinityI18n.markup("<section class=\"welcome\"><h2>Conversation vide</h2><p>Cette archive ne contient pas encore de réponse.</p></section>");
     }
-  } finally { restoringArchive = false; }
-  persist();
-  settleArchiveScroll();
+      } finally { restoringArchive = false; }
+      // Progressive chunks have already yielded to the browser. Persist once
+      // after the final chunk so reload state is complete before navigation.
+      persist();
+      settleArchiveScroll();
+      completed(true);
+  };
+  renderChunk();
 }
 
 function applySnapshot(data) {
@@ -1963,6 +1996,26 @@ function preserveActivityCommand(row, command) {
   output.classList.add('activity-output');
   if (row.classList.contains('running') && output.textContent === command) output.textContent = '';
 }
+function colorActivityResult(output) {
+  if (!(output instanceof Element) || !output.classList.contains('activity-output')) return;
+  const text=output.textContent || '';
+  const pattern=/(^|[^\p{L}\p{N}_])(OK|FAIL|ÉCHEC|ECHEC)(?=$|[^\p{L}\p{N}_])/giu;
+  let match,last=0,found=false;
+  const fragment=document.createDocumentFragment();
+  while((match=pattern.exec(text))) {
+    found=true;
+    const tokenStart=match.index+match[1].length;
+    fragment.append(document.createTextNode(text.slice(last,tokenStart)));
+    const token=document.createElement('span');
+    token.className=/^OK$/iu.test(match[2])?'activity-result-ok':'activity-result-fail';
+    token.textContent=match[2];
+    fragment.append(token);
+    last=tokenStart+match[2].length;
+  }
+  if(!found)return;
+  fragment.append(document.createTextNode(text.slice(last)));
+  output.replaceChildren(fragment);
+}
 function restoreActivityTimings(root, timeline=[]) {
   const labels=new Map([
     ['Contexte préparé','request_prepared'],['Réponse depuis la mémoire du projet','request_prepared'],
@@ -2032,6 +2085,7 @@ function restoreActivityTimings(root, timeline=[]) {
       const elapsed=row.querySelector('.activity-duration');elapsed.textContent='< 1 s';elapsed.title=t('Durée : {0}',elapsed.textContent);
     }
     if(row.classList.contains('running'))row.classList.replace('running','stopped');
+    colorActivityResult(row.querySelector('.activity-output'));
     const body=row.querySelector(':scope > div');
     if(body)stamp(body,stampValue || event?.timestamp || null);
   }
@@ -2087,6 +2141,7 @@ function finishActivity(data) {
     updateRunSummary(currentRun);
   }
   item.detail.textContent = data.detail || "";
+  colorActivityResult(item.detail);
   let duration=actionDuration(data);
   if(duration===null && !data.completedOnly)duration=!wasRunning && validDuration(Number(item.row.dataset.durationMs))?Number(item.row.dataset.durationMs):Math.max(0,Date.now()-item.startedAt);
   if (!restoringArchive) setActivityDuration(item.row,duration);
@@ -2229,6 +2284,37 @@ function formatMoney(value, currency = "EUR") {
   }
 }
 
+const latestBillingByProvider = new Map();
+const latestBudgetByProvider = new Map();
+
+function billingWithLocalUsage(data, provider) {
+  const budget = latestBudgetByProvider.get(provider);
+  if (!budget || !data.available || String(budget.currency || "").toUpperCase() !== String(data.currency || "").toUpperCase()) return data;
+  let remaining;
+  if (provider === "ovhcloud") remaining = Number(budget.authorized_balance);
+  else if (Number.isFinite(Number(budget.provider_balance)) && Number.isFinite(Number(budget.pending_spent))) {
+    remaining = Math.max(0, Number(budget.provider_balance) - Number(budget.pending_spent));
+  }
+  if (!Number.isFinite(remaining)) return data;
+  if (provider === "deepseek") return {...data, credit_available: remaining, local_estimate: true};
+  const credit = Number(data.credit_available);
+  const reconciled = provider === "ovhcloud" && budget.accounting_policy === "max_local_provider" &&
+    Number.isFinite(Number(budget.provider_balance)) && Number.isFinite(Number(budget.authorized_balance));
+  return {...data, credit_remaining: remaining, credit_remaining_display: remaining,
+    current_usage: Number.isFinite(credit) ? Math.max(Number(data.current_usage || 0), credit - remaining) : data.current_usage,
+    balance_estimated: true, balance_reconciled: reconciled, local_estimate: true};
+}
+
+function applyBudgetStatus(data) {
+  const provider = ["deepseek","openai","ovhcloud"].includes(data.provider)
+    ? data.provider : document.body.dataset.provider || "ovhcloud";
+  latestBudgetByProvider.set(provider, data);
+  const billingStatus = latestBillingByProvider.get(provider);
+  if (billingStatus && (!document.body.dataset.provider || document.body.dataset.provider === provider)) {
+    applyBillingStatus(billingStatus, false);
+  }
+}
+
 function applyBillingStatus(data, announce = true) {
   rememberExchangeRates(data);
   const provider = ["deepseek","openai","ovhcloud"].includes(data.provider) ? data.provider : "ovhcloud";
@@ -2245,6 +2331,8 @@ function applyBillingStatus(data, announce = true) {
     liveBalance.textContent = provider === "ovhcloud" ? t("Solde : vérification…") : `${providerLabel} · …`;
     return;
   }
+  latestBillingByProvider.set(provider, data);
+  data = billingWithLocalUsage(data, provider);
   liveBalance.dataset.provider = provider;
   liveBalance.dataset.available = String(Boolean(data.available));
   if (Number.isFinite(data.refresh_seconds) && data.refresh_seconds > 0) scheduleBillingRefresh(data.refresh_seconds);
@@ -2298,7 +2386,8 @@ function applyBillingStatus(data, announce = true) {
     amount.className = "balance-amount";
     amount.classList.toggle("negative", value < 0);
     amount.textContent = (value < 0 ? "-" : "") + formatMoney(Math.abs(value), data.credit_currency || data.currency);
-    const label = data.balance_estimated ? "Solde estimé : {0}{1}" : "Crédit OVH : {0}{1}";
+    const label = data.balance_reconciled ? "Solde réconcilié : {0}{1}"
+      : data.balance_estimated ? "Solde estimé : {0}{1}" : "Crédit OVH : {0}{1}";
     const [prefix, suffix = ""] = t(label, "\uFFFC", data.stale ? t(" (non actualisé)") : "").split("\uFFFC");
     liveBalance.replaceChildren(document.createTextNode(prefix), amount, document.createTextNode(suffix));
   }
@@ -2324,7 +2413,9 @@ function applyBillingStatus(data, announce = true) {
   const balance = formatMoney(data.credit_remaining, currency);
   const current = formatMoney(data.current_usage, currency);
   const forecast = formatMoney(data.forecast_usage, currency);
-  const calculation = data.balance_estimated
+  const calculation = data.balance_reconciled
+    ? t("Solde réconcilié {0} après rapprochement du relevé OVH {1} et des coûts locaux non encore publiés par OVH.", balance, data.last_update || t("inconnu"))
+    : data.balance_estimated
     ? t("Solde estimé {0} = crédit OVH {1} − consommation courante du projet {2}. Montants affichés au centime ; calculs conservés sans arrondi intermédiaire.", balance, credit, current)
     : t("Crédit OVH {0} · consommation {1} · déduction indisponible : {2}", credit, current, t(data.balance_error || "inconnu"));
   const freshness = t("Relevé OVH {0} · vérification toutes les {1} s. La consommation peut être publiée avec retard ; les dépenses de l’agent sont comprises dans le relevé OVH et ne sont pas déduites une seconde fois.", data.last_update || t("inconnu"), data.refresh_seconds || 60);
@@ -3014,6 +3105,7 @@ window.addEventListener("message", ({ data }) => {
   if (data.type === "approval_result") resolveApproval(data);
   if (data.type === "questionnaire") pendingQuestionnaire = data;
   if (data.type === "delta") setMarkdown(data.html);
+  if (data.type === "delta_reset") setMarkdown("");
   if (data.type === "response") {
     pendingSubmission = null;
     resumableArchives.delete(activeArchiveId);
@@ -3076,6 +3168,7 @@ window.addEventListener("message", ({ data }) => {
   }
   if (data.type === "billing_configured") setBusy(false, t("Accès lecture seule à la facturation enregistré"));
   if (data.type === "billing_status") applyBillingStatus(data, !data.silent && !busy);
+  if (data.type === "budget_status") applyBudgetStatus(data);
   if (data.type === "access_mode") {
     activeFullAccess = Boolean(data.full_access);
     updateAccessButton();
@@ -3204,10 +3297,13 @@ window.addEventListener("message", ({ data }) => {
     followups = [];
     followupCommand("list");
     restoreArchiveModel(data);
-    renderArchiveMessages(data.messages);
     if (data.resumable) resumableArchives.add(activeArchiveId);
-    endArchiveLoading(true);
-    restorePendingSubmission(submission, data.resumable ? t("Tâche interrompue - clique sur ▶ pour la reprendre.") : data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
+    const renderedArchive=activeArchiveId;
+    renderArchiveMessages(data.messages,rendered=>{
+      if(!rendered || activeArchiveId!==renderedArchive)return;
+      endArchiveLoading(true);
+      restorePendingSubmission(submission, data.resumable ? t("Tâche interrompue - clique sur ▶ pour la reprendre.") : data.has_context ? t("Conversation restaurée avec son contexte") : t("Archive restaurée"));
+    });
   }
   if (data.type === "snapshot_loaded") {
     const submission = (data.automatic || pendingSubmission?.kind === "resume") ? pendingSubmission : null;

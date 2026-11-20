@@ -119,6 +119,28 @@ test('budget updates do not add an indicator or change OVH credit', () => {
   } finally {dom.window.close();}
 });
 
+test('settled local usage immediately refreshes the selected provider balance', () => {
+  const dom=billingView(),w=dom.window;
+  try {
+    w.document.body.dataset.provider='ovhcloud';
+    w.applyBillingStatus({provider:'ovhcloud',configured:true,available:true,balance_estimated:true,
+      currency:'EUR',credit_currency:'EUR',credit_available:100,current_usage:10,credit_remaining:90});
+    w.applyBudgetStatus({provider:'ovhcloud',currency:'EUR',provider_balance:90,
+      authorized_balance:89.75,pending_requests:0,accounting_policy:'max_local_provider'});
+    assert.match(w.liveBalance.textContent,/89,75/);
+    assert.match(w.liveBalance.textContent,/Solde réconcilié/);
+    assert.doesNotMatch(w.liveBalance.textContent,/estimé/);
+    assert.match(w.liveBalance.title,/rapprochement du relevé OVH/);
+
+    w.document.body.dataset.provider='openai';
+    w.applyBillingStatus({provider:'openai',configured:true,available:true,currency:'USD',
+      credit_available:100,current_usage:1,credit_remaining:99,display_currency:'USD'});
+    w.applyBudgetStatus({provider:'openai',currency:'USD',provider_balance:99,pending_spent:.25,
+      reserved:10,available_to_reserve:88.75,pending_requests:1});
+    assert.match(w.liveBalance.textContent,/98,75/);
+  } finally {dom.window.close();}
+});
+
 test('catalogue and model costs use the selected display currency', () => {
   const dom = billingView(), w = dom.window;
   try {
@@ -174,7 +196,10 @@ test('cached DeepSeek balance is sent before the upstream response and refresh u
 test('OVH cached estimate is derived without waiting for API and never uses another project',async t=>{
  const h=setupBillingProvider(t,'ovhcloud',ovhCache);const pending=h.provider.refreshBilling(false);await tick();
  const cached=h.posts.find(p=>p.available&&p.balance_estimated);assert(cached,'No immediate OVH cached estimate');assert.equal(cached.credit_remaining,87.66);
- assert.equal(h.calls[0].options.env.TRINITY_AGENT_PROVIDER,'ovhcloud');h.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await pending;
+ assert.equal(h.calls[0].options.env.TRINITY_AGENT_PROVIDER,'ovhcloud');
+ h.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66,
+   budget_status:{currency:'EUR',provider_balance:87.66,authorized_balance:87.64,accounting_policy:'max_local_provider'}});await pending;
+ assert.equal(h.posts.at(-1).type,'budget_status');assert.equal(h.posts.at(-1).authorized_balance,87.64);
  const wrong=setupBillingProvider(t,'ovhcloud',{...ovhCache,project:'another-project',credit_available:999});const next=wrong.provider.refreshBilling(false);await tick();
  assert(!wrong.posts.some(p=>p.available),'Balance from another OVH project was displayed');wrong.done(0,{...ovhCache,balance_estimated:true,credit_remaining:87.66});await next;
 });

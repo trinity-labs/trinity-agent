@@ -21,6 +21,7 @@ a = importlib.util.module_from_spec(spec)
 # This suite asserts published defaults, not the operator's local token caps.
 # Isolate import-time settings; never alter the running installation policy.
 with patch.dict(os.environ, {
+    "TRINITY_AGENT_PROVIDER": "ovhcloud",
     "TRINITY_AGENT_CONTEXT_TOKENS": "262144", "TRINITY_AGENT_CONTEXT_RESERVE_TOKENS": "4096",
     "TRINITY_AGENT_OUTPUT_TOKENS": "16384", "TRINITY_AGENT_COMPLEX_OUTPUT_TOKENS": "32768",
 }):
@@ -29,6 +30,10 @@ with patch.dict(os.environ, {
 a.load_evidence = lambda *args, **kwargs: {}
 events = []
 a.emit = events.append
+assert a.verbosity_instructions('leger')[0] == 'light'
+assert a.verbosity_instructions('moyen')[0] == 'medium'
+assert a.verbosity_instructions('fort')[0] == 'high'
+assert a.verbosity_instructions('invalid')[0] == 'medium'
 manifest=a.deleted_paths_from_command("find /tmp/archive -type d -print | xargs -r rm -rf", "/tmp/archive/a\n/tmp/archive/b\n/tmp/archive/a\n")
 assert manifest == ['/tmp/archive/a','/tmp/archive/b']
 with patch.object(a.run_dependencies(), 'verification',None),patch.object(a.run_dependencies(), 'engine',None),patch.object(a,'read_task_state',return_value={'deleted_paths':manifest}):
@@ -108,7 +113,9 @@ agent = Agent(FunctionModel(stream_function=model), tools=[lookup])
 result = agent.run_sync('Test', event_stream_handler=stream.handle)
 assert result.output == 'Résultat : 42'
 assert calls == ['tool']
-assert ''.join(e['text'] for e in events) == 'Je vérifie.\n\nRésultat : 42'
+assert [e['type'] for e in events] == ['delta', 'delta_reset', 'delta']
+assert ''.join(e['text'] for e in events if e['type'] == 'delta') == 'Je vérifie.Résultat : 42'
+assert stream.full_text == 'Résultat : 42'
 assert result.usage.requests == 2
 print('PASS: settings, catalog cache, nonblocking billing, visible-only streaming, tool cycle and final output')
 

@@ -635,6 +635,10 @@ class TrinityAgentViewProvider {
           throw new Error(t("Réponse de facturation illisible."));
         }
         this.post({...result, type: "billing_status", provider, silent: !configureIfMissing});
+        if (provider === "ovhcloud" && result.budget_status && typeof result.budget_status === "object" &&
+            !Array.isArray(result.budget_status)) {
+          this.post({...result.budget_status, type: "budget_status", provider});
+        }
         if (!result.configured && configureIfMissing && provider === "ovhcloud") await this.configureBilling();
       } catch (error) {
         if (current()) this.post({...(cached ? {...cached, stale: true} : {configured: true, available: false}),
@@ -956,6 +960,7 @@ class TrinityAgentViewProvider {
           if(!this.deltaTimer) this.deltaTimer=setTimeout(()=>this.flushDelta(),50);
           continue;
         }
+        if (message.type === "delta_reset") this.responseText = "";
         if (message.type === "response") {
           this.responseText = String(message.text || "");
           message.html = this.renderMarkdown(this.responseText);

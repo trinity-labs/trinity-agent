@@ -38,8 +38,14 @@ services:
       TRINITY_AGENT_COMPLEX_OUTPUT_TOKENS: "${TRINITY_AGENT_COMPLEX_OUTPUT_TOKENS:-auto}"
       # Emojis: 0 aucun, 1 ✅⭕➡️, 2 tous avec parcimonie, 3 expressif
       TRINITY_AGENT_EMOJI_MODE: "${TRINITY_AGENT_EMOJI_MODE:-1}"
+      # light/leger: minimal ; medium/moyen: balanced ; high/fort: detailed
+      TRINITY_AGENT_VERBOSITY: "${TRINITY_AGENT_VERBOSITY:-medium}"
       # Délais et nombre maximal d’étapes : protections explicites de l’exécution
       TRINITY_AGENT_TASK_CHECKPOINT_SECONDS: "${TRINITY_AGENT_TASK_CHECKPOINT_SECONDS:-300}"
+      # Bloque les opérations volumineuses avant saturation : réserve + marge prévisionnelle.
+      TRINITY_AGENT_DISK_RESERVE_GB: "${TRINITY_AGENT_DISK_RESERVE_GB:-5}"
+      TRINITY_AGENT_LARGE_OPERATION_HEADROOM_GB: "${TRINITY_AGENT_LARGE_OPERATION_HEADROOM_GB:-5}"
+      TRINITY_AGENT_INODE_RESERVE_PERCENT: "${TRINITY_AGENT_INODE_RESERVE_PERCENT:-10}"
       # 0 disables the model-call count ceiling.
       TRINITY_AGENT_REQUEST_LIMIT: "${TRINITY_AGENT_REQUEST_LIMIT:-0}"
       # Compaction, mémoire et résultats d’outils : budgets adaptatifs

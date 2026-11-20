@@ -117,6 +117,17 @@ test('stream bursts coalesce and flush before terminal events without losing tex
   await new Promise(resolve=>setTimeout(resolve,70));assert.equal(posted.length,3);
 });
 
+test('a new model round clears stale progress commentary before new deltas',async()=>{
+  const {provider,posted}=setup();
+  provider.consumeOutput('{"type":"delta","text":"Le venv fonctionne."}\n');
+  await new Promise(resolve=>setTimeout(resolve,70));
+  provider.consumeOutput('{"type":"delta_reset"}\n{"type":"delta","text":"J’installe les binaires Go."}\n');
+  await new Promise(resolve=>setTimeout(resolve,70));
+  assert.equal(posted.at(-2).type,'delta_reset');
+  assert.equal(provider.responseText,'J’installe les binaires Go.');
+  assert.doesNotMatch(posted.at(-1).html,/venv/);
+});
+
 test('webview asset URLs remain cacheable while CSP nonces change',()=>{
   const {provider}=setup();const webview={asWebviewUri:x=>x,cspSource:'local'};
   const a=provider.getHtml(webview),b=provider.getHtml(webview);

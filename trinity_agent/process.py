@@ -23,6 +23,9 @@ import time
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 READ_BYTES = 65536
 MAX_IDLE_SECONDS = 180
+MIN_BUILD_TIMEOUT_SECONDS = 4 * 60 * 60
+BUILD_IDLE_SECONDS = 30 * 60
+GIB = 1024 ** 3
 RUNTIME_DIRECTORIES = ('/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt/trinity-agent',
                        '/opt/hostedtoolcache/Python')
 _SENSITIVE_NAME = re.compile(r'(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_KEY|ACCESS_KEY|PRIVATE_KEY|AUTHORIZATION|COOKIE|(?:^|_)PAT(?:_|$))')
@@ -33,6 +36,75 @@ _UNSAFE_ENV = {'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', '
                'BASH_ENV', 'ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'PYTHONSTARTUP', 'PYTHONPATH', 'PYTHONHOME',
                # Commands are new processes without code-server's parent IPC.
                'CODE_SERVER_PARENT_PID'}
+
+_STORAGE_INTENSIVE = re.compile(
+    r'(?ix)(?:\b(?:apk|apt(?:-get)?|dnf|yum|pipx?)\s+(?:add|install)|'
+    r'\b(?:npm|pnpm|yarn)\s+(?:ci|install|add)|\bgo\s+install|'
+    r'\bcargo\s+(?:install|build)|\bdocker\s+(?:build|pull)|'
+    r'\bgit\s+clone|\b(?:tar|zip|7z)\b|\b(?:cp|rsync)\b)')
+
+_LONG_RUNNING_BUILD = re.compile(
+    r'(?ix)(?:\bgo\s+(?:build|install)\b|\bcargo\s+(?:build|install)\b|'
+    r'\bcmake\s+--build\b|\bmake(?:\s|$)|\bninja(?:\s|$)|\bmvn\s|\bgradle\s|'
+    r'\bdocker\s+build\b|\bnpm\s+(?:ci|install)\b|\bpipx?\s+install\b|\bgem\s+install\b)')
+
+
+def long_running_build(command):
+    """Recognize compilation/install work that must outlive short chat defaults."""
+    return isinstance(command, str) and bool(_LONG_RUNNING_BUILD.search(command))
+
+
+def _positive_number(name, default):
+    try:
+        value = float(os.environ.get(name, default))
+        return value if math.isfinite(value) and value >= 0 else float(default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def storage_intensive(command):
+    """Identify operations that commonly grow a filesystem by an unknown amount."""
+    return isinstance(command, str) and bool(_STORAGE_INTENSIVE.search(command))
+
+
+def disk_preflight(command, cwd):
+    """Refuse an unbounded write before it consumes the filesystem reserve."""
+    if not storage_intensive(command):
+        return None
+    reserve = _positive_number('TRINITY_AGENT_DISK_RESERVE_GB', 5) * GIB
+    headroom = _positive_number('TRINITY_AGENT_LARGE_OPERATION_HEADROOM_GB', 5) * GIB
+    inode_reserve = _positive_number('TRINITY_AGENT_INODE_RESERVE_PERCENT', 10)
+    try:
+        usage = shutil.disk_usage(cwd)
+        stats = os.statvfs(cwd)
+    except OSError as error:
+        return f"Contrôle d’espace impossible avant l’opération volumineuse : {type(error).__name__}."
+    free_inodes = stats.f_favail if stats.f_files else 0
+    inode_percent = (free_inodes * 100 / stats.f_files) if stats.f_files else 100
+    required = reserve + headroom
+    if usage.free < required or inode_percent < inode_reserve:
+        return ("Espace insuffisant avant l’opération volumineuse : "
+                f"{usage.free / GIB:.1f} Gio libres et {inode_percent:.1f} % d’inodes libres ; "
+                f"il faut préserver {reserve / GIB:.1f} Gio et disposer de {headroom / GIB:.1f} Gio de marge. "
+                "Mesure les emplacements de stockage explicitement autorisés et déplace cette opération vers "
+                "celui qui dispose réellement de la capacité nécessaire avant de réessayer.")
+    return None
+
+
+def remote_disk_guard(command):
+    """Atomically check remote cwd capacity immediately before a large command."""
+    if not storage_intensive(command):
+        return command
+    required_kib = int((_positive_number('TRINITY_AGENT_DISK_RESERVE_GB', 5)
+                        + _positive_number('TRINITY_AGENT_LARGE_OPERATION_HEADROOM_GB', 5)) * 1024 ** 2)
+    inode_percent = math.ceil(_positive_number('TRINITY_AGENT_INODE_RESERVE_PERCENT', 10))
+    guard = (
+        "avail_kib=$(df -Pk . | awk 'NR==2 {print $4}'); "
+        "inode_pct=$(df -Pi . | awk 'NR==2 {gsub(/%/,\"\",$5); print 100-$5}'); "
+        f"if [ -z \"$avail_kib\" ] || [ -z \"$inode_pct\" ] || [ \"$avail_kib\" -lt {required_kib} ] "
+        f"|| [ \"$inode_pct\" -lt {inode_percent} ]; then "
+        "echo 'TRINITY disk guard: insufficient free space or inodes; command not started.' >&2; exit 75; fi; ")
+    return guard + command
 
 
 def command_argv(command):

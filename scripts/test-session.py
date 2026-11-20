@@ -458,11 +458,18 @@ class Sessions(unittest.TestCase):
     def test_interrupted_archive_bypasses_snapshot_and_exposes_resume(self):
         a.save_task_state(status='interrupted',prompt='travaille')
         outputs=[]
+        history_reads=[]
+        def load_history(*_):
+            history_reads.append(len(outputs))
+            if len(history_reads) == 2:
+                self.assertTrue(any(event.get('type') == 'archive_loaded' and not event.get('automatic')
+                                    for event in outputs), 'Visible archive must precede model-history deserialization')
+            return []
         def inputs(requests):
             requests.put({'type':'load_archive','id':'conversation'})
             requests.put({'type':'shutdown'})
         with ExitStack() as stack:
-            mocks={'recover_verification':{},'load_history':{'return_value':[]},
+            mocks={'recover_verification':{},'load_history':{'side_effect':load_history},
                 'read_snapshot':{'side_effect':AssertionError('Interrupted HTML may be stale')},
                 'load_selected_model':{'return_value':a.AUTO_MODEL},'refresh_billing_async':{},
                 'current_budget_status':{'return_value':{}},'publish_budget':{},
@@ -474,6 +481,7 @@ class Sessions(unittest.TestCase):
         restored=[e for e in outputs if e['type']=='archive_loaded']
         self.assertEqual(len(restored),2)
         self.assertTrue(all(e['resumable'] for e in restored))
+        self.assertEqual(len(history_reads),2)
 
     def test_rejected_archive_keeps_pointer_and_history_for_the_next_prompt(self):
         from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart

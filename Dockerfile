@@ -1,5 +1,5 @@
 ARG NODE_IMAGE=node:24-alpine
-ARG GO_IMAGE=golang:1.27.3-alpine
+ARG GO_IMAGE=golang:1.27.4-alpine
 FROM ${GO_IMAGE} AS go-toolchain
 FROM ${NODE_IMAGE}
 
@@ -15,7 +15,9 @@ ENV PYTHON=/usr/bin/python3 \
 # BASE SYSTEM
 # =============================================================================
 
-RUN apk upgrade --no-cache \
+RUN grep -qxF 'https://dl-cdn.alpinelinux.org/alpine/edge/testing' /etc/apk/repositories \
+        || echo 'https://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories \
+    && apk upgrade --no-cache \
     && apk add --no-cache \
         bash \
         bash-completion \
@@ -91,7 +93,7 @@ RUN apk add --no-cache --virtual .code-server-build-deps \
     && echo " Installing code-server latest" \
     && echo "============================================================" \
     \
-    && npm install -g \
+    && npm install -g --allow-scripts=code-server,argon2 \
         "code-server@latest" \
     \
     && echo \
@@ -187,7 +189,7 @@ RUN echo "============================================================" \
 
 RUN python3 -m venv /opt/trinity-agent \
     && /opt/trinity-agent/bin/pip install --upgrade --upgrade-strategy eager \
-        'pydantic-ai-slim[openai]==2.62.0'
+        'pydantic-ai-slim[openai]==2.71.0'
 
 # =============================================================================
 # ENTRYPOINT
@@ -218,6 +220,7 @@ RUN apk add --no-cache docker-cli-buildx \
     && go version \
     && printf 'code-server : ' \
     && code-server --version \
+    && node -e "const argon2=require('/usr/local/lib/node_modules/code-server/node_modules/argon2'); argon2.hash('image-check').then(hash=>argon2.verify(hash,'image-check')).then(ok=>process.exit(ok?0:1))" \
     && printf 'Bun         : ' \
     && bun --version \
     && printf 'Codex       : ' \

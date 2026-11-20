@@ -108,9 +108,17 @@ finished = threading.Event()
 def collect_billing(payload):
     received.append(payload)
     finished.set()
-with patch.object(a, 'fetch_billing_status', return_value={'configured': True, 'available': True}) as fetch, patch.object(a, 'emit', side_effect=collect_billing):
+budget = {'currency': 'EUR', 'provider_balance': 89.96, 'authorized_balance': 89.95}
+with patch.object(a, 'fetch_billing_status', return_value={'configured': True, 'available': True}) as fetch, \
+        patch.object(a, 'current_budget_status', return_value=budget) as reconcile, \
+        patch.object(a, 'emit', side_effect=collect_billing):
     a.refresh_billing_async({'request_id': 'fixture-billing', 'refresh': False, 'silent': True})
     assert finished.wait(2), 'billing thread did not respond'
     assert received[0]['request_id'] == 'fixture-billing'
     assert received[0]['silent'] is True
+    for _ in range(100):
+        if len(received) >= 2: break
+        threading.Event().wait(.01)
+    assert received[1] == {'type': 'budget_status', 'provider': 'ovhcloud', **budget}
     fetch.assert_called_once_with(False)
+    reconcile.assert_called_once_with()

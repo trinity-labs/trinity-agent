@@ -555,9 +555,15 @@ test('restoring a long action history saves once and settles at the final render
       {type:'tool_end',id:'restored-'+i,success:true,detail:'Result '+i});
     items.push({type:'response',text:'Completed',html:'<p>Completed</p>'});
     w.renderArchiveMessages(items);
-    assert.equal(frames.length,1);frames.shift()();
-    assert.equal(frames.length,1);frames.shift()();
-    assert.equal(states.length,1);assert.equal(layouts,2);assert.equal(messages.scrollTop,1600);
+    let frameCount=0;
+    while(frames.length){
+      assert(frameCount++<10,'archive restoration settles within bounded frames');
+      frames.shift()();
+    }
+    assert.equal(frameCount,5,'four render chunks and two-layout bottom settling share five frames');
+    assert.equal(states.length,1,'archive state saves once');
+    assert.equal(layouts,2,'archive bottom is measured before and after layout');
+    assert.equal(messages.scrollTop,1600,'archive settles at its final bottom');
     assert.equal(messages.querySelectorAll('.activity-row').length,100);
     assert.match(states[0].html,/Result 0/);assert.match(states[0].html,/Result 99/);
     assert.match(states[0].html,/Completed/);
