@@ -64,7 +64,7 @@ test('packaged icon stays purple so the live workbench theme can switch it', () 
           assert.equal(manifest.trinityAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
           assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu-graphite-bold-large.svg');
           const start = manifest.contributes.commands.find(item => item.command === 'trinityAgent.start');
-          assert.deepEqual(start.icon, {light:'media/trinity-title-black.png', dark:'media/trinity-header-white.png'});
+          assert.deepEqual(start.icon, {light:'media/trinity-title-black-large.svg', dark:'media/trinity-title-white-large.svg'});
           assert.deepEqual(manifest.contributes.menus['editor/title'], [
             {command:'trinityAgent.start', group:'navigation'},
           ]);

@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.9.2
+
+- Enlarge the TRINITY editor title icon slightly in both light and dark themes.
+
 ## 5.9.1
 
 - Enlarge the bold graphite Activity Bar logo slightly while preserving its proportions and artwork.
