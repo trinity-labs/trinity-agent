@@ -1,9 +1,9 @@
 # Changelog
 
-## 5.11.0
+## 5.12.0
 
-- Stop commands that produce no output for three minutes, even when their total timeout is longer, and terminate their complete process group.
-- Keep active long-running commands alive when they emit real output, while reporting output stalls distinctly from ordinary wall-time expiration.
+- Stop commands whose entire process group has no observable activity for three minutes, even when their total timeout is longer, and terminate every descendant.
+- Keep active long-running commands alive through output, CPU, I/O or child-process activity, while reporting activity stalls distinctly from ordinary wall-time expiration.
 
 ## 5.10.0
 

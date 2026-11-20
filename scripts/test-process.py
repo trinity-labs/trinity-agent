@@ -220,19 +220,25 @@ class ProcessTests(unittest.TestCase):
         self.assertTrue(result['timed_out'])
         self.assertFalse(result['passed'])
 
-    def test_output_inactivity_kills_the_process_group_before_wall_timeout(self):
+    def test_process_inactivity_kills_the_process_group_before_wall_timeout(self):
         source = ('import subprocess,sys,time; child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"]); '
                   'print(child.pid,flush=True); time.sleep(60)')
-        result = self.run_python(source, timeout=5, idle_timeout=.1)
+        result = self.run_python(source, timeout=5, idle_timeout=1)
         self.assertTrue(result['timed_out'])
         self.assertTrue(result['idle_timed_out'])
-        self.assertEqual(result['error'], 'process_output_stalled')
-        self.assertLess(result['duration_ms'], 2000)
+        self.assertEqual(result['error'], 'process_activity_stalled')
+        self.assertLess(result['duration_ms'], 3000)
         self.assert_child_stopped(int(result['output'].strip()))
 
     def test_real_output_resets_the_inactivity_guard(self):
-        source = ('import time\nfor _ in range(5):\n print("progress",flush=True); time.sleep(.06)')
-        result = self.run_python(source, timeout=2, idle_timeout=.1)
+        source = ('import time\nfor _ in range(5):\n print("progress",flush=True); time.sleep(.1)')
+        result = self.run_python(source, timeout=2, idle_timeout=.25)
+        self.assertTrue(result['passed'], result)
+        self.assertFalse(result['idle_timed_out'])
+
+    def test_silent_cpu_activity_resets_the_inactivity_guard(self):
+        result = self.run_python('import time\nend=time.monotonic()+.8\nwhile time.monotonic()<end: pass',
+                                 timeout=2, idle_timeout=.6)
         self.assertTrue(result['passed'], result)
         self.assertFalse(result['idle_timed_out'])
 

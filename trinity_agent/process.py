@@ -217,15 +217,37 @@ def _kill_group(process):
         pass
 
 
+def _group_activity(process_group):
+    """Return observable CPU, I/O and membership activity for a process group."""
+    members = []
+    cpu_ticks = io_bytes = 0
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            fields = (entry / 'stat').read_text().split(') ', 1)[1].split()
+            if int(fields[2]) != process_group:
+                continue
+            members.append(int(entry.name))
+            cpu_ticks += int(fields[11]) + int(fields[12])
+            for line in (entry / 'io').read_text().splitlines():
+                key, _, value = line.partition(':')
+                if key in {'rchar', 'wchar', 'read_bytes', 'write_bytes'}:
+                    io_bytes += int(value)
+        except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError, IndexError):
+            continue
+    return tuple(sorted(members)), cpu_ticks, io_bytes
+
+
 def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', output_limit=16000,
                 progress=None, idle_timeout=MAX_IDLE_SECONDS):
     """Return the real exit outcome with bounded combined stdout/stderr.
 
     Output is kept in memory as a bounded tail. A 16 MiB stream flood terminates
     the group; stdout truncation alone does not change a command's exit status.
-    Timeout, prolonged output inactivity, flood and startup failure cannot be
-    reported as a passed command. Output activity resets the inactivity guard;
-    periodic UI progress reports do not.
+    Timeout, prolonged process-group inactivity, flood and startup failure
+    cannot be reported as a passed command. Output, CPU, I/O and descendant
+    activity reset the inactivity guard; periodic UI reports do not.
     """
     started = time.monotonic()
     result = {'exit_code': None, 'passed': False, 'timed_out': False, 'idle_timed_out': False, 'output': '',
@@ -290,6 +312,8 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
     eof = False
     deadline = time.monotonic() + timeout
     idle_deadline = time.monotonic() + min(timeout, idle_timeout)
+    activity = _group_activity(process.pid)
+    activity_checked_at = started
     last_progress = started
     exited_at = None
     try:
@@ -299,6 +323,12 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
             while True:
                 now = time.monotonic()
                 exited = process.poll() is not None
+                if not exited and now - activity_checked_at >= .5:
+                    activity_checked_at = now
+                    observed = _group_activity(process.pid)
+                    if observed != activity:
+                        activity = observed
+                        idle_deadline = now + min(timeout, idle_timeout)
                 if exited and exited_at is None:
                     exited_at = now
                     _kill_group(process)
@@ -308,7 +338,7 @@ def run_process(argv, cwd, timeout=120, *, workspace=None, profile='approved', o
                 elif not exited and now >= idle_deadline:
                     result['timed_out'] = True
                     result['idle_timed_out'] = True
-                    result['error'] = 'process_output_stalled'
+                    result['error'] = 'process_activity_stalled'
                     _kill_group(process)
                 if exited and (eof or now - exited_at >= .25):
                     if not eof:
