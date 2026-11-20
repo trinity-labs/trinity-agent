@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.9.0
+
+- Replace the VS Code Activity Bar artwork with the supplied bold graphite TRINITY logo and keep that asset through local and Marketplace packaging.
+
 ## 5.8.10
 
 - Restore the saved model provider before the first balance refresh and carry it into new conversations, so a Qwen session cannot reload with DeepSeek billing.
