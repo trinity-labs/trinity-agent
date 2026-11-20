@@ -19,7 +19,8 @@ function verifyInstallLayout(output, local) {
   if (forbidden.length) throw Error(`Backend files must not be installed by the VSIX: ${forbidden.join(', ')}`);
   const metadata = entries.includes('extension/local-update.json');
   if (metadata !== local) throw Error('Local compatibility metadata does not match the package identity');
-  for (const required of ['extension/extension.js', 'extension/backend-path.js']) {
+  for (const required of ['extension/extension.js', 'extension/backend-path.js',
+    'extension/media/trinity-header-primary.png', 'extension/media/trinity-header-white.png']) {
     if (!entries.includes(required)) throw Error(`VSIX is missing required runtime module: ${required}`);
   }
 }
@@ -29,7 +30,7 @@ try {
     'package.nls.json','package.nls.fr.json','package.nls.en.json','package.nls.de.json','package.nls.es.json',
     'media/chat.js','media/chat.css','media/i18n.js','media/translations.json','media/safe-html.js','media/purify.min.js','media/icons.min.js',
     'media/highlight.min.js','media/monokai.min.css','media/HighlightJS.LICENSE',
-    'media/history-demo.png','media/trinity_agent_screenshot.png','media/trinity-icon.png','media/trinity-activity.png','media/trinity-menu-graphite-bold-large.svg','media/trinity-header-primary.png','media/trinity-title-white-large.svg','media/trinity-title-black-large.svg','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
+    'media/history-demo.png','media/trinity_agent_screenshot.png','media/trinity-icon.png','media/trinity-activity.png','media/trinity-menu-graphite-bold-large.svg','media/trinity-header-primary.png','media/trinity-header-white.png','media/trinity-title-black.png','media/trinity-title-white-large.svg','media/trinity-title-black-large.svg','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
   for (const name of ['key','robot','wallet']) for (const theme of ['light','dark']) files.push(`media/bi-${name}-${theme}.svg`);
   for (const relative of files) {
     const source = path.join(root, relative);

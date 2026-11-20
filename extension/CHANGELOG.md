@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.9.3
+
+- Restore the original header assets alongside the enlarged editor icons so the TRINITY Agent view can load after installation.
+
 ## 5.9.2
 
 - Enlarge the TRINITY editor title icon slightly in both light and dark themes.
