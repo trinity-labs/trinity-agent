@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.9.1
+
+- Enlarge the bold graphite Activity Bar logo slightly while preserving its proportions and artwork.
+
 ## 5.9.0
 
 - Replace the VS Code Activity Bar artwork with the supplied bold graphite TRINITY logo and keep that asset through local and Marketplace packaging.

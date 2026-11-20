@@ -62,7 +62,7 @@ test('packaged icon stays purple so the live workbench theme can switch it', () 
           assert.deepEqual(fs.readFileSync(path.join(stage, manifest.icon)),
             fs.readFileSync(path.resolve(__dirname, '..', expected)));
           assert.equal(manifest.trinityAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
-          assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu-graphite-bold.png');
+          assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu-graphite-bold-large.svg');
           const start = manifest.contributes.commands.find(item => item.command === 'trinityAgent.start');
           assert.deepEqual(start.icon, {light:'media/trinity-title-black.png', dark:'media/trinity-header-white.png'});
           assert.deepEqual(manifest.contributes.menus['editor/title'], [
@@ -154,7 +154,7 @@ test('missing overrides restore bundled branding and preserve localization keys'
     fs.copyFileSync(path.resolve(__dirname, '../media/trinity-activity-legacy.svg'), path.join(root, 'media/trinity-activity-legacy.svg'));
     fs.copyFileSync(path.resolve(__dirname, '../media/trinity-icon.png'), path.join(root, 'media/trinity-icon.png'));
     fs.copyFileSync(path.resolve(__dirname, '../media/trinity-activity.png'), path.join(root, 'media/trinity-activity.png'));
-    fs.copyFileSync(path.resolve(__dirname, '../media/trinity-menu-graphite-bold.png'), path.join(root, 'media/trinity-menu-graphite-bold.png'));
+    fs.copyFileSync(path.resolve(__dirname, '../media/trinity-menu-graphite-bold-large.svg'), path.join(root, 'media/trinity-menu-graphite-bold-large.svg'));
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json')));
     pkg.icon = 'media/customer.svg';
     pkg.__metadata = {publisherDisplayName: 'Customer'};
@@ -171,7 +171,7 @@ test('missing overrides restore bundled branding and preserve localization keys'
     assert.match(result.contributes.viewsContainers.activitybar[0].icon, /^media\/theme-menu-dark-/);
     assert.deepEqual(
       fs.readFileSync(path.join(root, result.contributes.viewsContainers.activitybar[0].icon)),
-      fs.readFileSync(path.resolve(__dirname, '../media/trinity-menu-graphite-bold.png')),
+      fs.readFileSync(path.resolve(__dirname, '../media/trinity-menu-graphite-bold-large.svg')),
     );
     assert.equal(result.trinityAgentBranding.darkThemeIcon, 'media/trinity-activity.png');
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.nls.fr.json')))['trinityAgent.performanceMode.auto'], 'Auto');
@@ -197,11 +197,11 @@ test('webview header uses fully opaque dedicated light and dark logos', () => {
   const css = fs.readFileSync(path.join(root, 'media/chat.css'), 'utf8');
   assert.doesNotMatch(css, /\.history-brand\s*\{[^}]*opacity\s*:/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json')))
-    .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu-graphite-bold.png');
-  const menu = fs.readFileSync(path.join(root, 'media/trinity-menu-graphite-bold.png'));
-  assert.deepEqual(menu.subarray(0, 8), Buffer.from([137,80,78,71,13,10,26,10]));
-  assert.equal(menu.readUInt32BE(16), 1254);
-  assert.equal(menu.readUInt32BE(20), 1254);
+    .contributes.viewsContainers.activitybar[0].icon, 'media/trinity-menu-graphite-bold-large.svg');
+  const menu = fs.readFileSync(path.join(root, 'media/trinity-menu-graphite-bold-large.svg'), 'utf8');
+  assert.match(menu, /^<svg[^>]+viewBox="0 0 1254 1254"/);
+  assert.match(menu, /<image x="-18" y="-28" width="1292" height="1292"/);
+  assert.match(menu, /href="data:image\/png;base64,/);
 });
 
 test('mount point setting controls both the archive path and its storage usage', () => {

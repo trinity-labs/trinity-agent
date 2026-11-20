@@ -29,7 +29,7 @@ try {
     'package.nls.json','package.nls.fr.json','package.nls.en.json','package.nls.de.json','package.nls.es.json',
     'media/chat.js','media/chat.css','media/i18n.js','media/translations.json','media/safe-html.js','media/purify.min.js','media/icons.min.js',
     'media/highlight.min.js','media/monokai.min.css','media/HighlightJS.LICENSE',
-    'media/history-demo.png','media/trinity_agent_screenshot.png','media/trinity-icon.png','media/trinity-activity.png','media/trinity-menu-graphite-bold.png','media/trinity-header-primary.png','media/trinity-header-white.png','media/trinity-title-black.png','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
+    'media/history-demo.png','media/trinity_agent_screenshot.png','media/trinity-icon.png','media/trinity-activity.png','media/trinity-menu-graphite-bold-large.svg','media/trinity-header-primary.png','media/trinity-header-white.png','media/trinity-title-black.png','media/DOMPurify.LICENSE','media/BootstrapIcons.LICENSE.txt','media/FontAwesome.LICENSE.txt'];
   for (const name of ['key','robot','wallet']) for (const theme of ['light','dark']) files.push(`media/bi-${name}-${theme}.svg`);
   for (const relative of files) {
     const source = path.join(root, relative);
@@ -69,7 +69,7 @@ try {
   // Keep the source icon purple. The code-server workbench switches this
   // specific extension icon to white from its actual VS Code theme class.
   manifest.icon = 'media/trinity-icon.png';
-  manifest.contributes.viewsContainers.activitybar[0].icon = 'media/trinity-menu-graphite-bold.png';
+  manifest.contributes.viewsContainers.activitybar[0].icon = 'media/trinity-menu-graphite-bold-large.svg';
   delete manifest.scripts;
   delete manifest.devDependencies;
   fs.writeFileSync(path.join(stage,'package.json'), JSON.stringify(manifest,null,2)+'\n');

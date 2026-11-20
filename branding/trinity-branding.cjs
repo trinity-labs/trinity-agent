@@ -112,7 +112,7 @@ function applyManifest(file, name, language = process.env.TRINITY_AGENT_LANG || 
   const lightThemeIcon = appIcon || defaultIcon;
   const menuOverride = customIcon('TRINITY_AGENT_MENU_ICON', media);
   const menuIcon = menuOverride ||
-    (fs.existsSync(path.join(media, 'trinity-menu-graphite-bold.png')) ? 'media/trinity-menu-graphite-bold.png' :
+    (fs.existsSync(path.join(media, 'trinity-menu-graphite-bold-large.svg')) ? 'media/trinity-menu-graphite-bold-large.svg' :
       fs.existsSync(path.join(media, 'trinity-menu.svg')) ? 'media/trinity-menu.svg' :
       fs.existsSync(path.join(media, 'trinity-menu.png')) ? 'media/trinity-menu.png' :
       fs.existsSync(path.join(media, 'trinity-activity.png')) ? 'media/trinity-activity.png' : 'media/trinity-activity-legacy.svg');
