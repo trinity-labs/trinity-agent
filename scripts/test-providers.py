@@ -12,14 +12,19 @@ from trinity_agent.providers import PROVIDERS, selected_provider
 
 class ProviderConfigurationTests(unittest.TestCase):
     def test_each_api_has_its_own_key_catalog_base_and_credit(self):
-        self.assertEqual(set(PROVIDERS), {'ovhcloud','deepseek','openai'})
+        self.assertEqual(set(PROVIDERS), {'ovhcloud','deepseek','openai','openrouter'})
         names=set()
         for provider in PROVIDERS.values():
             names.add(provider.api_key_env)
             self.assertTrue(provider.base_url_env.startswith('TRINITY_'))
             self.assertTrue(provider.monthly_credit_env.startswith('TRINITY_'))
             self.assertTrue(provider.default_model)
-        self.assertEqual(len(names),3)
+        self.assertEqual(len(names),4)
+
+    def test_openrouter_defaults_to_a_free_agentic_model(self):
+        provider=PROVIDERS['openrouter']
+        self.assertEqual(provider.default_base_url,'https://openrouter.ai/api/v1')
+        self.assertTrue(provider.default_model.endswith(':free'))
 
     def test_api_specific_limits_override_shared_defaults(self):
         with patch.dict(os.environ,{'TRINITY_AGENT_PROVIDER':'openai','TRINITY_AGENT_CONTEXT_TOKENS':'1000',

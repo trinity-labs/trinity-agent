@@ -43,6 +43,8 @@ PROVIDERS={item.id:item for item in (
                    'https://api.deepseek.com','deepseek-flash','USD','TRINITY_DEEPSEEK_MONTHLY_CREDIT_USD'),
     ProviderConfig('openai','OpenAI Codex API','TRINITY_OPENAI_API_KEY','TRINITY_OPENAI_BASE_URL',
                    'https://api.openai.com/v1','gpt-5.3-codex','USD','TRINITY_OPENAI_MONTHLY_CREDIT_USD'),
+    ProviderConfig('openrouter','OpenRouter Free','TRINITY_OPENROUTER_API_KEY','TRINITY_OPENROUTER_BASE_URL',
+                   'https://openrouter.ai/api/v1','particle-ai/particle-1:free','USD','TRINITY_OPENROUTER_MONTHLY_CREDIT_USD'),
 )}
 
 

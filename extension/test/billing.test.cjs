@@ -100,6 +100,24 @@ test('negative estimates remain visible and incompatible currencies keep raw cre
   dom.window.close();
 });
 
+test('expired OVH credit is shown as unusable and never reconciled into a balance', () => {
+  const dom=billingView(),w=dom.window;
+  try {
+    w.document.body.dataset.provider='ovhcloud';
+    w.applyBudgetStatus({provider:'ovhcloud',currency:'EUR',provider_balance:0,
+      authorized_balance:0,blocked:true,accounting_policy:'max_local_provider'});
+    w.applyBillingStatus({provider:'ovhcloud',configured:true,available:true,
+      currency:'EUR',credit_currency:'EUR',credit_available:0,
+      credit_expired:true,credit_expired_available:136.67,
+      credit_remaining:0,balance_estimated:false});
+    assert.match(w.liveBalance.textContent,/Crédit expiré : 0,00/);
+    assert.match(w.liveBalance.title,/136,67.*n’est plus utilisable/);
+    assert.doesNotMatch(w.liveBalance.textContent,/réconcilié|estimé/i);
+    assert(w.billing.classList.contains('failed'));
+    assert(!w.billing.classList.contains('connected'));
+  } finally {dom.window.close();}
+});
+
 test('budget updates do not add an indicator or change OVH credit', () => {
   const dom = billingView(), w = dom.window;
   try {
@@ -185,7 +203,7 @@ function setupBillingProvider(t, providerName, cache) {
  return {provider,settings,calls,posts,done:(index,result)=>calls[index].done(null,JSON.stringify(result))};
 }
 const deepCache={provider:'deepseek',schema_version:2,credit_currency:'EUR',configured:true,available:true,currency:'EUR',credit_available:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
-const ovhCache={schema_version:2,configured:true,available:true,project:'project-a',currency:'EUR',credit_currency:'EUR',credit_available:100,current_usage:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
+const ovhCache={schema_version:3,configured:true,available:true,project:'project-a',currency:'EUR',credit_currency:'EUR',credit_available:100,current_usage:12.34,cached_at:Date.now()/1000,last_update:'2026-10-26T15:00:00Z'};
 test('cached DeepSeek balance is sent before the upstream response and refresh uses selected provider',async t=>{
  const h=setupBillingProvider(t,'deepseek',deepCache);let ovhCalls=0;h.provider.billingCredentials=async()=>{ovhCalls++;return undefined;};
  const pending=h.provider.refreshBilling(false);await tick();

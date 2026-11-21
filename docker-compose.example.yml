@@ -1,4 +1,32 @@
 services:
+  trinity-local-llm:
+    profiles: ["local-model"]
+    image: trinity-code-server-alpine:latest
+    container_name: trinity-local-llm
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec llama-server
+        --model "/models/$${TRINITY_LOCAL_MODEL_FILE:-Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf}"
+        --alias "$${TRINITY_LOCAL_MODEL_ALIAS:-dolphin3-pentest}"
+        --host 0.0.0.0 --port 8080 --ctx-size 16384 --threads 6 --parallel 1
+    environment:
+      TRINITY_LOCAL_MODEL_FILE: "${TRINITY_LOCAL_MODEL_FILE:-Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf}"
+      TRINITY_LOCAL_MODEL_ALIAS: "${TRINITY_LOCAL_MODEL_ALIAS:-dolphin3-pentest}"
+    volumes:
+      - /var/lib/trinity/agent-models:/models:ro
+    ports:
+      - "${IDE_BIND_ADDRESS:-127.0.0.1}:${IDE_PORT:-5734}:8080"
+    cpus: 6
+    mem_limit: 10g
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 90s
+
   vscode:
     build:
       context: .
@@ -26,6 +54,7 @@ services:
       TRINITY_OVHCLOUD_BASE_URL: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
       TRINITY_DEEPSEEK_BASE_URL: "${TRINITY_DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
       TRINITY_OPENAI_BASE_URL: "${TRINITY_OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      TRINITY_OPENROUTER_BASE_URL: "${TRINITY_OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
       TRINITY_OPENAI_MONTHLY_CREDIT_USD: "${TRINITY_OPENAI_MONTHLY_CREDIT_USD:-100}"
       TRINITY_AGENT_PROVIDER: "${TRINITY_AGENT_PROVIDER:-ovhcloud}"
       # auto choisit un modèle distinct pour la revue des seules tâches à risque.
@@ -108,6 +137,12 @@ services:
         target: /root/.trinity-agent
         bind:
           create_host_path: false
+      - type: bind
+        source: /var/lib/trinity/agent-models
+        target: /var/lib/trinity/agent-models
+        read_only: true
+        bind:
+          create_host_path: false
       - ./project:/home/coder
       - ./extensions:/root/.local/share/code-server/extensions
       - ./user:/root/.local/share/code-server/User
@@ -122,6 +157,7 @@ services:
       - TRINITY_OVHCLOUD_CONSUMER_KEY
       - TRINITY_OVHCLOUD_PROJECT
       - TRINITY_OVHCLOUD_API_BASE_URL
+      - TRINITY_OPENROUTER_API_KEY
 
     command:
       - --bind-addr
@@ -144,3 +180,5 @@ secrets:
     file: ${AGENT_SECRETS_DIR:-./secrets}/TRINITY_OVHCLOUD_PROJECT
   TRINITY_OVHCLOUD_API_BASE_URL:
     file: ${AGENT_SECRETS_DIR:-./secrets}/TRINITY_OVHCLOUD_API_BASE_URL
+  TRINITY_OPENROUTER_API_KEY:
+    file: ${AGENT_SECRETS_DIR:-./secrets}/OPENROUTER_API_KEY

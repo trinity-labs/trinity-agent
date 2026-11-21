@@ -1,9 +1,21 @@
 ARG NODE_IMAGE=node:24-alpine
 ARG GO_IMAGE=golang:1.27.4-alpine
+ARG LLAMA_CPP_VERSION=b9564
 FROM ${GO_IMAGE} AS go-toolchain
+FROM alpine:3.24 AS llama-server-builder
+ARG LLAMA_CPP_VERSION
+RUN apk add --no-cache build-base cmake git linux-headers \
+    && git clone --depth 1 --branch "${LLAMA_CPP_VERSION}" https://github.com/ggml-org/llama.cpp.git /src/llama.cpp \
+    && cmake -S /src/llama.cpp -B /src/llama.cpp/build \
+        -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF \
+        -DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_BMI2=OFF \
+        -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=ON
+RUN cmake --build /src/llama.cpp/build --target llama-server -j 6 \
+    && install -m 0755 /src/llama.cpp/build/bin/llama-server /out-llama-server
 FROM ${NODE_IMAGE}
 
 COPY --from=go-toolchain /usr/local/go /usr/local/go
+COPY --from=llama-server-builder /out-llama-server /usr/local/bin/llama-server
 
 ENV PYTHON=/usr/bin/python3 \
     GOBIN=/usr/local/bin \
@@ -39,6 +51,8 @@ RUN grep -qxF 'https://dl-cdn.alpinelinux.org/alpine/edge/testing' /etc/apk/repo
         jq \
         libc6-compat \
         less \
+        llama.cpp \
+        llama.cpp-extras \
         libstdc++ \
         lsof \
         musl-dev \

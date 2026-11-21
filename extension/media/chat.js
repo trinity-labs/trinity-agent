@@ -372,7 +372,8 @@ let activeFullAccess = null;
 let pendingSubmission = null;
 const normalizeModelSelection = value => value === "auto" ? "auto-balanced" : (value || "auto-balanced");
 const savedProviderForModel = (model, provider = "") => {
-  if (["ovhcloud", "deepseek", "openai"].includes(provider)) return provider;
+  if (["ovhcloud", "deepseek", "openai", "openrouter"].includes(provider)) return provider;
+  if (String(model || "").includes(":free") || String(model || "").startsWith("openrouter/")) return "openrouter";
   if (String(model || "").startsWith("deepseek-")) return "deepseek";
   if (/^(?:gpt-6(?:\.1)?-(?:astra|sol|terra|luna)|gpt-5\.3-codex)$/.test(String(model || ""))) return "openai";
   return model && model !== "auto-balanced" ? "ovhcloud" : "";
@@ -515,7 +516,7 @@ function modelAvailabilityLabel() {
     const rows = models.filter((item) => item.provider === provider);
     return `${rows.filter((item) => item.selectable).length}/${rows.length}`;
   };
-  const names = {ovhcloud: "OVHcloud", deepseek: "DeepSeek", openai: "OpenAI Codex"};
+  const names = {ovhcloud: "OVHcloud", deepseek: "DeepSeek", openai: "OpenAI Codex", openrouter: "OpenRouter Free"};
   const summary = [...new Set(models.map(item => item.provider).filter(Boolean))]
     .map(provider => `${names[provider] || provider} ${count(provider)}`).join(" · ");
   return modelCatalogueNote ? `${summary} · ${modelCatalogueNote}` : summary;
@@ -558,7 +559,7 @@ function renderModels() {
         ? t("Jusqu’à {0}k selon le modèle", Math.round(model.context_length / 1024))
         : t("Contexte selon le modèle choisi"))
       : compactTokens(model.context_length);
-    const providerName = ({deepseek:"DeepSeek",ovhcloud:"OVHcloud",openai:"OpenAI Codex"})[model.provider] || "";
+    const providerName = ({deepseek:"DeepSeek",ovhcloud:"OVHcloud",openai:"OpenAI Codex",openrouter:"OpenRouter Free"})[model.provider] || "";
     meta.textContent = [providerName, model.owner, size, active, model.quantization, contextLabel].filter(Boolean).join(" · ");
     if (model.parameters_b) meta.title = t("Taille documentée du modèle ; ne garantit ni sa vitesse ni sa qualité.");
     row.append(top, price, meta);
@@ -575,7 +576,7 @@ function renderModels() {
         selectedModel = model.id;
         selectedProvider = savedProviderForModel(selectedModel, model.provider);
         hasModelPreference = true;
-        if (["ovhcloud", "deepseek", "openai"].includes(model.provider) && document.body.dataset.provider !== model.provider) {
+        if (["ovhcloud", "deepseek", "openai", "openrouter"].includes(model.provider) && document.body.dataset.provider !== model.provider) {
           document.body.dataset.provider = model.provider;
           applyBillingStatus({provider: model.provider, pending: true}, false);
         }
@@ -2288,6 +2289,9 @@ const latestBillingByProvider = new Map();
 const latestBudgetByProvider = new Map();
 
 function billingWithLocalUsage(data, provider) {
+  if (provider === "ovhcloud" && data.credit_expired) return {...data,
+    credit_remaining: 0, credit_remaining_display: 0,
+    balance_estimated: false, balance_reconciled: false};
   const budget = latestBudgetByProvider.get(provider);
   if (!budget || !data.available || String(budget.currency || "").toUpperCase() !== String(data.currency || "").toUpperCase()) return data;
   let remaining;
@@ -2306,7 +2310,7 @@ function billingWithLocalUsage(data, provider) {
 }
 
 function applyBudgetStatus(data) {
-  const provider = ["deepseek","openai","ovhcloud"].includes(data.provider)
+  const provider = ["deepseek","openai","openrouter","ovhcloud"].includes(data.provider)
     ? data.provider : document.body.dataset.provider || "ovhcloud";
   latestBudgetByProvider.set(provider, data);
   const billingStatus = latestBillingByProvider.get(provider);
@@ -2317,8 +2321,8 @@ function applyBudgetStatus(data) {
 
 function applyBillingStatus(data, announce = true) {
   rememberExchangeRates(data);
-  const provider = ["deepseek","openai","ovhcloud"].includes(data.provider) ? data.provider : "ovhcloud";
-  const providerLabel = provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI Codex" : "OVHcloud";
+  const provider = ["deepseek","openai","openrouter","ovhcloud"].includes(data.provider) ? data.provider : "ovhcloud";
+  const providerLabel = provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI Codex" : provider === "openrouter" ? "OpenRouter Free" : "OVHcloud";
   if (document.body.dataset.provider && document.body.dataset.provider !== provider) return;
   if (!document.body.dataset.provider) document.body.dataset.provider = provider;
   billing.setAttribute("aria-label", provider === "ovhcloud" ? t("Solde OVHcloud") : providerLabel);
@@ -2380,7 +2384,12 @@ function applyBillingStatus(data, announce = true) {
   if (!data.configured) liveBalance.textContent = data.authorization_expired
     ? t("Solde : accès expiré") : t("Solde : à configurer");
   else if (!data.available) liveBalance.textContent = t("Solde : indisponible");
-  else {
+  else if (data.credit_expired) {
+    const amount = document.createElement("span");
+    amount.className = "balance-amount";
+    amount.textContent = formatMoney(0, data.credit_currency || data.currency);
+    liveBalance.replaceChildren(document.createTextNode(t("Crédit expiré : ")), amount);
+  } else {
     const value = Number(data.balance_estimated ? data.credit_remaining ?? data.credit_remaining_display : data.credit_available || 0);
     const amount = document.createElement("span");
     amount.className = "balance-amount";
@@ -2406,6 +2415,14 @@ function applyBillingStatus(data, announce = true) {
   if (!data.available) {
     billing.title = t("Facturation OVHcloud indisponible{0}", data.error ? ` · ${data.error}` : "");
     if (announce) setStatus(t("Impossible de consulter la facturation OVHcloud"), true);
+    return;
+  }
+  if (data.credit_expired) {
+    const expired = formatMoney(data.credit_expired_available, data.credit_currency || data.currency);
+    liveBalance.title = billing.title = t("Crédit OVH expiré : le reliquat historique de {0} n’est plus utilisable. Les nouveaux usages peuvent être facturés par OVH.", expired);
+    billing.classList.remove("connected");
+    billing.classList.add("failed");
+    if (announce) setStatus(liveBalance.title, true);
     return;
   }
   const currency = data.currency || "EUR";
@@ -2984,7 +3001,7 @@ window.addEventListener("message", ({ data }) => {
     setBusy(true, data.text);
   }
   if (data.type === "provider_switched") {
-    if (["ovhcloud", "deepseek", "openai"].includes(data.provider)) {
+    if (["ovhcloud", "deepseek", "openai", "openrouter"].includes(data.provider)) {
       document.body.dataset.provider = data.provider;
       applyBillingStatus({provider: data.provider, pending: true}, false);
     }
@@ -3253,7 +3270,7 @@ window.addEventListener("message", ({ data }) => {
     modelCatalog = data.items || [];
     modelCatalogueNote = data.other_note || "";
     const providers = new Set(modelCatalog.map(item => item.provider).filter(Boolean));
-    const providerNames = {ovhcloud:"OVHcloud",deepseek:"DeepSeek",openai:"OpenAI Codex"};
+    const providerNames = {ovhcloud:"OVHcloud",deepseek:"DeepSeek",openai:"OpenAI Codex",openrouter:"OpenRouter Free"};
     const providerLabel = [...providers].map(provider=>providerNames[provider] || provider).join(" + ");
     const panelTitle = document.getElementById("model-panel-title");
     if (panelTitle) panelTitle.textContent = t("Modèles {0}", providerLabel);
@@ -3263,7 +3280,7 @@ window.addEventListener("message", ({ data }) => {
     if (restored?.provider) selectedProvider = restored.provider;
     const restoredKey = restored?.provider ? `${selectedModel}:${restored.provider}` : "";
     if (restoredKey && restoredKey !== restoredModelProvider &&
-        ["ovhcloud", "deepseek", "openai"].includes(restored.provider) &&
+        ["ovhcloud", "deepseek", "openai", "openrouter"].includes(restored.provider) &&
         document.body.dataset.provider !== restored.provider) {
       restoredModelProvider = restoredKey;
       document.body.dataset.provider = restored.provider;

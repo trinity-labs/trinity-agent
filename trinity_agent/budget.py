@@ -232,8 +232,12 @@ def _iso(value: datetime) -> str:
 class BudgetLedger:
     currency = 'EUR'
 
-    def __init__(self, path: Path, limits: dict, now: Callable[[], datetime] | None = None, credit: dict | None = None):
+    def __init__(self, path: Path, limits: dict, now: Callable[[], datetime] | None = None,
+                 credit: dict | None = None, currency: str = 'EUR'):
         self.path = Path(path)
+        self.currency = str(currency).upper()
+        if self.currency not in {'EUR', 'USD'}:
+            raise ValueError('Devise de budget non prise en charge.')
         unknown = set(limits) - set(PERIODS)
         if unknown:
             raise ValueError(f"Période de budget inconnue : {', '.join(sorted(unknown))}")
@@ -306,7 +310,7 @@ class BudgetLedger:
         except FileNotFoundError:
             return {
                 "version": 1,
-                "currency": "EUR",
+                "currency": self.currency,
                 "namespace": uuid.uuid4().hex,
                 "sequence": 0,
                 "spent": {period: {} for period in PERIODS},
@@ -314,7 +318,7 @@ class BudgetLedger:
             }
         try:
             data = json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
-            if not isinstance(data, dict) or data.get("version") != 1 or data.get("currency") != "EUR":
+            if not isinstance(data, dict) or data.get("version") != 1 or data.get("currency") != self.currency:
                 raise ValueError("Format de registre inconnu.")
             if not isinstance(data["namespace"], str) or len(bytes.fromhex(data["namespace"])) != 16:
                 raise ValueError("Identifiant de registre invalide.")
@@ -429,7 +433,7 @@ class BudgetLedger:
             periods['credit'] = self._credit_status(data, now, reserved)
             blocked = blocked or periods['credit']['remaining'] <= 0
         return {
-            "currency": "EUR",
+            "currency": self.currency,
             "periods": periods,
             "blocked": blocked,
             "pending_requests": len(data["reservations"]),

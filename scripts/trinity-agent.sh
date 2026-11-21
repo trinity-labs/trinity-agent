@@ -6,10 +6,13 @@ set -eu
 ulimit -c 0 2>/dev/null || true
 
 TRINITY_SECRET_DIRECTORY="/home/coder/TRINITY-DOCKER/etc/trinity/docker-trinity"
-for trinity_secret_name in TRINITY_OVHCLOUD_API_KEY TRINITY_DEEPSEEK_API_KEY TRINITY_OPENAI_API_KEY TRINITY_OVHCLOUD_APPLICATION_KEY TRINITY_OVHCLOUD_APPLICATION_SECRET TRINITY_OVHCLOUD_CONSUMER_KEY TRINITY_OVHCLOUD_PROJECT TRINITY_OVHCLOUD_API_BASE_URL; do
+for trinity_secret_name in TRINITY_OVHCLOUD_API_KEY TRINITY_DEEPSEEK_API_KEY TRINITY_OPENAI_API_KEY TRINITY_OPENROUTER_API_KEY TRINITY_OVHCLOUD_APPLICATION_KEY TRINITY_OVHCLOUD_APPLICATION_SECRET TRINITY_OVHCLOUD_CONSUMER_KEY TRINITY_OVHCLOUD_PROJECT TRINITY_OVHCLOUD_API_BASE_URL; do
   trinity_secret_file="/run/secrets/$trinity_secret_name"
   if [ ! -r "$trinity_secret_file" ]; then
     trinity_secret_file="$TRINITY_SECRET_DIRECTORY/$trinity_secret_name"
+  fi
+  if [ "$trinity_secret_name" = TRINITY_OPENROUTER_API_KEY ] && [ ! -r "$trinity_secret_file" ]; then
+    trinity_secret_file="$TRINITY_SECRET_DIRECTORY/OPENROUTER_API_KEY"
   fi
   if [ -r "$trinity_secret_file" ]; then
     export "$trinity_secret_name=$(cat "$trinity_secret_file")"
@@ -19,6 +22,7 @@ case "${TRINITY_AGENT_PROVIDER:-ovhcloud}" in
   ovhcloud) trinity_provider_key=${TRINITY_OVHCLOUD_API_KEY:-} ;;
   deepseek) trinity_provider_key=${TRINITY_DEEPSEEK_API_KEY:-} ;;
   openai) trinity_provider_key=${TRINITY_OPENAI_API_KEY:-} ;;
+  openrouter) trinity_provider_key=${TRINITY_OPENROUTER_API_KEY:-} ;;
   *) echo "TRINITY Agent: fournisseur inconnu." >&2; exit 1 ;;
 esac
 if [ -z "$trinity_provider_key" ] && [ "${1:-}" != "--billing-status" ]; then

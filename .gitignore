@@ -153,6 +153,8 @@
 !/scripts/test-deepseek.py
 !/scripts/test-openai.py
 !/scripts/test-providers.py
+!/scripts/test-openrouter.py
+!/scripts/trinity-local-model.sh
 !/scripts/evaluate-autonomy.py
 
 !/scripts/test-tools.py

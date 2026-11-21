@@ -2,7 +2,7 @@
   "name": "trinity-agent",
   "displayName": "TRINITY Agent",
   "description": "Open-source coding assistant and multi-provider model API relay for OpenAI Codex, OVHcloud AI Endpoints and DeepSeek.",
-  "version": "5.14.0",
+  "version": "5.15.0",
   "icon": "media/trinity-icon.png",
   "trinityAgentBranding": {
     "lightThemeIcon": "media/trinity-icon.png",
@@ -102,11 +102,12 @@
           "enum": [
             "ovhcloud",
             "deepseek",
-            "openai"
+            "openai",
+            "openrouter"
           ],
           "default": "ovhcloud",
           "scope": "machine",
-          "description": "Model API used for this conversation. OVHcloud, DeepSeek and OpenAI each keep their own key, endpoint, catalogue, token limits and account display. A change restarts an idle backend and applies to the next message; an active task finishes first."
+          "description": "Model API used for this conversation. OVHcloud, DeepSeek, OpenAI and free-only OpenRouter each keep their own key, endpoint, catalogue, token limits and account display. A change restarts an idle backend and applies to the next message; an active task finishes first."
         },
         "trinityAgent.backendPath": {
           "type": "string",

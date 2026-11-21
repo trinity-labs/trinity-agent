@@ -35,9 +35,11 @@ const INFERENCE_PROVIDERS = {
   ovhcloud: {label:"OVHcloud AI Endpoints",host:"oai.endpoints.kepler.ai.cloud.ovh.net",secret:"TRINITY_OVHCLOUD_API_KEY",storage:"trinityAgent.apiKey"},
   deepseek: {label:"DeepSeek",host:"api.deepseek.com",secret:"TRINITY_DEEPSEEK_API_KEY",storage:"trinityAgent.deepseekApiKey"},
   openai: {label:"OpenAI Codex API",host:"api.openai.com",secret:"TRINITY_OPENAI_API_KEY",storage:"trinityAgent.openaiApiKey"},
+  openrouter: {label:"OpenRouter Free",host:"openrouter.ai",secret:"TRINITY_OPENROUTER_API_KEY",storage:"trinityAgent.openrouterApiKey"},
 };
 function readServerSecret(name) {
-  for (const file of [path.join("/run/secrets", name), path.join(TRINITY_SECRET_DIRECTORY, name)]) {
+  const names = name === "TRINITY_OPENROUTER_API_KEY" ? [name, "OPENROUTER_API_KEY"] : [name];
+  for (const file of names.flatMap(secretName => [path.join("/run/secrets", secretName), path.join(TRINITY_SECRET_DIRECTORY, secretName)])) {
     try { return fs.readFileSync(file, "utf8").trim(); }
     catch (error) { if (error.code !== "ENOENT") throw error; }
   }
@@ -564,7 +566,7 @@ class TrinityAgentViewProvider {
             !readServerSecret(INFERENCE_PROVIDERS[provider].secret)) return;
       } else {
         const project = readServerSecret("TRINITY_OVHCLOUD_PROJECT");
-        if (cache.schema_version !== 2 || !project || cache.project !== project ||
+        if (cache.schema_version !== 3 || !project || cache.project !== project ||
             (cache.provider && cache.provider !== provider)) return;
         if (!Object.values(BILLING_SECRETS).filter(name => name !== "TRINITY_OVHCLOUD_API_BASE_URL").every(readServerSecret)) return;
         delete result.credit_remaining;
@@ -573,7 +575,10 @@ class TrinityAgentViewProvider {
         result.balance_estimated = false;
         const currency = String(cache.currency || "").toUpperCase();
         const creditCurrency = String(cache.credit_currency || cache.currency || "").toUpperCase();
-        if (currency && currency === creditCurrency && Number.isFinite(cache.current_usage)) {
+        if (cache.credit_expired) {
+          result.credit_remaining = 0;
+          result.credit_remaining_display = 0;
+        } else if (currency && currency === creditCurrency && Number.isFinite(cache.current_usage)) {
           result.credit_remaining = cache.credit_available - cache.current_usage;
           result.balance_estimated = true;
         }

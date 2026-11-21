@@ -81,7 +81,7 @@ reduce mounts/credentials for less-trusted work.
 Configuration
 -------------
 
-* ``trinityAgent.provider`` (VS Code User settings): ``ovhcloud``, ``deepseek`` or ``openai``.
+* ``trinityAgent.provider`` (VS Code User settings): ``ovhcloud``, ``deepseek``, ``openai`` or ``openrouter``.
   CLI deployments select the same provider with ``TRINITY_AGENT_PROVIDER``.
   The command **TRINITY Agent: Choose the inference provider** writes the same
   setting. A change restarts an idle backend and applies to the next message;
@@ -95,7 +95,8 @@ Configuration
 * ``TRINITY_AGENT_SHOW_MOUNT_POINT``: ``false`` removes the history banner entirely.
 * ``TRINITY_OVHCLOUD_BASE_URL``: AI endpoint base URL.
 * ``TRINITY_OVHCLOUD_API_BASE_URL``: separate billing API base URL, loaded from server secrets.
-* ``TRINITY_DEEPSEEK_BASE_URL`` and ``TRINITY_OPENAI_BASE_URL``: API-specific endpoints.
+* ``TRINITY_DEEPSEEK_BASE_URL``, ``TRINITY_OPENAI_BASE_URL`` and
+  ``TRINITY_OPENROUTER_BASE_URL``: API-specific endpoints.
 * ``TRINITY_<PROVIDER>_<SETTING>`` overrides token limits, request count,
   timeouts and caches for one API; ``TRINITY_AGENT_<SETTING>`` remains the fallback.
 
@@ -131,6 +132,13 @@ reviewed ``gpt-5.3-codex`` model. ``TRINITY_OPENAI_MONTHLY_CREDIT_USD`` records 
 monthly API allowance (100 by default for the configured Pro benefit). Displayed
 usage and token counters come from completed local requests; the OpenAI platform
 remains authoritative for organization billing and credits.
+
+OpenRouter uses ``TRINITY_OPENROUTER_API_KEY`` and accepts only catalogue entries
+whose prompt and completion prices are both exactly zero. Paid, audio, moderation
+and safety models are rejected before selection. The default is
+``particle-ai/particle-1:free`` and a task is capped at 40 model calls, preserving
+a margin below the free account's provider quota. A verified free-tier key is
+required; a paid-tier key is rejected by this mode.
 
 Development checks
 ------------------

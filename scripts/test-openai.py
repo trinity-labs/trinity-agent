@@ -110,6 +110,11 @@ class OpenAIProviderTests(unittest.TestCase):
         payloads = [
             {'data':[{'id':'gpt-oss-120b','owned_by':'openai','pricing':{'currency_unit':'EUR','prompt':'0.000001','completion':'0.000002'}}]},
             {'data':[{'id':'deepseek-flash','context_window':1048576,'max_output_tokens':393216}]},
+            {'data':[{'id':'particle-ai/particle-1:free','canonical_slug':'particle-ai/particle-1',
+                      'context_length':131072,'pricing':{'prompt':'0','completion':'0'},
+                      'architecture':{'input_modalities':['text'],'output_modalities':['text']},
+                      'supported_parameters':['tools'],
+                      'top_provider':{'max_completion_tokens':32768}}]},
         ]
         class Response(io.BytesIO):
             def __enter__(self): return self
@@ -118,11 +123,12 @@ class OpenAIProviderTests(unittest.TestCase):
             return Response(json.dumps(payloads.pop(0)).encode())
         with tempfile.TemporaryDirectory() as folder, patch.object(agent, 'DATA_ROOT', Path(folder)), \
              patch.dict(os.environ, {'TRINITY_OVHCLOUD_API_KEY':'ovh-fixture',
-                                      'TRINITY_DEEPSEEK_API_KEY':'deepseek-fixture'}), \
+                                      'TRINITY_DEEPSEEK_API_KEY':'deepseek-fixture',
+                                      'TRINITY_OPENROUTER_API_KEY':'openrouter-fixture'}), \
              patch.object(agent.urllib.request, 'urlopen', side_effect=open_url), \
              patch.object(agent, 'SECONDARY_CATALOG', None), patch.object(agent, 'SECONDARY_CATALOG_EXPIRES', 0):
             cards, note = agent.fetch_secondary_catalog(True)
-        self.assertEqual({card['provider'] for card in cards}, {'ovhcloud','deepseek'})
+        self.assertEqual({card['provider'] for card in cards}, {'ovhcloud','deepseek','openrouter'})
         self.assertEqual(note, '')
 
 

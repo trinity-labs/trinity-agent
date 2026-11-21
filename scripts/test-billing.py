@@ -11,6 +11,7 @@ from unittest.mock import patch
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 sys.argv.append('--billing-status')
+os.environ['TRINITY_AGENT_PROVIDER'] = 'ovhcloud'
 spec = importlib.util.spec_from_file_location('agent_billing', root / 'trinity_agent/agent.py')
 a = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = a
@@ -41,7 +42,8 @@ def price(value, currency='EUR'):
     return {'value': value, 'currencyCode': currency}
 
 snapshot = {'credit': 100, 'usage': 10.04, 'currency': 'EUR',
-            'credit_currency': 'EUR', 'period': {'from': '2026-10-01', 'to': '2026-11-01'}}
+            'credit_currency': 'EUR', 'validity_to': '2099-11-15T21:28:46+01:00',
+            'period': {'from': '2026-10-01', 'to': '2026-11-01'}}
 def api(path):
     if path.endswith('/usage/current'):
         return {'totalPrice': price(snapshot['usage'], snapshot['currency']),
@@ -52,7 +54,8 @@ def api(path):
         return ['one']
     if path.endswith('/credit/one'):
         return {'available_credit': price(snapshot['credit'], snapshot['credit_currency']),
-                'used_credit': price(0), 'total_credit': price(100)}
+                'used_credit': price(0), 'total_credit': price(100),
+                'validity': {'from': None, 'to': snapshot['validity_to']}}
     raise AssertionError(path)
 
 with tempfile.TemporaryDirectory() as tmp, patch.object(a, 'ARCHIVE_ROOT', Path(tmp)), \
@@ -78,6 +81,15 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(a, 'ARCHIVE_ROOT', Path(
     next_month = a.fetch_billing_status(force=True)
     assert next_month['credit_remaining'] == 89.75
     assert next_month['usage_period'] == snapshot['period']
+    snapshot['validity_to'] = '2020-11-15T21:28:46+01:00'
+    voucher_expired = a.fetch_billing_status(force=True)
+    assert voucher_expired['credit_expired'] and voucher_expired['credit_available'] == 0
+    assert voucher_expired['credit_expired_available'] == 90
+    assert voucher_expired['credit_remaining'] == 0 and not voucher_expired['balance_estimated']
+    assert voucher_expired['credit_active_count'] == 0 and voucher_expired['credit_expired_count'] == 1
+    snapshot['validity_to'] = '2099-11-15T21:28:46+01:00'
+    active_again = a.fetch_billing_status(force=True)
+    assert active_again['credit_remaining'] == next_month['credit_remaining']
     remote.side_effect = urllib.error.HTTPError('https://eu.api.ovh.com', 403, 'Forbidden', {}, None)
     expired = a.fetch_billing_status(force=True)
     assert expired['authorization_expired'] and not expired['configured'] and expired['stale']

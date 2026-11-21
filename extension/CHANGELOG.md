@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.15.0
+
+- Add a strictly free OpenRouter provider with live free-tier verification, zero-price catalogue filtering, tool-capable model selection, and a bounded daily request allowance.
+- Install native CPU-compatible llama.cpp serving for the Dolphin 3.0 and NousResearch Hermes 3 pentest models, stored outside the IDE overlay and started only on demand.
+
 ## 5.14.0
 
 - Reconcile fresh OVHcloud project usage with locally settled model costs every 60 seconds, preserve the greater accounted spend without double charging, and label a verified result as a reconciled balance.

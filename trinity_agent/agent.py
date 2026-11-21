@@ -180,7 +180,11 @@ COMPLEX_OUTPUT_TOKENS = provider_limit_setting("COMPLEX_OUTPUT_TOKENS")
 SUMMARY_GENERATION_TOKENS = provider_limit_setting("SUMMARY_GENERATION_TOKENS")
 # Compaction is an auxiliary call: fail over quickly instead of stalling the task.
 SUMMARY_TIMEOUT_SECONDS = provider_integer_setting("SUMMARY_TIMEOUT_SECONDS", 15)
-REQUEST_LIMIT = None if AI_PROVIDER == 'deepseek' else (provider_integer_setting("REQUEST_LIMIT", 0, 0) or None)
+REQUEST_LIMIT = (provider_integer_setting("REQUEST_LIMIT", 40, 1)
+                 if AI_PROVIDER == 'openrouter' and 'TRINITY_OPENROUTER_REQUEST_LIMIT' in os.environ
+                 else 40 if AI_PROVIDER == 'openrouter'
+                 else None if AI_PROVIDER == 'deepseek'
+                 else (provider_integer_setting("REQUEST_LIMIT", 0, 0) or None))
 EMOJI_MODE = min(3, budget_setting("TRINITY_AGENT_EMOJI_MODE", 1, 0))
 VERBOSITY, VERBOSITY_INSTRUCTION = verbosity_instructions(os.environ.get('TRINITY_AGENT_VERBOSITY', 'medium'))
 TASK_CHECKPOINT_SECONDS = budget_setting("TRINITY_AGENT_TASK_CHECKPOINT_SECONDS", 300, 30)
@@ -254,6 +258,14 @@ def model_capabilities(model_id: str) -> dict:
         return {'tools': True, 'reasoning': True, 'stream': True,
                 'response_formats': ['json_schema', 'json_object'],
                 'reasoning_efforts': spec.get('reasoning_efforts', ['low', 'medium', 'high', 'xhigh'])}
+    if AI_PROVIDER == 'openrouter':
+        card = next((item for item in (MODEL_CATALOG or []) if item.get('id') == model_id), {})
+        parameters = set(card.get('supported_parameters') or [])
+        return {'tools': 'tools' in parameters, 'reasoning': 'reasoning' in parameters,
+                'stream': True,
+                'response_formats': [name for name in ('json_schema', 'json_object')
+                                     if 'response_format' in parameters],
+                'reasoning_efforts': []}
     key = (AI_API_BASE_URL, model_id)
     if key in MODEL_CAPABILITIES:
         return MODEL_CAPABILITIES[key]
@@ -1537,6 +1549,37 @@ def normalise_model(raw: dict[str, object], provider: str | None = None) -> dict
                 'response_formats': ['json_schema', 'json_object'],
                 'currency': 'USD', 'hourly': None, 'free': False,
                 'pricing_source': 'https://developers.openai.com/api/docs/pricing'}
+    if provider == 'openrouter':
+        pricing = raw.get('pricing') if isinstance(raw.get('pricing'), dict) else {}
+        try:
+            prompt_price = float(pricing['prompt'])
+            completion_price = float(pricing['completion'])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError('OpenRouter pricing unavailable')
+        model_id = str(raw.get('id', '')).strip()
+        architecture = raw.get('architecture') if isinstance(raw.get('architecture'), dict) else {}
+        outputs = architecture.get('output_modalities') or []
+        parameters = [str(item) for item in (raw.get('supported_parameters') or [])]
+        maximum = (raw.get('top_provider') or {}).get('max_completion_tokens') if isinstance(raw.get('top_provider'), dict) else None
+        if (not model_id or prompt_price != 0 or completion_price != 0
+                or (outputs and 'text' not in outputs)
+                or re.search(r'audio|tts|whisper|guard|safety|moderation|lyria', model_id, re.I)):
+            raise ValueError('OpenRouter model is not a free text model')
+        context = int(raw.get('context_length') or 0)
+        maximum = int(maximum or min(context, 32768))
+        if context <= 0 or maximum <= 0:
+            raise ValueError('OpenRouter model capacity unavailable')
+        return {'id': model_id, 'owner': str(raw.get('canonical_slug') or model_id.split('/', 1)[0]),
+                'provider': provider, 'kind': 'chat', 'selectable': 'tools' in parameters,
+                'vision': 'image' in (architecture.get('input_modalities') or []),
+                'supports_tools': 'tools' in parameters, 'supports_reasoning': 'reasoning' in parameters,
+                'supports_streaming': True, 'supported_parameters': parameters,
+                'response_formats': ['json_schema', 'json_object'] if 'response_format' in parameters else [],
+                'reasoning_efforts': [], 'context_length': context,
+                'max_completion_tokens': maximum, 'currency': 'USD',
+                'input_per_million': 0.0, 'output_per_million': 0.0,
+                'hourly': None, 'free': True,
+                'pricing_source': 'https://openrouter.ai/api/v1/models'}
     pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else {}
     prices = [pricing.get(key, 0) for key in ('prompt', 'completion')]
     if any(isinstance(value, bool) or not isinstance(value, (int, float, str)) for value in prices):
@@ -1974,6 +2017,13 @@ def billing_balance(status: dict[str, object]) -> dict[str, object]:
     result["refresh_seconds"] = BILLING_CACHE_SECONDS
     if not status.get("available"):
         return result
+    if status.get("credit_expired"):
+        result.update({
+            "credit_remaining": 0.0,
+            "credit_remaining_display": 0.0,
+            "balance_estimated": False,
+        })
+        return result
     credit_currency = str(status.get("credit_currency") or status.get("currency") or "").upper()
     usage_currency = str(status.get("currency") or "").upper()
     if not credit_currency or credit_currency != usage_currency:
@@ -2021,6 +2071,27 @@ def local_provider_month_usage(provider: str) -> dict[str, object]:
 
 
 def fetch_billing_status(force: bool = False) -> dict[str, object]:
+    if AI_PROVIDER == 'openrouter':
+        key = PROVIDER_CONFIG.api_key()
+        status = {'provider': 'openrouter', 'configured': bool(key), 'available': False,
+                  'schema_version': 2, 'currency': 'USD', 'credit_currency': 'USD',
+                  'credit_available': 0.0, 'credit_remaining': 0.0,
+                  'free_only': True, 'refresh_seconds': BILLING_CACHE_SECONDS}
+        if not key:
+            return status
+        try:
+            request = urllib.request.Request(AI_API_BASE_URL + '/key',
+                headers={'Authorization': 'Bearer ' + key, 'Accept': 'application/json'})
+            with urllib.request.urlopen(request, timeout=15) as response:
+                data = json.load(response).get('data', {})
+            if data.get('is_free_tier') is not True:
+                raise ValueError('OpenRouter key is not restricted to the free tier')
+            status.update(available=True, account_available=True,
+                          current_usage=float(data.get('usage') or 0),
+                          requests_limit=40, last_update=now_iso())
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            status['error'] = 'Clé OpenRouter gratuite non vérifiable ; appels bloqués.'
+        return status
     if AI_PROVIDER == 'openai':
         key=PROVIDER_CONFIG.api_key()
         try: credit=Decimal(os.environ.get(PROVIDER_CONFIG.monthly_credit_env,'100') or '0')
@@ -2079,8 +2150,11 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
         return billing_balance({"configured": False, "available": False})
     project = os.environ["TRINITY_OVHCLOUD_PROJECT"]
     cached = read_billing_cache()
-    project_cache = cached if cached and cached.get("project") == project else None
-    if project_cache and project_cache.get("schema_version") == 2 and not force:
+    # Schema 3 records credit validity. Older caches can contain an expired
+    # voucher balance and must never authorize another paid request.
+    project_cache = (cached if cached and cached.get("project") == project
+                     and cached.get("schema_version") == 3 else None)
+    if project_cache and not force:
         age = time.time() - float(project_cache.get("cached_at", 0) or 0)
         if 0 <= age < BILLING_CACHE_SECONDS:
             return billing_balance(project_cache)
@@ -2125,7 +2199,24 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
             except (KeyError, ValueError, InvalidOperation) as error:
                 raise ValueError("Montant de facturation OVH invalide.") from error
         current_amount = required_price(total_price)
-        credit_amounts = [required_price(item.get("available_credit")) for item in credits]
+        active_credits: list[dict[str, object]] = []
+        expired_credits: list[dict[str, object]] = []
+        checked_at = datetime.now(timezone.utc)
+        for item in credits:
+            validity = item.get("validity")
+            expires_at = validity.get("to") if isinstance(validity, dict) else None
+            if expires_at:
+                try:
+                    expiry = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                    if expiry.tzinfo is None:
+                        raise ValueError("Fuseau absent")
+                except (TypeError, ValueError) as error:
+                    raise ValueError("Date de validité du crédit OVH invalide.") from error
+                (active_credits if checked_at < expiry.astimezone(timezone.utc) else expired_credits).append(item)
+            else:
+                active_credits.append(item)
+        credit_amounts = [required_price(item.get("available_credit")) for item in active_credits]
+        expired_credit_amounts = [required_price(item.get("available_credit")) for item in expired_credits]
         credit_currencies = {
             str(item.get("available_credit", {}).get("currencyCode") or "").upper()
             for item in credits if isinstance(item.get("available_credit"), dict)
@@ -2134,7 +2225,7 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
             raise ValueError("Les crédits OVH n’ont pas une devise commune connue.")
         credit_currency = next(iter(credit_currencies), currency)
         status: dict[str, object] = {
-            "schema_version": 2,
+            "schema_version": 3,
             "configured": True,
             "available": True,
             "project": project,
@@ -2144,9 +2235,13 @@ def fetch_billing_status(force: bool = False) -> dict[str, object]:
             "forecast_usage": price_value(forecast_price),
             "usable_credit": price_value(usable.get("totalCredit")),
             "credit_available": float(sum(credit_amounts, Decimal("0"))),
+            "credit_expired_available": float(sum(expired_credit_amounts, Decimal("0"))),
+            "credit_expired": bool(expired_credits) and not active_credits,
             "credit_total": round(sum(price_value(item.get("total_credit")) for item in credits), 8),
             "credit_used": round(sum(price_value(item.get("used_credit")) for item in credits), 8),
             "credit_count": len(credits),
+            "credit_active_count": len(active_credits),
+            "credit_expired_count": len(expired_credits),
             "last_update": str(current.get("lastUpdate") or ""),
             "usage_period": current.get("period"),
             "cached_at": time.time(),
@@ -3045,6 +3140,9 @@ class ResponseStream:
 
 
 def budget_ledger():
+    if AI_PROVIDER == 'openrouter':
+        return BudgetLedger(DATA_ROOT / 'budgets' / 'free-openrouter-usd.json',
+                            {'daily': 0, 'weekly': 0, 'monthly': 0}, currency='USD')
     if AI_PROVIDER in {'openai', 'deepseek'}:
         currency = 'USD' if AI_PROVIDER == 'openai' else 'EUR'
         return AvailableBalanceLedger(
@@ -3245,6 +3343,16 @@ def get_budgeted_model(model_id):
     if AI_PROVIDER == 'openai':
         return BudgetedModel(OpenAIResponsesModel(model_id, provider=OpenAIProvider(
             api_key=PROVIDER_CONFIG.require_api_key(), base_url=AI_API_BASE_URL)),
+            ledger=budget_ledger,
+            catalog_card=lambda name: next(c for c in fetch_model_catalog() if c['id'] == name),
+            publish=publish_budget, record=record_provider_request)
+    if AI_PROVIDER == 'openrouter':
+        return BudgetedModel(OpenAIChatModel(model_id, provider=OpenAIProvider(
+            api_key=PROVIDER_CONFIG.require_api_key(), base_url=AI_API_BASE_URL),
+            profile={'openai_chat_supports_multiple_system_messages': True,
+                     'openai_chat_supports_max_completion_tokens': True,
+                     'supports_json_schema_output': 'json_schema' in model_capabilities(model_id).get('response_formats', []),
+                     'supports_json_object_output': 'json_object' in model_capabilities(model_id).get('response_formats', [])}),
             ledger=budget_ledger,
             catalog_card=lambda name: next(c for c in fetch_model_catalog() if c['id'] == name),
             publish=publish_budget, record=record_provider_request)
